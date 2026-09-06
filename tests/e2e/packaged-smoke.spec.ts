@@ -169,7 +169,9 @@ test('packaged application starts with secure IPC and encrypted profile persiste
     if (integration) {
       await openConnection(window, 'right', 'Disposable packaged profile');
       await window.getByRole('button', { name: 'Trust this key and connect' }).click();
-      await expect(window.getByTestId('right-panel').getByLabel('Current path')).toBeVisible();
+      await expect(window.getByTestId('right-panel').getByLabel('Current path')).toHaveValue(
+        '/home/fixture/data',
+      );
       await roundTrip(window, userData, 'sftp');
       await request(window, { action: 'disconnect', workspaceId: 'workspace-1:right' });
       const s3Form = await newConnection(window, 's3');
@@ -232,7 +234,11 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       // Both passwords must actually decrypt after restart, not just list profile metadata.
       for (const label of ['Packaged MinIO', 'Disposable packaged profile']) {
         await openConnection(window, 'right', label);
-        await expect(window.getByTestId('right-panel').getByLabel('Current path')).toBeVisible();
+        await expect(window.getByTestId('right-panel').getByLabel('Current path')).toHaveValue(
+          label === 'Packaged MinIO'
+            ? formatS3Path(createS3ProviderPath('fixture-bucket', 'prefix/'))
+            : '/home/fixture/data',
+        );
         await expect(
           window.getByRole('button', { name: 'Trust this key and connect' }),
         ).toHaveCount(0);
