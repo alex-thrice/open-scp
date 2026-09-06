@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 export default defineConfig({
   fullyParallel: false,
-  reporter: 'list',
+  reporter: process.env.CI === 'true' ? [['github'], ['list']] : 'list',
   testDir: './tests/e2e',
   timeout: 30_000,
   use: {
