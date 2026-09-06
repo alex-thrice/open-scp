@@ -35,9 +35,10 @@ pnpm package
 ```
 
 GitHub Actions runs lint, type checking, unit/packaging tests, license checks, builds
-and Electron UI tests on Windows, Linux and Apple Silicon macOS. A separate Linux
-job runs OpenSSH/MinIO integration and UI workflows with a disposable keyring.
-Development packages are built and smoke-tested by `packages.yml`; signed
+and Electron UI tests on Windows, Linux and Apple Silicon macOS. UI regression tests use
+temporary local SFTP/S3 servers; Linux runs them with a disposable keyring.
+Development packages are built and smoke-tested by `packages.yml` on version tags,
+including OpenSSH/MinIO integration for the installed Linux package; signed
 candidates remain a manual workflow requiring signing credentials.
 
 ## License
@@ -104,11 +105,16 @@ Protocol differences and the capability matrix are documented in
 
 ## Local drives and workspaces
 
-Each workspace has an independent local directory and drive selector. On Windows, the selector
-lists available drive letters, including mounted removable drives. Selecting a drive opens its
-root. Use **Refresh drives** after connecting or removing a drive; switching workspaces also
-refreshes the drive list. The initial directory remains the user's home folder. An inaccessible
-directory does not block selecting another drive or returning to the previous listing.
+Each workspace has two independent panels. Both initially show local folders; either panel can
+open a local drive, SFTP connection or S3 profile. The source picker searches names, groups
+profiles into folders, and shows protocol icons and native OS drive icons where available.
+Opening the picker refreshes removable drives. An inaccessible directory does not block
+selecting another drive or returning to the previous listing.
+
+Use **+** or Ctrl/Command+T to add a tab. Its title combines the left folder name with the
+right folder name (local) or connection name (remote). A remote source picker is locked:
+close the tab to disconnect. Closing the last connected tab creates a fresh local workspace.
+The gear opens Settings: light/dark/system theme, density, hidden dotfiles and language.
 
 Drive discovery and filesystem access run in the main process through fixed, validated IPC
 channels. Each discovered root uses its own bounded `LocalProvider`; tabs do not change a shared
@@ -119,12 +125,13 @@ in the drive selector.
 
 ## SFTP and transfers
 
-Create a profile in the remote panel, choose password, private key or SSH Agent, and connect.
+Open **Connections → Connection**, select SFTP, and choose password, private key or SSH Agent.
+Double-click a saved profile to open it in the active local panel, or choose it in a source picker.
 On the first connection, verify the displayed host fingerprint through a trusted channel before
 explicitly accepting it. A changed key blocks connection. Secrets are encrypted with Electron
 safeStorage and never returned to the UI; insecure storage backends are refused.
 
-Select a local or remote entry, choose a conflict policy and use Upload / Download. Directories
+Select entries and use the panel's **Copy** icon or F5, then confirm the destination and conflict policy. Directories
 are copied recursively. The queue shows progress, speed and ETA with cancel, resume and restart.
 Completed transfers refresh the destination panel. Temporary `.openscp-part-…` files are published
 only after success; interrupted parts remain available for verified resume during this run.
@@ -134,12 +141,12 @@ prompts; old partial files remain untouched. Ambiguous commit failures also requ
 
 ## S3 and multipart
 
-Choose **New S3** in the remote panel. For AWS leave Endpoint empty and select the region;
+Open **Connections → Connection** and select S3. For AWS leave Endpoint empty and select the region;
 for MinIO specify its HTTPS endpoint and enable path-style when needed. Leave Bucket empty
 to list buckets, or set a bucket and initial prefix. Secret access key and optional session
 token are encrypted with safeStorage; HTTP is allowed only for local fixtures.
 
-Buckets, prefixes and objects have distinct labels. Copy/rename runs server-side; rename is
+Buckets, prefixes and objects have distinct labels. Rename uses server-side copy and is
 explicitly non-atomic. Prefix deletion shows the exact object count/bytes before confirmation.
 Large uploads use multipart with bounded buffers, two in-flight parts and abort on cancellation.
 Failed cleanup is recorded in SQLite and can be retried; do not delete the profile until cleanup
@@ -156,11 +163,11 @@ Use F6 to switch panels, arrows/Home/End/PageUp/PageDown to navigate, Shift/Ctrl
 Ctrl+A to select all, F5 to copy to the opposite panel, F2 to rename, F7 to create a directory,
 Delete to confirm deletion, F4 to refresh and Backspace to go up. Context menus expose only
 provider-supported commands. Internal drops and operating-system file drops use the same queue.
-**Copy to another session** streams directly between connected SFTP/S3 tabs.
+Connect both panels to stream directly between SFTP/S3 sources using the same Copy action.
 
-**Profiles and diagnostics** provides search, groups, duplication, deletion, secret-free JSON
-import/export and explicit known_hosts import. Imported password/S3 profiles need credentials
-configured before connecting. Diagnostic exports contain allowlisted technical metadata only;
+**Connections** provides search, folders, duplication, deletion and secret-free JSON import/export,
+including empty folders. Imported password/S3 profiles need credentials configured before connecting.
+**Settings → Advanced** contains known_hosts import and diagnostic export. Reports contain allowlisted technical metadata only;
 they are never uploaded automatically. Both application and native menus switch language live.
 
 See the [Commander guide](docs/user/commander.md) and

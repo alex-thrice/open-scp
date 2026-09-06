@@ -1,4 +1,5 @@
 .codegraph/
+/design-previews/
 IMPLEMENTATION_PLAN.md
 node_modules/
 out/

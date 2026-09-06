@@ -1,10 +1,12 @@
 import { productResources } from './product-resources';
+import { designResources } from './design-resources';
 export const defaultLanguage = 'en';
 
 export const resources = {
   en: {
     translation: {
       ...productResources.en,
+      ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
       s3: {
@@ -218,6 +220,7 @@ export const resources = {
   ru: {
     translation: {
       ...productResources.ru,
+      ui: designResources.ru,
       app: {
         desktop: 'Настольное приложение',
         name: 'OpenSCP',

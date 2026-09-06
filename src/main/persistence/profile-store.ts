@@ -86,6 +86,24 @@ export class ProfileStore {
     const row = this.database.prepare('SELECT value FROM settings WHERE key = ?').get(key);
     return row === undefined ? undefined : String(row.value);
   }
+  public folders(): string[] {
+    const stored = JSON.parse(this.getSetting('profile-folders') ?? '[]') as string[];
+    return [
+      ...new Set(
+        [
+          ...stored,
+          ...this.list().map((profile) => this.getSetting(`group:${profile.id}`) ?? ''),
+        ].filter(Boolean),
+      ),
+    ].sort((left, right) => left.localeCompare(right));
+  }
+  public addFolder(name: string): void {
+    if (!name) return;
+    const folders = this.folders();
+    if (folders.some((folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase())) return;
+    if (folders.length >= 1000) throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+    this.setSetting('profile-folders', JSON.stringify([...folders, name]));
+  }
   public setSetting(key: string, value: string): void {
     this.database
       .prepare(

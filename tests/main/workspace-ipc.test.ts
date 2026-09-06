@@ -4,6 +4,29 @@ import { createDesktopApi } from '../../src/preload/desktop-api';
 import { ipcRequestChannels } from '../../src/shared/ipc/channels';
 
 describe('workspace IPC boundary', () => {
+  it('validates themes and connection folder names at the boundary', () => {
+    for (const name of ['', 'a/b', 'a\\b', 'bad\u0000name']) {
+      expect(
+        workspaceRequestSchema.safeParse({ action: 'create-profile-folder', name }).success,
+      ).toBe(false);
+    }
+    expect(
+      workspaceRequestSchema.safeParse({ action: 'create-profile-folder', name: 'Рабочие' })
+        .success,
+    ).toBe(true);
+    expect(
+      workspaceRequestSchema.safeParse({
+        action: 'set-appearance',
+        appearance: { theme: 'system', density: 'compact', showHidden: false },
+      }).success,
+    ).toBe(true);
+    expect(
+      workspaceRequestSchema.safeParse({
+        action: 'set-appearance',
+        appearance: { theme: 'unknown', density: 'compact', showHidden: false },
+      }).success,
+    ).toBe(false);
+  });
   it('rejects arbitrary actions, malformed paths and unexpected secret fields', () => {
     expect(workspaceRequestSchema.safeParse({ action: 'exec', command: 'anything' }).success).toBe(
       false,

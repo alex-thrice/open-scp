@@ -36,6 +36,7 @@ function createPackageConfig(environment, platform) {
       { from: 'build-resources/generated/icon.png', to: 'icon.png' },
       { from: 'LICENSE', to: 'LICENSE' },
       { from: 'THIRD_PARTY_NOTICES.md', to: 'THIRD_PARTY_NOTICES.md' },
+      { from: 'src/renderer/src/components/LICENSE.lucide', to: 'licenses/LICENSE.lucide' },
       { from: 'build-resources/generated/licenses', to: 'licenses' },
     ],
     extraMetadata: {

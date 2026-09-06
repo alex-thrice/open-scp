@@ -1,6 +1,9 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { DesktopApi } from '@shared/desktop-api';
+import type { WorkspaceSnapshot } from '@shared/ipc/workspace';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
+import { createS3ProviderPath } from '@shared/models/provider-path';
+import { formatS3Path } from '@shared/models/s3-path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { i18n } from './i18n';
@@ -77,158 +80,314 @@ afterEach(async () => {
   await i18n.changeLanguage('en');
 });
 
-describe('App', () => {
-  it('keeps drive and directory selections independent between workspaces', async () => {
-    const secondDrive: LocalDirectoryListing = {
-      breadcrumbs: [{ label: 'D:\\', path: 'D:\\' }],
-      currentPath: 'D:\\',
-      entries: [],
-      parentPath: null,
-    };
-    const listLocalDirectory = vi.fn(async (path: string | null) => ({
-      correlationId,
-      data: path === 'D:\\' ? secondDrive : rootListing,
-      ok: true as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
-    render(<App />);
-    await screen.findByText('notes.txt');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Drive' }), {
-      target: { value: 'D:\\' },
-    });
-    expect(await screen.findByText('This directory is empty.')).toBeTruthy();
-    expect((screen.getByRole('combobox', { name: 'Drive' }) as HTMLSelectElement).value).toBe(
-      'D:\\',
-    );
-    expect(
-      (screen.getByRole('button', { name: 'Go to parent directory' }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-
-    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
-    await within(screen.getByRole('tabpanel')).findByText('notes.txt');
-    expect((screen.getByRole('combobox', { name: 'Drive' }) as HTMLSelectElement).value).toBe(
-      'C:\\',
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'Workspace 1' }));
-    expect(within(screen.getByRole('tabpanel')).getByText('This directory is empty.')).toBeTruthy();
-    expect((screen.getByRole('combobox', { name: 'Drive' }) as HTMLSelectElement).value).toBe(
-      'D:\\',
-    );
-    expect(listLocalDirectory).toHaveBeenCalledTimes(3);
-  });
-
-  it('keeps drive selection usable after a failed switch or initial directory error', async () => {
-    const listLocalDirectory = vi.fn(async (path: string | null) =>
-      path === 'D:\\' || path === null
-        ? {
-            correlationId,
-            error: {
-              code: 'PROVIDER_ACCESS_DENIED' as const,
-              messageKey: 'errors.provider.accessDenied' as const,
+const pane = (side: 'left' | 'right') =>
+  within(within(screen.getByRole('tabpanel')).getByTestId(side + '-panel'));
+const chooseDrive = async (side: 'left' | 'right', path: string) => {
+  fireEvent.click(pane(side).getByRole('button', { name: 'Drive or connection' }));
+  const search = await screen.findByRole('combobox', { name: 'Search by name…' });
+  fireEvent.change(search, { target: { value: path } });
+  fireEvent.click(await screen.findByRole('option'));
+};
+const childListing: LocalDirectoryListing = {
+  ...rootListing,
+  currentPath: childPath,
+  entries: [],
+  parentPath: rootPath,
+};
+const secondDrive: LocalDirectoryListing = {
+  breadcrumbs: [{ label: 'D:\\', path: 'D:\\' }],
+  currentPath: 'D:\\',
+  entries: [],
+  parentPath: null,
+};
+const listingApi = () =>
+  vi.fn(async (path: string | null) => ({
+    correlationId,
+    data: path === childPath ? childListing : path === 'D:\\' ? secondDrive : rootListing,
+    ok: true as const,
+  }));
+const profiles: WorkspaceSnapshot['profiles'] = [
+  {
+    id: 'sftp-one',
+    kind: 'sftp',
+    name: 'Development',
+    host: 'dev.example.test',
+    username: 'alex',
+    port: 22,
+    authentication: { method: 'agent' },
+  },
+  {
+    id: 's3-one',
+    kind: 's3',
+    name: 'Archives',
+    region: 'us-east-1',
+    accessKeyId: 'fixture',
+    initialPrefix: '',
+    forcePathStyle: false,
+  },
+];
+const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
+  let snapshot: WorkspaceSnapshot = {
+    profiles,
+    sessions: [],
+    transfers: [],
+    language: null,
+    profileFolders: ['Work', 'Storage'],
+    profileGroups: { 'sftp-one': 'Work', 's3-one': 'Storage' },
+    ...initial,
+  };
+  const workspace = vi.fn<DesktopApi['workspace']>(async (request) => {
+    if (request.action === 'set-appearance')
+      snapshot = { ...snapshot, appearance: request.appearance };
+    if (request.action === 'set-language') snapshot = { ...snapshot, language: request.language };
+    if (request.action === 'connect') {
+      const profile = snapshot.profiles.find((item) => item.id === request.profileId);
+      if (profile)
+        snapshot = {
+          ...snapshot,
+          sessions: [
+            ...snapshot.sessions,
+            {
+              workspaceId: request.workspaceId,
+              profileId: profile.id,
+              kind: profile.kind,
+              name: profile.name,
+              currentPath:
+                profile.kind === 's3'
+                  ? formatS3Path(
+                      createS3ProviderPath(profile.bucket ?? '', profile.initialPrefix ?? ''),
+                    )
+                  : '/',
+              hostKey: null,
+              state: 'connected',
+              capabilities: {
+                read: true,
+                write: true,
+                rename: true,
+                delete: true,
+                createDirectory: true,
+                serverSideCopy: false,
+              },
             },
-            ok: false as const,
-          }
-        : { correlationId, data: rootListing, ok: true as const },
-    );
-    setDesktopApi(createDesktopApi(listLocalDirectory));
-    render(<App />);
-    await screen.findByText('Permission to perform this operation was denied.');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Drive' }), {
-      target: { value: 'C:\\' },
-    });
-    await screen.findByText('notes.txt');
-    fireEvent.change(screen.getByRole('combobox', { name: 'Drive' }), {
-      target: { value: 'D:\\' },
-    });
-    await screen.findByText('Permission to perform this operation was denied.');
-    expect(screen.queryByText('notes.txt')).toBeNull();
-    expect((screen.getByRole('combobox', { name: 'Drive' }) as HTMLSelectElement).value).toBe(
-      'C:\\',
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-    expect(await screen.findByText('notes.txt')).toBeTruthy();
+          ],
+        };
+    }
+    if (request.action === 'disconnect' || request.action === 'close-session')
+      snapshot = {
+        ...snapshot,
+        sessions: snapshot.sessions.filter((item) => item.workspaceId !== request.workspaceId),
+      };
+    if (request.action === 'create-profile-folder')
+      snapshot = {
+        ...snapshot,
+        profileFolders: [...(snapshot.profileFolders ?? []), request.name],
+      };
+    if (request.action === 'clone-profile') {
+      const original = snapshot.profiles.find((item) => item.id === request.profileId);
+      if (original)
+        snapshot = {
+          ...snapshot,
+          profiles: [...snapshot.profiles, { ...original, id: 'duplicate', name: request.name }],
+        };
+    }
+    const currentPath =
+      request.action === 'list'
+        ? (request.path ??
+          snapshot.sessions.find((session) => session.workspaceId === request.workspaceId)
+            ?.currentPath ??
+          '/')
+        : '/';
+    return {
+      correlationId,
+      ok: true,
+      data: {
+        snapshot,
+        listing:
+          request.action === 'list'
+            ? {
+                breadcrumbs: [{ label: currentPath, path: currentPath }],
+                currentPath,
+                parentPath: null,
+                entries: currentPath.startsWith('s3://')
+                  ? currentPath === 's3:///'
+                    ? [
+                        {
+                          name: 'example-bucket',
+                          path: 's3://example-bucket/',
+                          kind: 'directory',
+                          s3Kind: 'bucket',
+                          modifiedAt: null,
+                          permissions: null,
+                          size: 0n,
+                        },
+                      ]
+                    : [
+                        {
+                          name: 'remote.txt',
+                          path: `${currentPath}remote.txt`,
+                          kind: 'file',
+                          s3Kind: 'object',
+                          modifiedAt: null,
+                          permissions: null,
+                          size: 12n,
+                        },
+                      ]
+                  : [],
+              }
+            : null,
+        privateKeyPath: null,
+        ...(request.action === 'clone-profile' ? { savedProfileId: 'duplicate' } : {}),
+      },
+    };
   });
+  setDesktopApi({ ...createDesktopApi(listingApi()), workspace });
+  return workspace;
+};
 
-  it('refreshes drive options for attached and removed media', async () => {
-    const listLocalDrives = vi
-      .fn<DesktopApi['listLocalDrives']>()
-      .mockResolvedValueOnce({ correlationId, data: [{ label: 'C:\\', path: 'C:\\' }], ok: true })
-      .mockResolvedValueOnce({
-        correlationId,
-        data: [
-          { label: 'C:\\', path: 'C:\\' },
-          { label: 'E:\\', path: 'E:\\' },
-        ],
-        ok: true,
-      })
-      .mockResolvedValue({ correlationId, data: [{ label: 'C:\\', path: 'C:\\' }], ok: true });
-    setDesktopApi(
-      Object.freeze({
-        ...createDesktopApi(async () => ({ correlationId, data: rootListing, ok: true })),
-        listLocalDrives,
+describe('App', () => {
+  it.each([
+    { side: 'left', bucket: '' },
+    { side: 'right', bucket: '' },
+    { side: 'left', bucket: 'example-bucket' },
+    { side: 'right', bucket: 'example-bucket' },
+  ] as const)(
+    'switches a populated $side local pane to S3 with bucket "$bucket"',
+    async ({ side, bucket }) => {
+      statefulApi({
+        profiles: profiles.map((profile) =>
+          profile.kind === 's3' ? { ...profile, bucket } : profile,
+        ),
+      });
+      render(<App />);
+      await pane(side).findByRole('row', { name: 'notes.txt' });
+      fireEvent.click(pane(side).getByRole('button', { name: 'Drive or connection' }));
+      fireEvent.click(await screen.findByRole('option', { name: /Archives/u }));
+      const remotePath = `s3://${bucket}/`;
+      await waitFor(() => expect(pane(side).getByDisplayValue(remotePath)).toBeTruthy());
+      if (!bucket) {
+        const row = await pane(side).findByRole('row', { name: 'Open example-bucket' });
+        expect(
+          (pane(side).getByRole('button', { name: 'New directory' }) as HTMLButtonElement).disabled,
+        ).toBe(true);
+        fireEvent.doubleClick(row);
+        await pane(side).findByDisplayValue('s3://example-bucket/');
+      }
+      await pane(side).findByRole('row', { name: 'remote.txt' });
+      expect(pane(side).queryByRole('row', { name: 'notes.txt' })).toBeNull();
+      expect(
+        pane(side === 'left' ? 'right' : 'left').getByRole('row', { name: 'notes.txt' }),
+      ).toBeTruthy();
+      expect(
+        (pane(side).getByRole('button', { name: 'Drive or connection' }) as HTMLButtonElement)
+          .disabled,
+      ).toBe(true);
+      expect(
+        (pane(side).getByRole('button', { name: 'New directory' }) as HTMLButtonElement).disabled,
+      ).toBe(false);
+    },
+  );
+
+  it('requires confirmation before closing a pane with unfinished transfers', async () => {
+    const workspace = statefulApi({
+      sessions: [
+        {
+          workspaceId: 'workspace-1:right',
+          profileId: 'sftp-one',
+          kind: 'sftp',
+          name: 'Development',
+          currentPath: '/',
+          state: 'connected',
+          hostKey: null,
+        },
+      ],
+      transfers: [
+        {
+          id: 'transfer-one',
+          workspaceId: 'workspace-1:right',
+          sourcePath: '/source',
+          destinationPath: '/target',
+          direction: 'upload',
+          state: 'queued',
+          conflictPolicy: 'ask',
+          transferredBytes: 0n,
+          totalBytes: 10n,
+          speed: 0,
+          elapsed: 0,
+          remaining: null,
+          errorKey: null,
+          conflictPath: null,
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByRole('tab', { name: 'test - Development' });
+    fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
+    await screen.findByRole('dialog', { name: 'Close active session?' });
+    expect(workspace.mock.calls.some(([request]) => request.action === 'disconnect')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Keep session open' }));
+    expect(screen.getByRole('tab', { name: 'test - Development' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Cancel transfers and close' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'close-session',
+        workspaceId: 'workspace-1:right',
+        cancelActive: true,
       }),
     );
-    render(<App />);
-    await screen.findByText('notes.txt');
-    expect(screen.queryByRole('option', { name: 'E:\\' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh drives' }));
-    expect(await screen.findByRole('option', { name: 'E:\\' })).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh drives' }));
-    await waitFor(() => expect(screen.queryByRole('option', { name: 'E:\\' })).toBeNull());
-    expect(screen.getByText('notes.txt')).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2'),
+    );
   });
 
-  it('ignores a slow initial listing after the user switches drives', async () => {
-    let completeInitialListing:
-      ((response: Awaited<ReturnType<DesktopApi['listLocalDirectory']>>) => void) | undefined;
-    const initialListing = new Promise<Awaited<ReturnType<DesktopApi['listLocalDirectory']>>>(
-      (resolve) => {
-        completeInitialListing = resolve;
-      },
-    );
-    setDesktopApi(
-      createDesktopApi(async (path) =>
-        path === null
-          ? initialListing
-          : {
-              correlationId,
-              data: {
-                breadcrumbs: [{ label: 'D:\\', path: 'D:\\' }],
-                currentPath: 'D:\\',
-                entries: [],
-                parentPath: null,
-              },
-              ok: true,
-            },
-      ),
-    );
-    render(<App />);
-    await screen.findByRole('option', { name: 'D:\\' });
-    fireEvent.change(screen.getByRole('combobox', { name: 'Drive' }), {
-      target: { value: 'D:\\' },
+  it('restores tab ownership for journal entries with per-panel workspace IDs', async () => {
+    statefulApi({
+      transfers: [
+        {
+          id: 'restored',
+          workspaceId: 'workspace-3:left',
+          destinationWorkspaceId: 'workspace-4:right',
+          sourcePath: '/source',
+          destinationPath: '/target',
+          direction: 'remote',
+          state: 'requiring-review',
+          conflictPolicy: 'ask',
+          transferredBytes: 0n,
+          totalBytes: 10n,
+          speed: 0,
+          elapsed: 0,
+          remaining: null,
+          errorKey: null,
+          conflictPath: null,
+        },
+      ],
     });
-    await screen.findByText('This directory is empty.');
-    await act(async () => completeInitialListing?.({ correlationId, data: rootListing, ok: true }));
-    expect((screen.getByRole('combobox', { name: 'Drive' }) as HTMLSelectElement).value).toBe(
-      'D:\\',
-    );
-    expect(screen.queryByText('notes.txt')).toBeNull();
-  });
-
-  it('loads the local directory and renders the complete two-panel shell', async () => {
-    setDesktopApi(createDesktopApi(async () => ({ correlationId, data: rootListing, ok: true })));
     render(<App />);
-
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(3));
+    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
+    expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-5');
+  });
+  it('renders two local panels, per-panel icon actions and a folder-based tab title', async () => {
+    setDesktopApi(createDesktopApi(listingApi()));
+    render(<App />);
+    expect(await screen.findByRole('tab', { name: 'test - test' })).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Local' })).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Remote' })).toBeTruthy();
-    expect(await screen.findByText('notes.txt')).toBeTruthy();
-    expect(screen.getByText('No remote connection')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Transfer queue' })).toBeTruthy();
+    for (const side of ['left', 'right'] as const) {
+      expect(pane(side).getByRole('row', { name: 'notes.txt' })).toBeTruthy();
+      for (const name of ['New directory', 'Rename', 'Delete']) {
+        const button = pane(side).getByRole('button', { name });
+        expect(button.textContent).toBe('');
+        expect(button.title).toContain(name);
+      }
+    }
+    expect(screen.queryByRole('heading', { name: 'Local' })).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Remote' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Close /u })).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Transfer queue' })).toBeTruthy();
   });
 
-  it('uses the narrow preload contract', () => {
+  it('uses only the narrow frozen preload contract', () => {
+    setDesktopApi(createDesktopApi(listingApi()));
     expect(Object.keys(window.desktop).sort()).toEqual([
       'getRuntimeInfo',
       'listLocalDirectory',
@@ -237,188 +396,314 @@ describe('App', () => {
       'runtime',
       'workspace',
     ]);
-    expect(window.desktop.runtime).toBe('electron');
     expect(Object.isFrozen(window.desktop)).toBe(true);
   });
 
-  it('changes directory through the preload API', async () => {
-    const childListing: LocalDirectoryListing = {
-      breadcrumbs: [
-        { label: driveRootPath, path: driveRootPath },
-        { label: 'Users', path: usersPath },
-        { label: 'test', path: rootPath },
-        { label: 'Documents', path: childPath },
-      ],
-      currentPath: childPath,
-      entries: [],
-      parentPath: rootPath,
-    };
-    const listLocalDirectory = vi.fn(async (path: string | null) => ({
-      correlationId,
-      data: path === childPath ? childListing : rootListing,
-      ok: true as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
+  it('keeps drives and paths independent between both panels and tabs', async () => {
+    const list = listingApi();
+    setDesktopApi(createDesktopApi(list));
     render(<App />);
-
-    fireEvent.doubleClick(await screen.findByRole('row', { name: 'Open Documents' }));
-
-    await waitFor(() => expect(listLocalDirectory).toHaveBeenLastCalledWith(childPath));
-    expect(await screen.findByText('This directory is empty.')).toBeTruthy();
-    expect(screen.getByTestId('breadcrumbs').textContent).toContain('Documents');
-  });
-
-  it('allows navigation above the user directory toward the drive root', async () => {
-    const usersListing: LocalDirectoryListing = {
-      breadcrumbs: [
-        { label: driveRootPath, path: driveRootPath },
-        { label: 'Users', path: usersPath },
-      ],
-      currentPath: usersPath,
-      entries: [],
-      parentPath: driveRootPath,
-    };
-    const listLocalDirectory = vi.fn(async (path: string | null) => ({
-      correlationId,
-      data: path === usersPath ? usersListing : rootListing,
-      ok: true as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
-    render(<App />);
-    await screen.findByText('notes.txt');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Go to parent directory' }));
-
-    await waitFor(() => expect(listLocalDirectory).toHaveBeenLastCalledWith(usersPath));
-    expect(screen.getByTestId('breadcrumbs').textContent).toContain(driveRootPath);
-  });
-
-  it('switches every visible shell label to Russian without reloading', async () => {
-    setDesktopApi(createDesktopApi(async () => ({ correlationId, data: rootListing, ok: true })));
-    render(<App />);
-    await screen.findByText('notes.txt');
-
-    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'ru' } });
-
-    expect(await screen.findByRole('heading', { level: 2, name: 'Локальная' })).toBeTruthy();
-    expect(screen.getByRole('tab', { name: 'Вкладка 1' })).toBeTruthy();
-    expect(screen.getByRole('combobox', { name: 'Диск' })).toBeTruthy();
-    expect(screen.getByText('Нет удалённого подключения')).toBeTruthy();
-    expect(screen.getByRole('heading', { level: 2, name: 'Очередь передач' })).toBeTruthy();
-  });
-
-  it('renders a localized error state and retries the same path', async () => {
-    const listLocalDirectory = vi.fn(async () => ({
-      correlationId,
-      error: {
-        code: 'PROVIDER_ACCESS_DENIED' as const,
-        messageKey: 'errors.provider.accessDenied' as const,
-      },
-      ok: false as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
-    render(<App />);
-
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    await chooseDrive('left', 'D:\\');
+    expect(await screen.findByRole('tab', { name: 'D: - test' })).toBeTruthy();
+    expect(pane('left').getByText('This directory is empty.')).toBeTruthy();
+    expect(pane('right').getByRole('row', { name: 'notes.txt' })).toBeTruthy();
     expect(
-      await screen.findByText('Permission to perform this operation was denied.'),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(listLocalDirectory).toHaveBeenCalledTimes(2));
+      (pane('left').getByRole('button', { name: 'Go to parent directory' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(5));
+    await chooseDrive('left', 'C:\\');
+    expect(await screen.findByRole('tab', { name: 'test - test' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'D: - test' }));
+    expect((pane('left').getByLabelText('Current path') as HTMLInputElement).value).toBe('D:\\');
   });
 
-  it('keeps the previous directory available after a child access error', async () => {
-    const listLocalDirectory = vi.fn(async (path: string | null) =>
-      path === childPath
+  it('leaves the source picker usable after initial and subsequent access errors', async () => {
+    const list = vi.fn(async (path: string | null) =>
+      path === null || path === 'D:\\'
         ? {
             correlationId,
+            ok: false as const,
             error: {
               code: 'PROVIDER_ACCESS_DENIED' as const,
               messageKey: 'errors.provider.accessDenied' as const,
             },
-            ok: false as const,
           }
-        : { correlationId, data: rootListing, ok: true as const },
+        : { correlationId, ok: true as const, data: rootListing },
     );
-    setDesktopApi(createDesktopApi(listLocalDirectory));
+    setDesktopApi(createDesktopApi(list));
     render(<App />);
+    await pane('left').findByRole('alert');
+    await chooseDrive('left', 'C:\\');
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    await chooseDrive('left', 'D:\\');
+    expect(await pane('left').findByRole('alert')).toBeTruthy();
+    expect((pane('left').getByLabelText('Current path') as HTMLInputElement).value).toBe(rootPath);
+    fireEvent.click(pane('left').getByRole('button', { name: 'Back' }));
+    expect(pane('left').queryByRole('alert')).toBeNull();
+    expect(pane('left').getByRole('row', { name: 'notes.txt' })).toBeTruthy();
+  });
 
-    fireEvent.doubleClick(await screen.findByRole('row', { name: 'Open Documents' }));
+  it('refreshes removable drives when opening the source list', async () => {
+    let drives = [{ label: 'C:\\', path: 'C:\\' }];
+    setDesktopApi({
+      ...createDesktopApi(listingApi()),
+      listLocalDrives: async () => ({ correlationId, ok: true, data: drives }),
+    });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    drives = [...drives, { label: 'E:\\', path: 'E:\\' }];
+    fireEvent.click(pane('left').getByRole('button', { name: 'Drive or connection' }));
+    expect(await screen.findByRole('option', { name: /E:/u })).toBeTruthy();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Escape' });
+    drives = [{ label: 'C:\\', path: 'C:\\' }];
+    fireEvent.click(pane('left').getByRole('button', { name: 'Drive or connection' }));
+    await waitFor(() => expect(screen.queryByRole('option', { name: /E:/u })).toBeNull());
+  });
+
+  it('ignores stale listings after switching a drive', async () => {
+    let complete:
+      ((value: Awaited<ReturnType<DesktopApi['listLocalDirectory']>>) => void) | undefined;
+    const pending = new Promise<Awaited<ReturnType<DesktopApi['listLocalDirectory']>>>(
+      (resolve) => {
+        complete = resolve;
+      },
+    );
+    setDesktopApi(
+      createDesktopApi(async (path) =>
+        path === null ? pending : { correlationId, ok: true, data: secondDrive },
+      ),
+    );
+    render(<App />);
+    await chooseDrive('left', 'D:\\');
+    await pane('left').findByText('This directory is empty.');
+    await act(async () => complete?.({ correlationId, ok: true, data: rootListing }));
+    expect(pane('left').queryByRole('row', { name: 'notes.txt' })).toBeNull();
+    expect(pane('right').getByRole('row', { name: 'notes.txt' })).toBeTruthy();
+  });
+
+  it('navigates into a folder, edits its path, and goes to the parent', async () => {
+    const list = listingApi();
+    setDesktopApi(createDesktopApi(list));
+    render(<App />);
+    fireEvent.doubleClick(await pane('left').findByRole('row', { name: 'Open Documents' }));
+    await screen.findByRole('tab', { name: 'Documents - test' });
+    fireEvent.click(pane('left').getByRole('button', { name: 'Go to parent directory' }));
+    await screen.findByRole('tab', { name: 'test - test' });
+    const input = pane('left').getByLabelText('Current path');
+    fireEvent.change(input, { target: { value: usersPath } });
+    fireEvent.submit(input.closest('form') as HTMLFormElement);
+    await waitFor(() => expect(list).toHaveBeenLastCalledWith(usersPath));
+  });
+
+  it('retries the failed requested path, preserving the previous directory', async () => {
+    const list = vi.fn(async (path: string | null) =>
+      path === childPath
+        ? {
+            correlationId,
+            ok: false as const,
+            error: {
+              code: 'PROVIDER_ACCESS_DENIED' as const,
+              messageKey: 'errors.provider.accessDenied' as const,
+            },
+          }
+        : { correlationId, ok: true as const, data: rootListing },
+    );
+    setDesktopApi(createDesktopApi(list));
+    render(<App />);
+    fireEvent.doubleClick(await pane('left').findByRole('row', { name: 'Open Documents' }));
+    await pane('left').findByRole('alert');
+    fireEvent.click(pane('left').getByRole('button', { name: 'Try again' }));
+    await waitFor(() => expect(list).toHaveBeenCalledTimes(4));
+    expect(list).toHaveBeenLastCalledWith(childPath);
+    expect(pane('left').getByRole('row', { name: 'notes.txt' })).toBeTruthy();
+  });
+
+  it('switches the active pane using F6 and keeps selection independent', async () => {
+    setDesktopApi(createDesktopApi(listingApi()));
+    render(<App />);
+    const row = await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'F6' });
+    const right = screen.getByTestId('right-panel');
+    expect(right.contains(document.activeElement)).toBe(true);
+    expect(right.dataset.active).toBe('true');
+    expect(row.getAttribute('aria-selected')).toBe('true');
     expect(
-      await screen.findByText('Permission to perform this operation was denied.'),
-    ).toBeTruthy();
-    expect(screen.getByTestId('breadcrumbs').textContent).toContain('test');
-
-    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
-
-    expect(await screen.findByText('notes.txt')).toBeTruthy();
-    expect(listLocalDirectory).toHaveBeenCalledTimes(2);
+      pane('right').getByRole('row', { name: 'notes.txt' }).getAttribute('aria-selected'),
+    ).toBe('false');
   });
 
-  it('moves the active panel focus with F6', async () => {
-    setDesktopApi(createDesktopApi(async () => ({ correlationId, data: rootListing, ok: true })));
+  it('adds and closes workspaces with shortcuts without closing the last local tab', async () => {
+    const workspace = statefulApi();
     render(<App />);
-    await screen.findByText('notes.txt');
-    const localPanel = screen.getByTestId('local-panel');
-    const remotePanel = screen.getByTestId('remote-panel');
-
-    localPanel.focus();
-    fireEvent.keyDown(localPanel, { key: 'F6' });
-
-    expect(remotePanel.contains(document.activeElement)).toBe(true);
-    expect(remotePanel.dataset.active).toBe('true');
-  });
-
-  it('creates and closes independent workspaces with keyboard shortcuts', async () => {
-    const listLocalDirectory = vi.fn(async () => ({
-      correlationId,
-      data: rootListing,
-      ok: true as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
-    render(<App />);
-    await screen.findByText('notes.txt');
-
+    await screen.findByRole('tab', { name: 'test - test' });
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 't' });
-
-    expect(
-      (await screen.findByRole('tab', { name: 'Workspace 2' })).getAttribute('aria-selected'),
-    ).toBe('true');
-    await waitFor(() => expect(listLocalDirectory).toHaveBeenCalledTimes(2));
-
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'w' });
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1));
+    expect(workspace).toHaveBeenCalledWith({
+      action: 'disconnect',
+      workspaceId: 'workspace-2:left',
+    });
+    fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'w' });
+    expect(screen.queryByRole('button', { name: /^Close /u })).toBeNull();
+  });
 
-    await waitFor(() => expect(screen.queryByRole('tab', { name: 'Workspace 2' })).toBeNull());
-    expect(screen.getByRole('tab', { name: 'Workspace 1' }).getAttribute('aria-selected')).toBe(
-      'true',
+  it('queues local copies toward the other panel only after confirmation', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    fireEvent.doubleClick(await pane('right').findByRole('row', { name: 'Open Documents' }));
+    await screen.findByRole('tab', { name: 'test - Documents' });
+    fireEvent.click(pane('left').getByRole('row', { name: 'notes.txt' }));
+    fireEvent.keyDown(pane('left').getByRole('row', { name: 'notes.txt' }), { key: 'F5' });
+    expect(workspace.mock.calls.some(([request]) => request.action === 'local-transfer')).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'local-transfer',
+        workspaceId: 'workspace-1:left',
+        sourcePath: rootPath + '\\notes.txt',
+        destinationDirectory: childPath,
+        conflictPolicy: 'ask',
+      }),
     );
   });
 
-  it('preserves each workspace directory while switching tabs', async () => {
-    const childListing: LocalDirectoryListing = {
-      breadcrumbs: [...rootListing.breadcrumbs, { label: 'Documents', path: childPath }],
-      currentPath: childPath,
-      entries: [],
-      parentPath: rootPath,
-    };
-    const listLocalDirectory = vi.fn(async (path: string | null) => ({
-      correlationId,
-      data: path === childPath ? childListing : rootListing,
-      ok: true as const,
-    }));
-    setDesktopApi(createDesktopApi(listLocalDirectory));
+  it('searches grouped profiles by name and shows protocol and drive icons', async () => {
+    statefulApi();
     render(<App />);
-    const firstWorkspace = screen.getByRole('tabpanel');
-    fireEvent.doubleClick(
-      await within(firstWorkspace).findByRole('row', { name: 'Open Documents' }),
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(pane('left').getByRole('button', { name: 'Drive or connection' }));
+    const drive = await screen.findByRole('option', { name: /C:/u });
+    expect(drive.querySelector('[data-icon="HardDrive"]')).toBeTruthy();
+    expect(
+      screen.getByRole('option', { name: /Archives/u }).querySelector('[data-icon="Database"]'),
+    ).toBeTruthy();
+    expect(
+      screen
+        .getByRole('option', { name: /Development/u })
+        .querySelector('[data-icon="ShieldCheck"]'),
+    ).toBeTruthy();
+    expect(screen.getByRole('group', { name: 'Storage' })).toBeTruthy();
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'arch' } });
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'dev.example.test' } });
+    expect(screen.queryAllByRole('option')).toHaveLength(0);
+  });
+
+  it('locks a connected pane and closes the last remote tab into a new local workspace', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('right').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(pane('right').getByRole('button', { name: 'Drive or connection' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Development/u }));
+    await screen.findByRole('tab', { name: 'test - Development' });
+    expect(
+      (pane('right').getByRole('button', { name: 'Drive or connection' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    expect(
+      (pane('left').getByRole('button', { name: 'Drive or connection' }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
+    await screen.findByRole('tab', { name: 'test - test' });
+    expect(workspace).toHaveBeenCalledWith({
+      action: 'disconnect',
+      workspaceId: 'workspace-1:right',
+    });
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2');
+  });
+
+  it('opens profiles in the active pane and prevents replacing its connection', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await screen.findByRole('tab', { name: 'test - test' });
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Development' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'connect',
+        workspaceId: 'workspace-1:left',
+        profileId: 'sftp-one',
+      }),
     );
-    expect(await within(firstWorkspace).findByText('This directory is empty.')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    fireEvent.doubleClick(screen.getByRole('button', { name: 'Archives' }));
+    expect(
+      await screen.findByText(
+        'This panel already has a connection. Use a local panel or a new tab.',
+      ),
+    ).toBeTruthy();
+    expect(workspace.mock.calls.filter(([request]) => request.action === 'connect')).toHaveLength(
+      1,
+    );
+  });
 
-    fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
-    await waitFor(() => expect(listLocalDirectory).toHaveBeenCalledTimes(3));
-    fireEvent.click(screen.getByRole('tab', { name: 'Workspace 1' }));
+  it('shows only SFTP/S3 editors and no redundant footer Close button', async () => {
+    statefulApi();
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    expect(screen.getAllByRole('dialog')).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(1);
+    const type = screen.getByLabelText('Connection type');
+    expect(
+      within(type)
+        .getAllByRole('option')
+        .map((item) => item.textContent),
+    ).toEqual(['SFTP', 'S3']);
+    fireEvent.change(type, { target: { value: 's3' } });
+    expect(screen.getByText('S3-compatible storage')).toBeTruthy();
+    expect(screen.getByLabelText('Secret access key')).toBeTruthy();
+    expect(screen.queryByLabelText('Port')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByText('Saved profiles')).toBeTruthy();
+  });
 
-    const restoredWorkspace = screen.getByRole('tabpanel');
-    expect(within(restoredWorkspace).getByText('This directory is empty.')).toBeTruthy();
-    expect(listLocalDirectory).toHaveBeenCalledTimes(3);
+  it('groups creation actions, creates empty folders, and duplicates profiles into the editor', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    const create = screen.getByRole('group', { name: 'Create connection or folder' });
+    expect(within(create).getByRole('button', { name: 'Connection' })).toBeTruthy();
+    fireEvent.click(within(create).getByRole('button', { name: 'Folder' }));
+    fireEvent.change(screen.getByLabelText('Folder name'), { target: { value: 'Empty folder' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'create-profile-folder',
+        name: 'Empty folder',
+      }),
+    );
+    expect(await screen.findByText('Empty folder')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Duplicate profile: Development' }));
+    expect(await screen.findByDisplayValue('Development — Copy')).toBeTruthy();
+  });
+
+  it('persists theme, density and language through Settings, not the main toolbar', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    expect(screen.queryByRole('button', { name: 'Dark' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+    fireEvent.change(screen.getByLabelText('List density'), { target: { value: 'compact' } });
+    await waitFor(() =>
+      expect(screen.getByRole('main', { hidden: true }).dataset.density).toBe('compact'),
+    );
+    fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'ru' } });
+    expect(await screen.findByRole('dialog', { name: 'Настройки' })).toBeTruthy();
+    expect(workspace).toHaveBeenCalledWith({ action: 'set-language', language: 'ru' });
+    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+    expect(screen.getByRole('button', { name: 'Подключения' })).toBeTruthy();
   });
 });

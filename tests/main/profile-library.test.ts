@@ -22,6 +22,45 @@ const setup = () => {
   return { database, store, credentials };
 };
 describe('profile library and safe diagnostics', () => {
+  it('persists appearance and empty connection folders and merges archives without secrets', async () => {
+    const { database, store, credentials } = setup();
+    const service = new WorkspaceService(
+      store,
+      credentials,
+      async () => [],
+      async () => null,
+    );
+    expect((await service.execute({ action: 'snapshot' })).snapshot.appearance).toEqual({
+      theme: 'light',
+      density: 'comfortable',
+      showHidden: true,
+    });
+    await service.execute({
+      action: 'set-appearance',
+      appearance: { theme: 'system', density: 'compact', showHidden: false },
+    });
+    await service.execute({ action: 'create-profile-folder', name: 'Servers' });
+    await service.execute({ action: 'create-profile-folder', name: 'servers' });
+    await service.execute({ action: 'create-profile-folder', name: 'Empty' });
+    const archive = exportProfiles(store);
+    const imported = setup();
+    imported.store.addFolder('Existing');
+    expect(importProfiles(imported.store, archive)).toBe(0);
+    expect(imported.store.folders()).toEqual(['Empty', 'Existing', 'Servers']);
+    expect(store.folders()).toEqual(['Empty', 'Servers']);
+    expect((await service.execute({ action: 'snapshot' })).snapshot.appearance).toEqual({
+      theme: 'system',
+      density: 'compact',
+      showHidden: false,
+    });
+    store.setSetting('appearance', '{invalid');
+    expect((await service.execute({ action: 'snapshot' })).snapshot.appearance?.theme).toBe(
+      'light',
+    );
+    service.dispose();
+    database.close();
+    imported.database.close();
+  });
   it('exports no secrets, imports under new IDs without credentials, and rejects credential injection atomically', async () => {
     const { database, store, credentials } = setup();
     const id = randomUUID();

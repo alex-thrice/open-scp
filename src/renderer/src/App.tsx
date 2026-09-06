@@ -1,298 +1,389 @@
-import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
-import { useEffect, useRef, useState } from 'react';
+import type { KeyboardEvent } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceTab } from '@shared/models/workspace-tab';
+import { defaultAppearance } from '@shared/ipc/workspace';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
-import type { SupportedLanguage } from './i18n/resources';
-
 import { ProfileLibrary } from './components/ProfileLibrary';
+import { SettingsDialog } from './components/SettingsDialog';
 import { Dialog } from './components/Dialog';
+import { Icon } from './components/Icon';
 import { useWorkspaceService } from './components/useWorkspaceService';
 import { TransferQueue } from './components/TransferQueue';
-const supportedLanguages = new Set<SupportedLanguage>(['en', 'ru']);
+import {
+  hasWorkspaceConnection,
+  sessionPaneId,
+  workspaceIds,
+  workspaceOf,
+  workspaceTitle,
+  type PaneLocation,
+  type PaneSide,
+} from './components/workspace-layout';
 
 const createWorkspace = (sequence: number): WorkspaceTab => ({
   id: `workspace-${sequence}`,
   remoteSession: null,
   sequence,
 });
-
-const getTabId = (workspaceId: string): string => `workspace-tab-${workspaceId}`;
-const getTabPanelId = (workspaceId: string): string => `workspace-panel-${workspaceId}`;
+const getTabId = (id: string) => `workspace-tab-${id}`;
+const getTabPanelId = (id: string) => `workspace-panel-${id}`;
 
 export const App = () => {
   const { i18n, t } = useTranslation();
-  const nextWorkspaceSequence = useRef(1);
-  const [workspaces, setWorkspaces] = useState<readonly WorkspaceTab[]>(() => [createWorkspace(1)]);
+  const sequence = useRef(1);
+  const [workspaces, setWorkspaces] = useState<readonly WorkspaceTab[]>([createWorkspace(1)]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState('workspace-1');
-  const closingWorkspace = useRef(false);
-  const [closeError, setCloseError] = useState<string | null>(null);
+  const [locations, setLocations] = useState<
+    Record<string, Partial<Record<PaneSide, PaneLocation>>>
+  >({});
+  const [activeSides, setActiveSides] = useState<Record<string, PaneSide>>({});
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [closing, setClosing] = useState(false);
+  const closingRef = useRef(false);
+  const connecting = useRef(new Set<string>());
+  const [connectingIds, setConnectingIds] = useState<ReadonlySet<string>>(new Set());
   const service = useWorkspaceService(true);
+  const appearance = service.snapshot.appearance ?? defaultAppearance;
   useEffect(() => {
     document.documentElement.lang = i18n.resolvedLanguage ?? i18n.language;
   }, [i18n.language, i18n.resolvedLanguage]);
   useEffect(() => {
+    const media = window.matchMedia?.('(prefers-color-scheme: dark)');
+    const apply = () => {
+      document.documentElement.dataset.theme =
+        appearance.theme === 'system' ? (media?.matches ? 'dark' : 'light') : appearance.theme;
+    };
+    apply();
+    media?.addEventListener('change', apply);
+    return () => media?.removeEventListener('change', apply);
+  }, [appearance.theme]);
+  useEffect(() => {
+    let live = true;
     void window.desktop.workspace({ action: 'snapshot' }).then((result) => {
-      if (result.ok) {
-        const sequences = [
-          ...new Set(
-            result.data.snapshot.transfers
-              .flatMap((item) => [item.workspaceId, item.destinationWorkspaceId])
-              .filter((id): id is string => !!id && /^workspace-\d+$/u.test(id))
-              .map((id) => Number(id.slice(10))),
-          ),
-        ].filter((number) => number > 0 && number < 10000);
-        if (sequences.length) {
-          const maximum = Math.max(...sequences, 1);
-          nextWorkspaceSequence.current = maximum;
-          setWorkspaces(
-            [...new Set([1, ...sequences])]
-              .sort((left, right) => left - right)
-              .map(createWorkspace),
-          );
-        }
-      }
-      if (result.ok && result.data.snapshot.language)
-        void i18n.changeLanguage(result.data.snapshot.language);
+      if (!live || !result.ok) return;
+      const ids = [
+        ...result.data.snapshot.transfers.flatMap((item) => [
+          item.workspaceId,
+          item.destinationWorkspaceId,
+        ]),
+        ...result.data.snapshot.sessions.map((item) => item.workspaceId),
+      ];
+      const sequences = [
+        ...new Set(
+          ids
+            .filter((id): id is string => !!id)
+            .map(workspaceOf)
+            .filter((id) => /^workspace-\d+$/u.test(id))
+            .map((id) => Number(id.slice(10))),
+        ),
+      ].filter((value) => value > 0 && value < 10000);
+      sequence.current = Math.max(sequence.current, ...sequences);
+      setWorkspaces((current) => [
+        ...current,
+        ...sequences
+          .filter((value) => !current.some((item) => item.sequence === value))
+          .map(createWorkspace),
+      ]);
+      if (result.data.snapshot.language) void i18n.changeLanguage(result.data.snapshot.language);
     });
+    return () => {
+      live = false;
+    };
   }, [i18n]);
-
-  const getWorkspaceName = (workspace: WorkspaceTab): string =>
-    (() => {
-      const session = service.snapshot.sessions.find((item) => item.workspaceId === workspace.id);
-      return session
-        ? `${session.kind?.toUpperCase()} · ${session.name}`
-        : (workspace.remoteSession?.displayName ??
-            t('tabs.workspace', { number: workspace.sequence }));
-    })();
-
-  const focusTab = (workspaceId: string): void => {
-    requestAnimationFrame(() => {
-      document.getElementById(getTabId(workspaceId))?.focus();
-    });
+  const reportLocations = useCallback(
+    (id: string, value: Partial<Record<PaneSide, PaneLocation>>) => {
+      setLocations((current) => ({ ...current, [id]: value }));
+    },
+    [],
+  );
+  const activateSide = useCallback((id: string, side: PaneSide) => {
+    setActiveSides((current) => (current[id] === side ? current : { ...current, [id]: side }));
+  }, []);
+  const focusTab = (id: string) =>
+    requestAnimationFrame(() => document.getElementById(getTabId(id))?.focus());
+  const addWorkspace = () => {
+    const workspace = createWorkspace(++sequence.current);
+    const previous = locations[activeWorkspaceId];
+    const initialPaths = {
+      left: previous?.left?.kind === 'local' ? previous.left.path || null : null,
+      right: previous?.right?.kind === 'local' ? previous.right.path || null : null,
+    };
+    setWorkspaces((current) => [...current, { ...workspace, initialPaths }]);
+    setActiveWorkspaceId(workspace.id);
+    focusTab(workspace.id);
   };
-
-  const selectWorkspace = (workspaceId: string, shouldFocus = false): void => {
-    setActiveWorkspaceId(workspaceId);
-
-    if (shouldFocus) {
-      focusTab(workspaceId);
-    }
-  };
-
-  const addWorkspace = (): void => {
-    const sequence = nextWorkspaceSequence.current + 1;
-    nextWorkspaceSequence.current = sequence;
-    const workspace = createWorkspace(sequence);
-    setWorkspaces((current) => [...current, workspace]);
-    selectWorkspace(workspace.id, true);
-  };
-
-  const closeWorkspace = (workspaceId: string, cancelActive = false): void => {
-    if (workspaces.length === 1 || closingWorkspace.current) {
+  const connect = (workspaceId: string, side: PaneSide, profileId: string) => {
+    const id = sessionPaneId(service.snapshot, workspaceId, side);
+    if (
+      closingRef.current ||
+      service.snapshot.sessions.some((item) => item.workspaceId === id) ||
+      connecting.current.has(id)
+    ) {
+      setLocalError('ui.lockedError');
       return;
     }
-    closingWorkspace.current = true;
-    void (async () => {
+    connecting.current.add(id);
+    setConnectingIds(new Set(connecting.current));
+    setLocalError(null);
+    setLibraryOpen(false);
+    void service.run({ action: 'connect', workspaceId: id, profileId }).finally(() => {
+      connecting.current.delete(id);
+      setConnectingIds(new Set(connecting.current));
+    });
+  };
+  const closeWorkspace = async (id: string, cancelActive = false) => {
+    const ids = workspaceIds(id);
+    if (
+      closingRef.current ||
+      ids.some((value) => connecting.current.has(value)) ||
+      (workspaces.length === 1 && !hasWorkspaceConnection(service.snapshot, id))
+    )
+      return;
+    closingRef.current = true;
+    setClosing(true);
+    setLocalError(null);
+    try {
       const state = await window.desktop.workspace({ action: 'snapshot' });
+      if (!state.ok) {
+        setLocalError(state.error.messageKey);
+        return;
+      }
       if (
         !cancelActive &&
-        state.ok &&
         state.data.snapshot.transfers.some(
           (item) =>
-            (item.workspaceId === workspaceId || item.destinationWorkspaceId === workspaceId) &&
+            (ids.includes(item.workspaceId) ||
+              (!!item.destinationWorkspaceId && ids.includes(item.destinationWorkspaceId))) &&
             ['running', 'queued', 'requiring-review'].includes(item.state),
         )
       ) {
-        setPendingClose(workspaceId);
-        closingWorkspace.current = false;
+        setPendingClose(id);
         return;
       }
-      return window.desktop.workspace(
-        cancelActive
-          ? { action: 'close-session', workspaceId, cancelActive: true }
-          : { action: 'disconnect', workspaceId },
-      );
-    })().then((response) => {
-      closingWorkspace.current = false;
-      if (!response) return;
-      if (!response.ok) {
-        setCloseError(
-          response.error.code === 'PROVIDER_CONFLICT'
-            ? 'transfers.closeBusy'
-            : response.error.messageKey,
+      for (const workspaceId of ids) {
+        const result = await service.run(
+          cancelActive
+            ? { action: 'close-session', workspaceId, cancelActive: true }
+            : { action: 'disconnect', workspaceId },
         );
-        return;
+        if (!result) return;
       }
-      setCloseError(null);
       setPendingClose(null);
-      const workspaceIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
-      const remainingWorkspaces = workspaces.filter((workspace) => workspace.id !== workspaceId);
-      setWorkspaces((current) => current.filter((workspace) => workspace.id !== workspaceId));
-
-      if (activeWorkspaceId === workspaceId) {
-        const nextWorkspace =
-          remainingWorkspaces[Math.min(workspaceIndex, remainingWorkspaces.length - 1)];
-
-        if (nextWorkspace !== undefined) {
-          setActiveWorkspaceId((current) => (current === workspaceId ? nextWorkspace.id : current));
-          focusTab(nextWorkspace.id);
+      const index = workspaces.findIndex((item) => item.id === id);
+      let remaining = workspaces.filter((item) => item.id !== id);
+      if (!remaining.length) remaining = [createWorkspace(++sequence.current)];
+      setWorkspaces(remaining);
+      if (activeWorkspaceId === id) {
+        const next = remaining[Math.min(index, remaining.length - 1)];
+        if (next) {
+          setActiveWorkspaceId(next.id);
+          focusTab(next.id);
         }
       }
-    });
-  };
-
-  const selectAdjacentWorkspace = (workspaceId: string, offset: number): void => {
-    const workspaceIndex = workspaces.findIndex((workspace) => workspace.id === workspaceId);
-
-    if (workspaceIndex < 0) {
-      return;
-    }
-
-    const nextIndex = (workspaceIndex + offset + workspaces.length) % workspaces.length;
-    const nextWorkspace = workspaces[nextIndex];
-
-    if (nextWorkspace !== undefined) {
-      selectWorkspace(nextWorkspace.id, true);
+      setLocations((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+      );
+      setActiveSides((current) =>
+        Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
+      );
+    } finally {
+      closingRef.current = false;
+      setClosing(false);
     }
   };
-
-  const onTabKeyDown = (
-    event: ReactKeyboardEvent<HTMLButtonElement>,
-    workspaceId: string,
-  ): void => {
-    if (event.key === 'ArrowLeft') {
+  const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
+    const index = workspaces.findIndex((item) => item.id === id);
+    const next =
+      event.key === 'Home'
+        ? workspaces[0]
+        : event.key === 'End'
+          ? workspaces.at(-1)
+          : ['ArrowLeft', 'ArrowRight'].includes(event.key)
+            ? workspaces[
+                (index + (event.key === 'ArrowLeft' ? -1 : 1) + workspaces.length) %
+                  workspaces.length
+              ]
+            : undefined;
+    if (next) {
       event.preventDefault();
-      selectAdjacentWorkspace(workspaceId, -1);
-    } else if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      selectAdjacentWorkspace(workspaceId, 1);
+      setActiveWorkspaceId(next.id);
+      focusTab(next.id);
     }
   };
-
-  const onAppKeyDown = (event: ReactKeyboardEvent<HTMLElement>): void => {
-    if ((event.target as HTMLElement).closest('dialog, [role="dialog"]')) return;
-    if (!event.ctrlKey && !event.metaKey) {
+  const onAppKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (
+      (event.target as HTMLElement).closest('dialog, [role="dialog"]') ||
+      (!event.ctrlKey && !event.metaKey)
+    )
       return;
-    }
-
     if (event.key.toLowerCase() === 't') {
       event.preventDefault();
-      addWorkspace();
+      if (!closing) addWorkspace();
     } else if (event.key.toLowerCase() === 'w') {
       event.preventDefault();
-      closeWorkspace(activeWorkspaceId);
+      void closeWorkspace(activeWorkspaceId);
     }
   };
-
-  const changeLanguage = (language: string): void => {
-    if (supportedLanguages.has(language as SupportedLanguage)) {
-      void i18n.changeLanguage(language);
-      void window.desktop.workspace({
-        action: 'set-language',
-        language: language as SupportedLanguage,
-      });
-    }
-  };
-
+  const error = localError ?? service.errorKey;
   return (
-    <main className="app-shell" onKeyDown={onAppKeyDown}>
+    <main className="app-shell" onKeyDown={onAppKeyDown} data-density={appearance.density}>
       <header className="toolbar">
         <div className="brand">
-          <p>{t('app.tagline')}</p>
+          <span className="brand-icon">
+            <Icon name="FolderSync" />
+          </span>
           <h1>{t('app.name')}</h1>
         </div>
+        <div className="workspace-tabs-shell">
+          <div aria-label={t('tabs.label')} className="workspace-tabs" role="tablist">
+            {workspaces.map((workspace) => {
+              const active = workspace.id === activeWorkspaceId;
+              const name = workspaceTitle(
+                locations[workspace.id]?.left,
+                locations[workspace.id]?.right,
+                t('tabs.workspace', { number: workspace.sequence }),
+              );
+              const remote = hasWorkspaceConnection(service.snapshot, workspace.id);
+              return (
+                <div
+                  className="workspace-tab"
+                  data-active={active}
+                  key={workspace.id}
+                  role="presentation"
+                >
+                  <button
+                    aria-controls={getTabPanelId(workspace.id)}
+                    aria-selected={active}
+                    className="workspace-tab__select"
+                    id={getTabId(workspace.id)}
+                    title={name}
+                    onClick={() => setActiveWorkspaceId(workspace.id)}
+                    onKeyDown={(event) => onTabKeyDown(event, workspace.id)}
+                    role="tab"
+                    tabIndex={active ? 0 : -1}
+                  >
+                    <Icon name={remote ? 'ShieldCheck' : 'PanelsTopLeft'} />
+                    <span>{name}</span>
+                  </button>
+                  {workspaces.length > 1 || remote ? (
+                    <button
+                      aria-label={t('tabs.close', { name })}
+                      title={t(remote ? 'ui.closeConnection' : 'tabs.close', { name })}
+                      className="workspace-tab__close icon-button"
+                      disabled={
+                        closing || workspaceIds(workspace.id).some((id) => connectingIds.has(id))
+                      }
+                      onClick={() => void closeWorkspace(workspace.id)}
+                    >
+                      <Icon name="X" />
+                    </button>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+          <button
+            aria-label={t('tabs.add')}
+            className="workspace-tab__add icon-button"
+            disabled={closing}
+            onClick={addWorkspace}
+            title={t('tabs.addHint')}
+          >
+            <Icon name="Plus" />
+          </button>
+        </div>
         <div className="toolbar__actions">
-          <button onClick={() => setLibraryOpen(true)}>{t('library.title')}</button>
-          <label className="language-select">
-            <span>{t('language.label')}</span>
-            <select
-              aria-label={t('language.label')}
-              onChange={(event) => changeLanguage(event.currentTarget.value)}
-              value={i18n.resolvedLanguage ?? i18n.language}
-            >
-              <option value="en">{t('language.english')}</option>
-              <option value="ru">{t('language.russian')}</option>
-            </select>
-          </label>
-          <span className="runtime-badge">{t('app.desktop')}</span>
+          <button
+            onClick={() => {
+              setLocalError(null);
+              setLibraryOpen(true);
+            }}
+          >
+            <Icon name="Plug" />
+            {t('ui.connections')}
+          </button>
+          <button
+            className="icon-button settings-button"
+            aria-label={t('ui.settings')}
+            title={t('ui.settings')}
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Icon name="Settings" />
+          </button>
         </div>
       </header>
-
-      <div className="workspace-tabs-shell">
-        {closeError ? (
-          <span className="inline-error" role="alert">
-            {t(closeError)}
-          </span>
-        ) : null}
-        <div aria-label={t('tabs.label')} className="workspace-tabs" role="tablist">
-          {workspaces.map((workspace) => {
-            const isActive = workspace.id === activeWorkspaceId;
-            const workspaceName = getWorkspaceName(workspace);
-
-            return (
-              <div className="workspace-tab" key={workspace.id} role="presentation">
-                <button
-                  aria-controls={getTabPanelId(workspace.id)}
-                  aria-selected={isActive}
-                  className="workspace-tab__select"
-                  id={getTabId(workspace.id)}
-                  onClick={() => selectWorkspace(workspace.id)}
-                  onKeyDown={(event) => onTabKeyDown(event, workspace.id)}
-                  role="tab"
-                  tabIndex={isActive ? 0 : -1}
-                  type="button"
-                >
-                  <span aria-hidden="true" className="workspace-tab__status" />
-                  <span>{workspaceName}</span>
-                </button>
-                {workspaces.length > 1 ? (
-                  <button
-                    aria-label={t('tabs.close', { name: workspaceName })}
-                    className="workspace-tab__close"
-                    onClick={() => closeWorkspace(workspace.id)}
-                    type="button"
-                  >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                ) : null}
-              </div>
-            );
-          })}
+      {error && !libraryOpen && !settingsOpen && !pendingClose ? (
+        <div className="app-error inline-error" role="alert">
+          {t(error)}
         </div>
-        <button
-          aria-label={t('tabs.add')}
-          className="workspace-tab__add"
-          onClick={addWorkspace}
-          title={t('tabs.addHint')}
-          type="button"
-        >
-          <span aria-hidden="true">+</span>
-        </button>
-      </div>
-
+      ) : null}
       {workspaces.map((workspace) => (
         <WorkspaceView
-          isActive={workspace.id === activeWorkspaceId}
           key={workspace.id}
-          remoteSession={workspace.remoteSession}
+          workspaceId={workspace.id}
+          isActive={workspace.id === activeWorkspaceId}
           tabId={getTabId(workspace.id)}
           tabPanelId={getTabPanelId(workspace.id)}
-          workspaceId={workspace.id}
+          initialPaths={workspace.initialPaths}
+          snapshot={service.snapshot}
+          run={service.run}
+          errorKey={error}
+          appearance={appearance}
+          activeSide={activeSides[workspace.id] ?? 'left'}
+          connectingIds={connectingIds}
+          onActiveSide={activateSide}
+          onConnect={connect}
+          onLocations={reportLocations}
         />
       ))}
       <TransferQueue transfers={service.snapshot.transfers} run={service.run} />
-      {libraryOpen ? <ProfileLibrary onClose={() => setLibraryOpen(false)} /> : null}
+      {libraryOpen ? (
+        <ProfileLibrary
+          snapshot={service.snapshot}
+          run={service.run}
+          errorKey={error}
+          onClose={() => setLibraryOpen(false)}
+          onOpen={(profileId) =>
+            connect(activeWorkspaceId, activeSides[activeWorkspaceId] ?? 'left', profileId)
+          }
+        />
+      ) : null}
+      {settingsOpen ? (
+        <SettingsDialog
+          appearance={appearance}
+          run={service.run}
+          errorKey={error}
+          onClose={() => setSettingsOpen(false)}
+        />
+      ) : null}
       {pendingClose ? (
-        <Dialog title={t('library.closeTitle')} onClose={() => setPendingClose(null)}>
+        <Dialog
+          title={t('library.closeTitle')}
+          onClose={() => {
+            if (!closing) setPendingClose(null);
+          }}
+        >
           <p>{t('library.closeWarning')}</p>
-          {closeError ? <p role="alert">{t(closeError)}</p> : null}
-          <button onClick={() => closeWorkspace(pendingClose, true)}>
-            {t('library.cancelClose')}
-          </button>
-          <button onClick={() => setPendingClose(null)}>{t('library.keepOpen')}</button>
+          {error ? (
+            <p role="alert" className="inline-error">
+              {t(error)}
+            </p>
+          ) : null}
+          <div className="dialog-actions">
+            <button disabled={closing} onClick={() => setPendingClose(null)}>
+              {t('library.keepOpen')}
+            </button>
+            <button
+              className="destructive"
+              disabled={closing}
+              onClick={() => void closeWorkspace(pendingClose, true)}
+            >
+              {t('library.cancelClose')}
+            </button>
+          </div>
         </Dialog>
       ) : null}
     </main>

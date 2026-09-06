@@ -4,6 +4,7 @@ import { ProviderError, providerErrorCodes } from '@shared/providers/provider-er
 import { describe, expect, it, vi } from 'vitest';
 import {
   registerIpcHandlers,
+  createIpcHandlerDependencies,
   type IpcHandlerDependencies,
   type IpcHandlerRegistrar,
 } from '../../../src/main/ipc/register-ipc-handlers';
@@ -47,6 +48,25 @@ const createDependencies = (
 });
 
 describe('IPC handler registration', () => {
+  it('uses cached OS drive icons and falls back without breaking drive discovery', async () => {
+    const root = process.platform === 'win32' ? 'C:\\' : '/';
+    const getDriveIcon = vi
+      .fn<() => Promise<string | undefined>>()
+      .mockRejectedValueOnce(new Error('Shell icon unavailable'))
+      .mockResolvedValue('data:image/png;base64,YQ==');
+    const dependencies = createIpcHandlerDependencies({
+      allowMultipleDrives: false,
+      localInitialPath: root,
+      localRootPath: root,
+      getDriveIcon,
+    });
+    expect(await dependencies.listLocalDrives()).toEqual([{ label: root, path: root }]);
+    expect(await dependencies.listLocalDrives()).toEqual([
+      { label: root, path: root, icon: 'data:image/png;base64,YQ==' },
+    ]);
+    await dependencies.listLocalDrives();
+    expect(getDriveIcon).toHaveBeenCalledTimes(2);
+  });
   it('validates the drive channel payload and response', async () => {
     const registrar = new FakeIpcMain();
     const drives = [

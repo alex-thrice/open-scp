@@ -5,6 +5,7 @@ export default tseslint.config(
   {
     ignores: [
       '.codegraph/**',
+      'design-previews/**',
       'coverage/**',
       'node_modules/**',
       'out/**',

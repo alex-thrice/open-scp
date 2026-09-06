@@ -9,6 +9,17 @@ const path = z
   .max(32768)
   .refine((value) => !value.includes('\0'));
 const policy = z.enum(['ask', 'fail', 'overwrite', 'skip', 'rename']);
+export const appearanceSchema = z.strictObject({
+  theme: z.enum(['light', 'dark', 'system']),
+  density: z.enum(['comfortable', 'compact']),
+  showHidden: z.boolean(),
+});
+export type Appearance = z.infer<typeof appearanceSchema>;
+export const defaultAppearance: Appearance = {
+  theme: 'light',
+  density: 'comfortable',
+  showHidden: true,
+};
 export const profileDraftSchema = z.strictObject({
   id: z.string().uuid().nullable(),
   name: z.string().trim().min(1).max(200),
@@ -23,6 +34,17 @@ export const profileDraftSchema = z.strictObject({
 });
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('set-appearance'), appearance: appearanceSchema }),
+  z.strictObject({
+    action: z.literal('create-profile-folder'),
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(100)
+      .regex(/^[^/\\]+$/u)
+      .refine((name) => [...name].every((character) => character.charCodeAt(0) >= 32)),
+  }),
   z.strictObject({ action: z.literal('clear-transfer-history') }),
   z.strictObject({
     action: z.literal('local-transfer'),
@@ -131,6 +153,8 @@ export const remoteListingSchema = z.strictObject({
 });
 export type RemoteDirectoryListing = z.infer<typeof remoteListingSchema>;
 export const workspaceSnapshotSchema = z.strictObject({
+  appearance: appearanceSchema.optional(),
+  profileFolders: z.array(z.string().max(100)).max(1000).optional(),
   profileGroups: z.record(z.string(), z.string()).optional(),
   recentPaths: z.record(z.string(), z.array(path).max(20)).optional(),
   cleanups: z
@@ -191,6 +215,7 @@ export const workspaceSnapshotSchema = z.strictObject({
 });
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export const workspaceResultSchema = z.strictObject({
+  savedProfileId: id.optional(),
   document: z.string().max(2097152).optional(),
   importSummary: z
     .strictObject({

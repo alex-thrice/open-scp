@@ -1,3 +1,4 @@
+import { newConnection, finishProfile, openConnection, copySelection } from './workspace-ui';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -37,22 +38,20 @@ test('saves a secure SFTP profile, confirms identity and transfers in both direc
     await writeFile(join(localRoot, 'ui-upload.txt'), 'Disposable UI roundtrip content.');
     application = await launch();
     let window = await application.firstWindow();
-    await window.getByRole('button', { name: 'New', exact: true }).click();
-    const form = window.getByRole('dialog', { name: 'SFTP profile' });
+    const form = await newConnection(window, 'sftp');
     await form.getByLabel('Profile name').fill('Disposable test SFTP');
     await form.getByLabel('Host', { exact: true }).fill('127.0.0.1');
     await form.getByLabel('Port', { exact: true }).fill('22222');
     await form.getByLabel('Username', { exact: true }).fill('fixture');
     await form.getByLabel('Password', { exact: true }).fill('fixture-password-only');
     await form.getByLabel('Initial directory').fill(remoteRoot);
-    await form.getByRole('button', { name: 'Save profile' }).click();
-    await expect(form).toHaveCount(0);
-    await window.getByRole('button', { name: 'Connect / test' }).click();
+    await finishProfile(window, form);
+    await openConnection(window, 'right', 'Disposable test SFTP');
     await expect(window.getByText(/Unknown server key/u)).toBeVisible();
     await window.getByRole('button', { name: 'Trust this key and connect' }).click();
-    const remote = window.getByTestId('remote-panel');
-    const local = window.getByTestId('local-panel');
-    await expect(remote.getByTestId('breadcrumbs')).toBeVisible();
+    const remote = window.getByTestId('right-panel');
+    const local = window.getByTestId('left-panel');
+    await expect(remote.getByLabel('Current path')).toBeVisible();
     await remote.getByRole('button', { name: 'New directory', exact: true }).click();
     let operation = window.getByRole('dialog', { name: 'New directory' });
     await operation.getByLabel('Name', { exact: true }).fill('UI directory');
@@ -70,12 +69,12 @@ test('saves a secure SFTP profile, confirms identity and transfers in both direc
       .click();
     await expect(remote.getByRole('row', { name: 'Open UI renamed' })).toHaveCount(0);
     await local.getByRole('row', { name: 'ui-upload.txt', exact: true }).click();
-    await remote.getByRole('button', { name: 'Upload →' }).click();
+    await copySelection(window, local);
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(1);
     await remote.getByRole('button', { name: 'Refresh', exact: true }).click();
     await remote.getByRole('row', { name: 'ui-upload.txt', exact: true }).click();
     await local.getByRole('row', { name: 'Open downloads' }).dblclick();
-    await remote.getByRole('button', { name: '← Download' }).click();
+    await copySelection(window, remote);
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
     await expect(local.getByRole('row', { name: 'ui-upload.txt', exact: true })).toBeVisible();
     expect(await readFile(join(localRoot, 'downloads', 'ui-upload.txt'), 'utf8')).toBe(
@@ -91,11 +90,17 @@ test('saves a secure SFTP profile, confirms identity and transfers in both direc
     ).toBe(false);
     application = await launch();
     window = await application.firstWindow();
-    await expect(window.getByRole('combobox', { name: 'Connection profile' })).toContainText(
-      'Disposable test SFTP',
-    );
-    await window.getByRole('button', { name: 'Connect / test' }).click();
-    await expect(window.getByTestId('remote-panel').getByTestId('breadcrumbs')).toBeVisible();
+    await window.getByRole('button', { name: 'Connections', exact: true }).click();
+    await expect(
+      window.getByRole('button', { name: 'Disposable test SFTP', exact: true }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Close', exact: true })
+      .last()
+      .click();
+    await openConnection(window, 'right', 'Disposable test SFTP');
+    await expect(window.getByTestId('right-panel').getByLabel('Current path')).toBeVisible();
     await expect(window.getByRole('button', { name: 'Trust this key and connect' })).toHaveCount(0);
   } finally {
     await application?.close();

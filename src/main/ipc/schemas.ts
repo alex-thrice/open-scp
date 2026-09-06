@@ -42,6 +42,11 @@ export const localDrivesRequestSchema = runtimeInfoRequestSchema;
 
 export const localDrivesResponseSchema: z.ZodType<readonly LocalDrive[]> = z.array(
   z.strictObject({
+    icon: z
+      .string()
+      .max(131072)
+      .regex(/^data:image\/png;base64,[A-Za-z0-9+/=]+$/u)
+      .optional(),
     label: z.string().min(1).max(32_768),
     path: localPathSchema,
   }),

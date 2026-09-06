@@ -1,14 +1,17 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Icon } from './Icon';
 
 export const Dialog = ({
   title,
   onClose,
   children,
+  footer,
 }: {
   readonly title: string;
   readonly onClose: () => void;
   readonly children: ReactNode;
+  readonly footer?: ReactNode;
 }) => {
   const reference = useRef<HTMLDialogElement>(null);
   const { t } = useTranslation();
@@ -37,9 +40,23 @@ export const Dialog = ({
         onClose();
       }}
     >
-      <h2>{title}</h2>
-      {invalid ? <p role="alert">{t('library.validation')}</p> : null}
-      {children}
+      <header className="dialog-header">
+        <h2>{title}</h2>
+        <button
+          className="icon-button"
+          type="button"
+          aria-label={t('library.close')}
+          title={t('library.close')}
+          onClick={onClose}
+        >
+          <Icon name="X" />
+        </button>
+      </header>
+      <div className="dialog-body">
+        {invalid ? <p role="alert">{t('library.validation')}</p> : null}
+        {children}
+      </div>
+      {footer ? <div className="dialog-actions dialog-footer">{footer}</div> : null}
     </dialog>
   );
 };

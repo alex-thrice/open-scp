@@ -46,28 +46,28 @@ test('opens the desktop shell and changes the local directory', async () => {
   });
   const window = await electronApplication.firstWindow();
   expect(await electronApplication.evaluate(({ app }) => app.getName())).toBe('OpenSCP');
-  const localPanel = window.getByTestId('local-panel');
+  const localPanel = window.getByTestId('left-panel');
 
   await expect(window.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();
   await expect(localPanel.getByText('root-file.txt')).toBeVisible();
-  await expect(localPanel.getByRole('combobox', { name: 'Drive' })).toHaveValue(fixtureRootPath);
-  await expect(localPanel.getByRole('combobox', { name: 'Drive' }).getByRole('option')).toHaveCount(
-    1,
-  );
+  await localPanel.getByRole('button', { name: 'Drive or connection' }).click();
+  await expect(window.getByRole('option')).toHaveCount(1);
+  await window.keyboard.press('Escape');
   await localPanel.getByRole('row', { name: 'Open fixture-directory' }).dblclick();
 
   await expect(localPanel.getByText('child-file.txt')).toBeVisible();
-  await expect(localPanel.getByTestId('breadcrumbs')).toContainText('fixture-directory');
+  await expect(localPanel.getByLabel('Current path')).toHaveValue(childPath);
 
   await window.getByRole('button', { name: 'New workspace' }).click();
-  await expect(window.getByRole('tab', { name: 'Workspace 2' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(window.getByRole('tabpanel').getByText('root-file.txt')).toBeVisible();
-
-  await window.getByRole('tab', { name: 'Workspace 1' }).click();
-  await expect(window.getByRole('tabpanel').getByText('child-file.txt')).toBeVisible();
+  await expect(window.getByRole('tab')).toHaveCount(2);
+  await expect(window.getByRole('tab').nth(1)).toHaveAttribute('aria-selected', 'true');
+  await expect(
+    window.getByRole('tabpanel').getByTestId('right-panel').getByText('root-file.txt'),
+  ).toBeVisible();
+  await window.getByRole('tab').first().click();
+  await expect(
+    window.getByRole('tabpanel').getByTestId('left-panel').getByText('child-file.txt'),
+  ).toBeVisible();
   await window.screenshot({ path: test.info().outputPath('drive-selector.png') });
 });
 
@@ -94,14 +94,17 @@ test('discovers Windows drives and opens the drive root from the selector', asyn
     env: environment,
   });
   const window = await electronApplication.firstWindow();
-  const localPanel = window.getByTestId('local-panel');
-  const driveSelector = localPanel.getByRole('combobox', { name: 'Drive' });
+  const localPanel = window.getByTestId('left-panel');
+  const driveSelector = localPanel.getByRole('button', { name: 'Drive or connection' });
   const rootPath = parse(homedir()).root;
 
-  await expect(localPanel.getByTestId('breadcrumbs')).toBeVisible();
-  await expect(driveSelector).toHaveValue(rootPath);
-  await driveSelector.selectOption(rootPath);
+  await expect(localPanel.getByLabel('Current path')).toBeVisible();
+  await expect(driveSelector).toContainText(rootPath);
+  await driveSelector.click();
+  await window.getByRole('combobox', { name: 'Search by name…' }).fill(rootPath);
+  await window.getByRole('option').first().click();
   await expect(localPanel.getByRole('button', { name: 'Go to parent directory' })).toBeDisabled();
-  await expect(localPanel.getByTestId('breadcrumbs').getByRole('button')).toHaveCount(1);
+  await expect(localPanel.getByLabel('Current path')).toHaveValue(rootPath);
+  await expect(driveSelector.locator('img')).toHaveCount(1);
   await expect(localPanel.getByRole('alert')).toHaveCount(0);
 });

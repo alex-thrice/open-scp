@@ -4,6 +4,7 @@ import { s3ProfileDraftSchema } from './s3-profile';
 
 export const profileArchiveSchema = z.strictObject({
   version: z.literal(1),
+  folders: z.array(z.string().min(1).max(100)).max(1000).optional(),
   profiles: z
     .array(
       z.discriminatedUnion('kind', [

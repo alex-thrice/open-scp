@@ -1,3 +1,4 @@
+import { newConnection, finishProfile, openConnection } from './workspace-ui';
 import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -46,7 +47,7 @@ const roundTrip = async (page: Page, userData: string, kind: 'sftp' | 's3') => {
     kind === 'sftp'
       ? `${remoteDirectory}/${name}`
       : formatS3Path(createS3ProviderPath('fixture-bucket', `prefix/${name}`));
-  const workspaceId = 'workspace-1';
+  const workspaceId = 'workspace-1:right';
   let completed = await page.getByText(/^Completed ·/u).count();
   try {
     await request(page, {
@@ -129,11 +130,10 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       storage.backend,
     );
     let window = await application.firstWindow();
-    await expect(window.getByTestId('local-panel').getByTestId('breadcrumbs')).toBeVisible();
-    await expect(window.getByTestId('remote-panel')).toBeVisible();
+    await expect(window.getByTestId('left-panel').getByLabel('Current path')).toBeVisible();
+    await expect(window.getByTestId('right-panel')).toBeVisible();
     expect(await window.evaluate(() => 'require' in window || 'process' in window)).toBe(false);
-    await window.getByRole('button', { name: 'New', exact: true }).click();
-    const form = window.getByRole('dialog', { name: 'SFTP profile' });
+    const form = await newConnection(window, 'sftp');
     await form.getByLabel('Profile name').fill('Disposable packaged profile');
     await form.getByLabel('Host', { exact: true }).fill('127.0.0.1');
     await form.getByLabel('Username', { exact: true }).fill('fixture');
@@ -143,8 +143,7 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       await form.getByLabel('Port', { exact: true }).fill('22222');
       await form.getByLabel('Initial directory').fill('/home/fixture/data');
     }
-    await form.getByRole('button', { name: 'Save profile' }).click();
-    await expect(form).toHaveCount(0);
+    await finishProfile(window, form);
     await application.close();
     application = undefined;
     expect(
@@ -158,17 +157,22 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       ),
     ).toBe('packaged-keyring-restart-canary');
     window = await application.firstWindow();
-    await expect(window.getByRole('combobox', { name: 'Connection profile' })).toContainText(
-      'Disposable packaged profile',
-    );
+    await window.getByRole('button', { name: 'Connections', exact: true }).click();
+    await expect(
+      window.getByRole('button', { name: 'Disposable packaged profile', exact: true }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog')
+      .getByRole('button', { name: 'Close', exact: true })
+      .last()
+      .click();
     if (integration) {
-      await window.getByRole('button', { name: 'Connect / test' }).click();
+      await openConnection(window, 'right', 'Disposable packaged profile');
       await window.getByRole('button', { name: 'Trust this key and connect' }).click();
-      await expect(window.getByTestId('remote-panel').getByTestId('breadcrumbs')).toBeVisible();
+      await expect(window.getByTestId('right-panel').getByLabel('Current path')).toBeVisible();
       await roundTrip(window, userData, 'sftp');
-      await request(window, { action: 'disconnect', workspaceId: 'workspace-1' });
-      await window.getByRole('button', { name: 'New S3', exact: true }).click();
-      const s3Form = window.getByRole('dialog', { name: 'S3 profile', exact: true });
+      await request(window, { action: 'disconnect', workspaceId: 'workspace-1:right' });
+      const s3Form = await newConnection(window, 's3');
       await s3Form.getByLabel('Profile name').fill('Packaged MinIO');
       await s3Form.getByLabel('Endpoint (blank for AWS)').fill('http://127.0.0.1:29000');
       await s3Form.getByLabel('Bucket (blank to list buckets)').fill('fixture-bucket');
@@ -178,15 +182,11 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       await s3Form
         .getByLabel('Secret access key', { exact: true })
         .fill('fixture-secret-only-not-production');
-      await s3Form.getByRole('button', { name: 'Save profile' }).click();
-      await expect(s3Form).toHaveCount(0);
-      await window
-        .getByRole('combobox', { name: 'Connection profile' })
-        .selectOption({ label: 'S3 · Packaged MinIO' });
-      await window.getByRole('button', { name: 'Connect / test' }).click();
+      await finishProfile(window, s3Form);
+      await openConnection(window, 'right', 'Packaged MinIO');
       await expect(
         window
-          .getByTestId('remote-panel')
+          .getByTestId('right-panel')
           .getByRole('row', { name: 'Unicode ключ.txt', exact: true }),
       ).toBeVisible();
       const destinationDirectory = join(userData, 'downloads');
@@ -230,14 +230,13 @@ test('packaged application starts with secure IPC and encrypted profile persiste
       application = await launch();
       window = await application.firstWindow();
       // Both passwords must actually decrypt after restart, not just list profile metadata.
-      for (const label of ['S3 · Packaged MinIO', 'SFTP · Disposable packaged profile']) {
-        await window.getByRole('combobox', { name: 'Connection profile' }).selectOption({ label });
-        await window.getByRole('button', { name: 'Connect / test' }).click();
-        await expect(window.getByTestId('remote-panel').getByTestId('breadcrumbs')).toBeVisible();
+      for (const label of ['Packaged MinIO', 'Disposable packaged profile']) {
+        await openConnection(window, 'right', label);
+        await expect(window.getByTestId('right-panel').getByLabel('Current path')).toBeVisible();
         await expect(
           window.getByRole('button', { name: 'Trust this key and connect' }),
         ).toHaveCount(0);
-        await request(window, { action: 'disconnect', workspaceId: 'workspace-1' });
+        await request(window, { action: 'disconnect', workspaceId: 'workspace-1:right' });
       }
     }
   } finally {
@@ -269,8 +268,7 @@ test('packaged Linux refuses the real basic_text backend without writing a profi
       await application.evaluate(({ safeStorage }) => safeStorage.getSelectedStorageBackend()),
     ).toBe('basic_text');
     const page = await application.firstWindow();
-    await page.getByRole('button', { name: 'New', exact: true }).click();
-    const form = page.getByRole('dialog', { name: 'SFTP profile' });
+    const form = await newConnection(page, 'sftp');
     await form.getByLabel('Profile name').fill('Must not persist');
     await form.getByLabel('Host', { exact: true }).fill('127.0.0.1');
     await form.getByLabel('Username', { exact: true }).fill('fixture');

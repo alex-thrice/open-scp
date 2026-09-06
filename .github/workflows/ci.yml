@@ -37,10 +37,12 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-0 libnss3 libasound2 libgbm1 xvfb xauth
+          sudo apt-get install -y libgtk-3-0 libnss3 libasound2 libgbm1 libsecret-1-0 gnome-keyring dbus-x11 xvfb xauth
       - name: Electron UI tests on Linux
         if: runner.os == 'Linux'
-        run: xvfb-run -a pnpm exec playwright test
+        env:
+          OPENSCP_DISPOSABLE_KEYRING: '1'
+        run: dbus-run-session -- bash tests/packaging/linux-keyring-smoke.sh exec playwright test
       - name: Electron UI tests on Windows and macOS
         if: runner.os != 'Linux'
         run: pnpm exec playwright test

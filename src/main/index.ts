@@ -96,6 +96,10 @@ app.whenReady().then(async () => {
     decryptString: (value) => safeStorage.decryptString(value),
   });
   const dependencies = createIpcHandlerDependencies({
+    getDriveIcon: async (path) => {
+      const icon = await app.getFileIcon(path, { size: 'small' });
+      return icon.isEmpty() ? undefined : icon.toDataURL();
+    },
     allowMultipleDrives: app.isPackaged || configuredLocalRootPath === undefined,
     localInitialPath: localBrowsePaths.initialPath,
     localRootPath: localBrowsePaths.rootPath,

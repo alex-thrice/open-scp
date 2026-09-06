@@ -1,3 +1,4 @@
+import { openConnection, setLanguage, copySelection } from './workspace-ui';
 import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -29,7 +30,7 @@ test('keyboard selection, local file operations, profile library and live Russia
       },
     });
     const window = await application.firstWindow();
-    const local = window.getByTestId('local-panel');
+    const local = window.getByTestId('left-panel');
     await local.getByRole('row', { name: 'a.txt', exact: true }).focus();
     await window.keyboard.press('ControlOrMeta+a');
     await expect(local.locator('[aria-selected="true"]')).toHaveCount(2);
@@ -56,8 +57,8 @@ test('keyboard selection, local file operations, profile library and live Russia
     await window.getByRole('menuitem', { name: /Delete/u }).click();
     await window.getByRole('dialog').getByRole('button', { name: 'Confirm', exact: true }).click();
     await expect(local.getByRole('row', { name: 'renamed.txt', exact: true })).toHaveCount(0);
-    await window.getByRole('button', { name: 'Profiles and diagnostics' }).click();
-    dialog = window.getByRole('dialog', { name: 'Profiles and diagnostics' });
+    await window.getByRole('button', { name: 'Connections' }).click();
+    dialog = window.getByRole('dialog', { name: 'Connections' });
     await dialog.getByRole('button', { name: 'Import profiles', exact: true }).click();
     await dialog.getByLabel('File contents').fill(
       JSON.stringify({
@@ -85,19 +86,33 @@ test('keyboard selection, local file operations, profile library and live Russia
     await dialog.getByRole('button', { name: 'Import reviewed contents' }).click();
     await expect(dialog.getByText('Imported: 1 · Skipped: 0 · Conflicts: 0')).toBeVisible();
     await dialog.getByLabel('Search profiles').fill('fixture');
-    await dialog
-      .getByLabel('Connection profile')
-      .selectOption({ label: 'SFTP · Library fixture · Servers' });
+    await expect(
+      dialog.getByRole('button', { name: 'Library fixture', exact: true }),
+    ).toBeVisible();
+    const profileExport = join(root, 'profiles.json');
+    await application.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
+    }, profileExport);
     await dialog.getByRole('button', { name: 'Export profiles', exact: true }).click();
-    await expect(dialog.getByLabel('File contents')).not.toHaveValue(/safe-storage|ciphertext/u);
-    await dialog.getByText('Developer diagnostics', { exact: true }).click();
-    await dialog.getByRole('button', { name: 'Export diagnostic report' }).click();
-    await expect(dialog.getByLabel('File contents')).not.toHaveValue(
+    await expect
+      .poll(async () => readFile(profileExport, 'utf8').catch(() => ''))
+      .toContain('Library fixture');
+    expect(await readFile(profileExport, 'utf8')).not.toMatch(/safe-storage|ciphertext/u);
+    await dialog.getByRole('button', { name: 'Close', exact: true }).last().click();
+    await window.getByRole('button', { name: 'Settings', exact: true }).click();
+    await window.getByRole('button', { name: 'Advanced', exact: true }).click();
+    const diagnosticsExport = join(root, 'diagnostics.json');
+    await application.evaluate(({ dialog }, path) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath: path });
+    }, diagnosticsExport);
+    await window.getByRole('button', { name: 'Export diagnostic report' }).click();
+    await expect.poll(async () => readFile(diagnosticsExport, 'utf8').catch(() => '')).not.toBe('');
+    expect(await readFile(diagnosticsExport, 'utf8')).not.toMatch(
       /fixture.test|Library fixture|safe-storage/u,
     );
-    await dialog.getByRole('button', { name: 'Close', exact: true }).click();
-    await window.getByLabel('Language', { exact: true }).selectOption('ru');
-    await expect(window.getByRole('button', { name: 'Профили и диагностика' })).toBeVisible();
+    await window.getByRole('button', { name: 'Done', exact: true }).click();
+    await setLanguage(window, 'ru');
+    await expect(window.getByRole('button', { name: 'Подключения', exact: true })).toBeVisible();
     const menuLabels = await application.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items.map((item) => item.label),
     );
@@ -178,17 +193,24 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
         secret: 'fixture-password-only',
       });
     }, prefix);
-    let local = window.getByRole('tabpanel').getByTestId('local-panel');
-    let remote = window.getByRole('tabpanel').getByTestId('remote-panel');
-    await remote.getByLabel('Connection profile').selectOption({ label: 'S3 · Product S3' });
-    await remote.getByRole('button', { name: 'Connect / test', exact: true }).click();
+    let local = window.getByRole('tabpanel').getByTestId('left-panel');
+    let remote = window.getByRole('tabpanel').getByTestId('right-panel');
+    await openConnection(window, 'right', 'Product S3');
     await local.getByRole('row', { name: 'a.txt', exact: true }).focus();
     await window.keyboard.press('Shift+ArrowDown');
     await window.keyboard.press('F5');
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
     await local
       .getByRole('row', { name: 'drag.txt', exact: true })
       .dragTo(remote.locator('.commander-surface'));
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(3);
     await writeFile(join(root, 'external.txt'), 'external file fixture');
     await window.evaluate(`(() => {
@@ -207,30 +229,37 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
         const dataTransfer = new DataTransfer();
         dataTransfer.items.add(file);
         document
-          .querySelector('[data-testid="remote-panel"] .commander-surface')
+          .querySelector('[data-testid="right-panel"] .commander-surface')
           ?.dispatchEvent(new DragEvent('drop', { dataTransfer, bubbles: true, cancelable: true }));
       }
       input.remove();
       return path;
     })()`);
     expect(resolvedFilePath).toBe(join(root, 'external.txt'));
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(4);
     await window.getByRole('button', { name: 'New workspace' }).click();
-    await remote.getByLabel('Connection profile').selectOption({ label: 'SFTP · Product SFTP' });
-    await remote.getByRole('button', { name: 'Connect / test', exact: true }).click();
+    await openConnection(window, 'right', 'Product SFTP');
     await remote.getByRole('button', { name: /Trust/u }).click();
     await expect(remote.getByRole('row', { name: 'привет мир.txt', exact: true })).toBeVisible();
     await remote.getByRole('row', { name: 'привет мир.txt', exact: true }).click();
-    await remote.getByRole('button', { name: 'Copy to another session', exact: true }).click();
-    const dialog = window.getByRole('dialog', { name: 'Copy to another session' });
-    await dialog.getByRole('button', { name: 'Add to queue' }).click();
+    await openConnection(window, 'left', 'Product S3');
+    await expect(local.getByLabel('Current path')).toHaveValue(/fixture-bucket/u);
+    await copySelection(window, remote);
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(5);
     expect(
       (await fixture.stat(createS3ProviderPath('fixture-bucket', `${prefix}привет мир.txt`))).size,
     ).toBe(13n);
-    await window.getByRole('tab', { name: 'S3 · Product S3', exact: true }).click();
+    await window.getByRole('tab').first().click();
     await local.getByRole('row', { name: 'a.txt', exact: true }).click();
     await window.keyboard.press('F5');
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Already exists:/u)).toBeVisible();
     await application.close();
     application = await launch();
@@ -248,19 +277,26 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
     });
     expect(state?.sessions).toBe(0);
     expect(state?.states).toContain('requiring-review');
-    await window.getByRole('button', { name: 'Close Workspace 1', exact: true }).click();
+    await window
+      .locator('.workspace-tab')
+      .first()
+      .getByRole('button', { name: /^Close /u })
+      .click();
     await expect(window.getByRole('dialog', { name: 'Close active session?' })).toBeVisible();
     await window.getByRole('button', { name: 'Keep session open' }).click();
-    await expect(window.getByRole('tab', { name: 'Workspace 1', exact: true })).toBeVisible();
-    await window.getByRole('button', { name: 'Close Workspace 1', exact: true }).click();
+    await expect(window.locator('#workspace-tab-workspace-1')).toBeVisible();
+    await window
+      .locator('.workspace-tab')
+      .first()
+      .getByRole('button', { name: /^Close /u })
+      .click();
     await window.getByRole('button', { name: 'Cancel transfers and close' }).click();
-    await expect(window.getByRole('tab', { name: 'Workspace 1', exact: true })).toHaveCount(0);
+    await expect(window.locator('#workspace-tab-workspace-1')).toHaveCount(0);
     await expect(window.getByText(/^Cancelled ·/u)).toBeVisible();
-    local = window.getByRole('tabpanel').getByTestId('local-panel');
-    remote = window.getByRole('tabpanel').getByTestId('remote-panel');
-    await remote.getByLabel('Connection profile').selectOption({ label: 'S3 · Product S3' });
-    await remote.getByRole('button', { name: 'Connect / test', exact: true }).click();
-    await window.getByLabel('Language', { exact: true }).selectOption('ru');
+    local = window.getByRole('tabpanel').getByTestId('left-panel');
+    remote = window.getByRole('tabpanel').getByTestId('right-panel');
+    await openConnection(window, 'right', 'Product S3');
+    await setLanguage(window, 'ru');
     await window.screenshot({ path: test.info().outputPath('connected-ru.png') });
     expect(
       await window

@@ -13,7 +13,7 @@ export const createWebPreferences = (preloadDirectory: string): WebPreferences =
 });
 
 export const createWindowOptions = (preloadDirectory: string): BrowserWindowConstructorOptions => ({
-  backgroundColor: '#111827',
+  backgroundColor: '#f2f4f8',
   height: 720,
   minHeight: 560,
   minWidth: 880,

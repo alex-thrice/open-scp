@@ -26,6 +26,7 @@ export interface LocalDirectoryRequest {
 }
 
 export interface LocalDrive {
+  readonly icon?: string | undefined;
   readonly label: string;
   readonly path: string;
 }

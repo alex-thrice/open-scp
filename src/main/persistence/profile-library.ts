@@ -7,6 +7,7 @@ export const exportProfiles = (store: ProfileStore, profiles = store.list()): st
   JSON.stringify(
     {
       version: 1,
+      folders: store.folders(),
       profiles: profiles.map((profile) => ({
         kind: profile.kind,
         group: store.getSetting(`group:${profile.id}`) ?? '',
@@ -47,6 +48,7 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
   const archive = profileArchiveSchema.parse(JSON.parse(content));
   store.database.exec('BEGIN IMMEDIATE');
   try {
+    for (const folder of archive.folders ?? []) store.addFolder(folder);
     for (const entry of archive.profiles) {
       const id = randomUUID();
       let profile: ConnectionProfile;
@@ -85,7 +87,14 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
       }
       // Импорт создаёт новые профили без credential-записей; пароль запрашивается при настройке.
       store.database.prepare('INSERT INTO profiles VALUES (?, ?)').run(id, JSON.stringify(profile));
-      store.setSetting(`group:${id}`, entry.group);
+      store.addFolder(entry.group);
+      store.setSetting(
+        `group:${id}`,
+        store
+          .folders()
+          .find((name) => name.toLocaleLowerCase() === entry.group.toLocaleLowerCase()) ??
+          entry.group,
+      );
     }
     store.database.exec('COMMIT');
   } catch (error) {

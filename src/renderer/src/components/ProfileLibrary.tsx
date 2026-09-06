@@ -1,257 +1,360 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import type { WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { Dialog } from './Dialog';
-import { useWorkspaceService } from './useWorkspaceService';
-import { ConnectionForm } from './ConnectionForm';
-import { S3ConnectionForm } from './S3ConnectionForm';
+import { ConnectionEditor } from './ConnectionEditor';
+import { Icon } from './Icon';
+import { protocolIcon } from './workspace-layout';
+import type { WorkspaceRunner } from './useWorkspaceService';
 
-export const ProfileLibrary = ({ onClose }: { readonly onClose: () => void }) => {
+export const ProfileLibrary = ({
+  snapshot,
+  run,
+  errorKey,
+  onClose,
+  onOpen,
+}: {
+  readonly snapshot: WorkspaceSnapshot;
+  readonly run: WorkspaceRunner;
+  readonly errorKey: string | null;
+  readonly onClose: () => void;
+  readonly onOpen: (profileId: string) => void;
+}) => {
   const { t } = useTranslation();
-  const service = useWorkspaceService(true);
-  const { snapshot, run, errorKey } = service;
   const [search, setSearch] = useState('');
-  const [group, setGroup] = useState('*');
-  const [selected, setSelected] = useState('');
-  const [mode, setMode] = useState<
-    'import-profiles' | 'import-known-hosts' | 'export' | 'delete' | 'copy' | null
-  >(null);
+  const [editor, setEditor] = useState<string | null>(null);
+  const [mode, setMode] = useState<'folder' | 'import' | null>(null);
+  const [removing, setRemoving] = useState<string | null>(null);
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
-  const [exportKind, setExportKind] = useState<'profiles' | 'diagnostics'>('profiles');
-  const [edit, setEdit] = useState(false);
-  const profile = snapshot.profiles.find((item) => item.id === selected);
-  const groups = [...new Set(Object.values(snapshot.profileGroups ?? {}))].sort();
-  const filtered = snapshot.profiles.filter(
-    (item) =>
-      `${item.kind} ${item.name} ${item.kind === 'sftp' ? item.host : (item.endpoint ?? '')}`
-        .toLocaleLowerCase()
-        .includes(search.toLocaleLowerCase()) &&
-      (group === '*' || (snapshot.profileGroups?.[item.id] ?? '') === group),
-  );
-  const exported = async (kind: 'profiles' | 'diagnostics') => {
-    const result = await run({
-      action: kind === 'profiles' ? 'export-profiles' : 'export-diagnostics',
-    });
-    if (result?.document) {
-      setContent(result.document);
-      setMode('export');
-      setExportKind(kind);
-      setSummary(t('library.exportReady'));
+  const [busy, setBusy] = useState(false);
+  const [folderError, setFolderError] = useState(false);
+  const folders = [
+    ...new Set(
+      [...(snapshot.profileFolders ?? []), ...Object.values(snapshot.profileGroups ?? {})].filter(
+        Boolean,
+      ),
+    ),
+  ].sort((left, right) => left.localeCompare(right));
+  const profile = snapshot.profiles.find((item) => item.id === editor);
+  const close = () => {
+    if (!busy) onClose();
+  };
+  const duplicate = async (id: string, name: string) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const result = await run({
+        action: 'clone-profile',
+        profileId: id,
+        name: `${name} — ${t('library.copied')}`.slice(0, 200),
+      });
+      if (result?.savedProfileId) setEditor(result.savedProfileId);
+    } finally {
+      setBusy(false);
     }
   };
+  if (editor !== null && (editor === 'new' || profile))
+    return (
+      <ConnectionEditor
+        key={editor}
+        profile={profile}
+        snapshot={snapshot}
+        run={run}
+        errorKey={errorKey}
+        onClose={() => setEditor(null)}
+      />
+    );
   return (
-    <Dialog title={t('library.title')} onClose={onClose}>
-      <div className="library-controls">
-        <input
-          aria-label={t('library.search')}
-          placeholder={t('library.search')}
-          value={search}
-          onChange={(event) => setSearch(event.currentTarget.value)}
-        />
-        <select
-          aria-label={t('library.group')}
-          value={group}
-          onChange={(event) => setGroup(event.currentTarget.value)}
-        >
-          <option value="*">{t('library.all')}</option>
-          {groups.map((name) => (
-            <option key={name} value={name}>
-              {name || t('library.ungrouped')}
-            </option>
-          ))}
-        </select>
-        <select
-          size={5}
-          aria-label={t('s3.selector')}
-          value={selected}
-          onChange={(event) => {
-            setSelected(event.currentTarget.value);
-            setMode(null);
-          }}
-        >
-          {filtered.map((item) => (
-            <option key={item.id} value={item.id}>
-              {item.kind.toUpperCase()} · {item.name} ·{' '}
-              {snapshot.profileGroups?.[item.id] || t('library.ungrouped')}
-            </option>
-          ))}
-        </select>
-        <div className="dialog-actions">
-          <button disabled={!profile} onClick={() => setEdit(true)}>
-            {t('connections.edit')}
-          </button>
-          <button disabled={!profile} onClick={() => setMode('copy')}>
-            {t('library.copy')}
-          </button>
-          <button disabled={!profile} onClick={() => setMode('delete')}>
-            {t('library.remove')}
-          </button>
+    <Dialog title={t('ui.connections')} onClose={close}>
+      <section className="profile-library">
+        <div className="section-heading">
+          <h3>{t('ui.profiles')}</h3>
+          <p>{t('ui.profilesHint')}</p>
         </div>
-        {profile ? (
+        <div className="library-toolbar">
+          <div className="button-group" role="group" aria-label={t('ui.exportImport')}>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setMode('import');
+                setContent('');
+                setSummary('');
+              }}
+            >
+              <Icon name="FileInput" />
+              {t('library.import')}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setBusy(true);
+                void run({ action: 'save-export', kind: 'profiles' }).finally(() => setBusy(false));
+              }}
+            >
+              <Icon name="FileOutput" />
+              {t('library.export')}
+            </button>
+          </div>
+          <div className="button-group" role="group" aria-label={t('ui.createGroup')}>
+            <button className="primary" disabled={busy} onClick={() => setEditor('new')}>
+              <Icon name="Plus" />
+              {t('ui.newConnection')}
+            </button>
+            <button
+              disabled={busy}
+              onClick={() => {
+                setMode('folder');
+                setFolderError(false);
+              }}
+            >
+              <Icon name="FolderPlus" />
+              {t('ui.folder')}
+            </button>
+          </div>
+        </div>
+        <p className="muted small">{t('library.archiveWarning')}</p>
+        <label className="search-field">
+          <Icon name="Search" />
+          <input
+            aria-label={t('library.search')}
+            placeholder={t('ui.sourceSearch')}
+            value={search}
+            onChange={(event) => setSearch(event.currentTarget.value)}
+          />
+        </label>
+        {mode === 'folder' ? (
           <form
-            key={profile.id}
-            className="path-entry"
+            className="inline-form"
             onSubmit={(event) => {
               event.preventDefault();
-              void run({
-                action: 'set-profile-group',
-                profileId: profile.id,
-                group: String(new FormData(event.currentTarget).get('group')),
-              });
+              if (busy) return;
+              const name = String(new FormData(event.currentTarget).get('name') ?? '').trim();
+              if (
+                !name ||
+                /[\\/]/u.test(name) ||
+                [...name].some((character) => character.charCodeAt(0) < 32) ||
+                folders.some((folder) => folder.toLocaleLowerCase() === name.toLocaleLowerCase())
+              ) {
+                setFolderError(true);
+                return;
+              }
+              setBusy(true);
+              void run({ action: 'create-profile-folder', name })
+                .then((result) => {
+                  if (result) setMode(null);
+                })
+                .finally(() => setBusy(false));
             }}
           >
-            <input
-              name="group"
-              aria-label={t('library.group')}
-              maxLength={100}
-              defaultValue={snapshot.profileGroups?.[profile.id] ?? ''}
-            />
-            <button>{t('library.renameGroup')}</button>
+            <label>
+              {t('ui.folderName')}
+              <input autoFocus name="name" maxLength={100} required disabled={busy} />
+            </label>
+            {folderError ? (
+              <p role="alert" className="inline-error">
+                {t('ui.folderError')}
+              </p>
+            ) : null}
+            <div className="dialog-actions">
+              <button type="button" disabled={busy} onClick={() => setMode(null)}>
+                {t('ui.cancel')}
+              </button>
+              <button className="primary" disabled={busy}>
+                {t('ui.create')}
+              </button>
+            </div>
           </form>
         ) : null}
-        <p>{t('library.archiveWarning')}</p>
-        <div className="dialog-actions">
-          <button onClick={() => void exported('profiles')}>{t('library.export')}</button>
-          <button
-            onClick={() => {
-              setMode('import-profiles');
-              setContent('');
-              setSummary('');
-            }}
-          >
-            {t('library.import')}
-          </button>
-          <button
-            onClick={() => {
-              setMode('import-known-hosts');
-              setContent('');
-              setSummary('');
-            }}
-          >
-            {t('library.knownHosts')}
-          </button>
-        </div>
-        <details>
-          <summary>{t('library.diagnostics')}</summary>
-          <p>{t('library.diagnosticsHint')}</p>
-          <button onClick={() => void exported('diagnostics')}>{t('library.report')}</button>
-        </details>
-      </div>
-      {mode === 'copy' && profile ? (
-        <form
-          onSubmit={(event) => {
-            event.preventDefault();
-            void run({
-              action: 'clone-profile',
-              profileId: profile.id,
-              name: String(new FormData(event.currentTarget).get('name')),
-            }).then((result) => {
-              if (result) setMode(null);
-            });
-          }}
-        >
-          <label>
-            {t('library.copyName')}
-            <input
-              autoFocus
-              name="name"
-              required
-              maxLength={200}
-              defaultValue={`${profile.name} — ${t('library.copied')}`}
-            />
-          </label>
-          <button>{t('operations.confirm')}</button>
-        </form>
-      ) : null}
-      {mode === 'delete' && profile ? (
-        <section>
-          <p>
-            {t('library.removeWarning')} {profile.name}
-          </p>
-          <button
-            onClick={() =>
-              void run({ action: 'delete-profile', profileId: profile.id }).then((result) => {
-                if (result) {
-                  setMode(null);
-                  setSelected('');
-                }
-              })
-            }
-          >
-            {t('operations.confirm')}
-          </button>
-          <button onClick={() => setMode(null)}>{t('connections.cancel')}</button>
-        </section>
-      ) : null}
-      {mode === 'import-profiles' || mode === 'import-known-hosts' || mode === 'export' ? (
-        <section>
-          {mode === 'import-known-hosts' ? <p>{t('library.importWarning')}</p> : null}
-          {mode !== 'export' ? (
+        {mode === 'import' ? (
+          <section className="inline-form">
             <label>
               {t('library.chooseFile')}
               <input
                 type="file"
+                accept=".json,application/json"
+                disabled={busy}
                 onChange={(event) => {
                   const file = event.currentTarget.files?.[0];
-                  if (file && file.size <= 1048576) void file.text().then(setContent);
-                  else setSummary(t('library.validation'));
+                  setContent('');
+                  setSummary('');
+                  if (!file) return;
+                  if (file.size > 1048576) {
+                    setSummary(t('library.validation'));
+                    return;
+                  }
+                  void file
+                    .text()
+                    .then(setContent)
+                    .catch(() => setSummary(t('library.validation')));
                 }}
               />
             </label>
+            <label>
+              {t('library.content')}
+              <textarea
+                rows={5}
+                maxLength={1048576}
+                value={content}
+                disabled={busy}
+                onChange={(event) => setContent(event.currentTarget.value)}
+              />
+            </label>
+            <div className="dialog-actions">
+              <button disabled={busy} onClick={() => setMode(null)}>
+                {t('ui.cancel')}
+              </button>
+              <button
+                className="primary"
+                disabled={busy || !content.trim()}
+                onClick={() => {
+                  setBusy(true);
+                  void run({ action: 'import-profiles', content })
+                    .then((result) => {
+                      if (result?.importSummary) {
+                        setSummary(t('library.summary', result.importSummary));
+                        setContent('');
+                        setMode(null);
+                      }
+                    })
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {t('library.importConfirm')}
+              </button>
+            </div>
+          </section>
+        ) : null}
+        <div className="profile-groups">
+          {[...folders, ''].map((folder) => {
+            const items = snapshot.profiles.filter(
+              (item) =>
+                (snapshot.profileGroups?.[item.id] ?? '') === folder &&
+                item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+            );
+            if (!items.length && (search || !folder)) return null;
+            return (
+              <details className="profile-group" open key={folder}>
+                <summary>
+                  <Icon name="Folder" />
+                  <span>{folder || t('ui.ungrouped')}</span>
+                  <small>{items.length}</small>
+                </summary>
+                {items.length ? (
+                  items.map((item) => (
+                    <div className="profile-row" key={item.id}>
+                      <span className="source-icon" data-kind={item.kind}>
+                        <Icon name={protocolIcon(item.kind)} />
+                      </span>
+                      <button
+                        className="profile-name"
+                        aria-label={item.name}
+                        disabled={busy}
+                        onDoubleClick={() => onOpen(item.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') {
+                            event.preventDefault();
+                            onOpen(item.id);
+                          }
+                        }}
+                        title={t('ui.profilesHint')}
+                      >
+                        <strong>{item.name}</strong>
+                        <small>
+                          {item.kind === 'sftp'
+                            ? `${item.username}@${item.host}`
+                            : item.bucket || item.endpoint || item.region}
+                        </small>
+                      </button>
+                      <span className="protocol-label">{item.kind.toUpperCase()}</span>
+                      <button
+                        className="icon-button"
+                        disabled={busy}
+                        title={t('connections.edit')}
+                        aria-label={`${t('connections.edit')}: ${item.name}`}
+                        onClick={() => setEditor(item.id)}
+                      >
+                        <Icon name="Pencil" />
+                      </button>
+                      <button
+                        className="icon-button accent"
+                        disabled={busy}
+                        title={t('ui.copyProfile')}
+                        aria-label={`${t('ui.copyProfile')}: ${item.name}`}
+                        onClick={() => void duplicate(item.id, item.name)}
+                      >
+                        <Icon name="Copy" />
+                      </button>
+                      <button
+                        className="icon-button danger"
+                        disabled={busy}
+                        title={t('library.remove')}
+                        aria-label={`${t('library.remove')}: ${item.name}`}
+                        onClick={() => setRemoving(item.id)}
+                      >
+                        <Icon name="Trash2" />
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="muted">{t('ui.emptyFolder')}</p>
+                )}
+              </details>
+            );
+          })}
+          {!snapshot.profiles.length && !folders.length ? (
+            <div className="empty-profiles">
+              <Icon name="Plug" />
+              <h3>{t('ui.emptyProfiles')}</h3>
+              <p>{t('ui.addProfileHint')}</p>
+            </div>
           ) : null}
-          <label>
-            {t('library.content')}
-            <textarea
-              rows={8}
-              maxLength={1048576}
-              value={content}
-              readOnly={mode === 'export'}
-              onChange={(event) => setContent(event.currentTarget.value)}
-            />
-          </label>
-          {mode === 'export' ? (
-            <button onClick={() => void run({ action: 'save-export', kind: exportKind })}>
-              {t('library.saveFile')}
-            </button>
-          ) : (
-            <button
-              disabled={!content}
-              onClick={() =>
-                void run({ action: mode, content }).then((result) => {
-                  if (result?.importSummary) {
-                    setSummary(t('library.summary', result.importSummary));
-                    setContent('');
-                  }
-                })
-              }
-            >
-              {t('library.importConfirm')}
-            </button>
-          )}
-        </section>
-      ) : null}
-      {summary ? <p role="status">{summary}</p> : null}
-      {errorKey ? <p role="alert">{t(errorKey)}</p> : null}
-      <div className="dialog-actions">
-        <button onClick={onClose}>{t('library.close')}</button>
+          {search &&
+          !snapshot.profiles.some((item) =>
+            item.name.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()),
+          ) ? (
+            <p role="status">{t('ui.noResults')}</p>
+          ) : null}
+        </div>
+        {removing ? (
+          <section className="inline-form">
+            <p>
+              {t('library.removeWarning')}{' '}
+              {snapshot.profiles.find((item) => item.id === removing)?.name}
+            </p>
+            <div className="dialog-actions">
+              <button disabled={busy} onClick={() => setRemoving(null)}>
+                {t('ui.cancel')}
+              </button>
+              <button
+                className="destructive"
+                disabled={busy}
+                onClick={() => {
+                  setBusy(true);
+                  void run({ action: 'delete-profile', profileId: removing })
+                    .then((result) => {
+                      if (result) setRemoving(null);
+                    })
+                    .finally(() => setBusy(false));
+                }}
+              >
+                {t('operations.confirm')}
+              </button>
+            </div>
+          </section>
+        ) : null}
+        {summary ? <p role="status">{summary}</p> : null}
+        {errorKey ? (
+          <p role="alert" className="inline-error">
+            {t(errorKey)}
+          </p>
+        ) : null}
+      </section>
+      <div className="dialog-actions dialog-footer">
+        <button disabled={busy} onClick={close}>
+          {t('library.close')}
+        </button>
       </div>
-      {edit && profile ? (
-        profile.kind === 'sftp' ? (
-          <ConnectionForm
-            profile={profile}
-            run={run}
-            errorKey={errorKey}
-            onClose={() => setEdit(false)}
-          />
-        ) : (
-          <S3ConnectionForm
-            profile={profile}
-            run={run}
-            errorKey={errorKey}
-            onClose={() => setEdit(false)}
-          />
-        )
-      ) : null}
     </Dialog>
   );
 };

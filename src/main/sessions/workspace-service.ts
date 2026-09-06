@@ -35,6 +35,16 @@ import { SqliteMultipartJournal } from '../providers/s3/multipart-journal';
 import { exportProfiles, importProfiles } from '../persistence/profile-library';
 import { importKnownHosts } from '../security/known-hosts';
 import { Diagnostics } from '../security/diagnostics';
+import { appearanceSchema, defaultAppearance } from '@shared/ipc/workspace';
+
+const readAppearance = (value: string | undefined) => {
+  try {
+    const parsed = appearanceSchema.safeParse(JSON.parse(value ?? 'null'));
+    return parsed.success ? parsed.data : defaultAppearance;
+  } catch {
+    return defaultAppearance;
+  }
+};
 
 export class WorkspaceService {
   public readonly transfers: TransferEngine;
@@ -105,6 +115,8 @@ export class WorkspaceService {
   public snapshot(): WorkspaceSnapshot {
     const language = this.store.getSetting('language');
     return {
+      appearance: readAppearance(this.store.getSetting('appearance')),
+      profileFolders: this.store.folders(),
       profileGroups: Object.fromEntries(
         this.store
           .list()
@@ -371,6 +383,7 @@ export class WorkspaceService {
     let privateKeyPath: string | null = null;
     let document: string | undefined;
     let importSummary: WorkspaceResult['importSummary'];
+    let savedProfileId: string | undefined;
     switch (request.action) {
       case 'clear-transfer-history':
         this.transfers.clearHistory();
@@ -407,7 +420,13 @@ export class WorkspaceService {
       case 'set-profile-group': {
         if (!this.store.list().some((profile) => profile.id === request.profileId))
           throw new ApplicationError(applicationErrorCodes.providerNotFound);
-        this.store.setSetting(`group:${request.profileId}`, request.group);
+        this.store.addFolder(request.group);
+        const group =
+          this.store
+            .folders()
+            .find((name) => name.toLocaleLowerCase() === request.group.toLocaleLowerCase()) ??
+          request.group;
+        this.store.setSetting(`group:${request.profileId}`, group);
         break;
       }
       case 'clone-profile': {
@@ -427,16 +446,19 @@ export class WorkspaceService {
             .prepare('SELECT id FROM credentials WHERE id = ? AND profile_id = ?')
             .get(reference.id, profile.id)
         ) {
+          const existingIds = new Set(this.store.list().map((item) => item.id));
           importProfiles(
             this.store,
             exportProfiles(this.store, [{ ...profile, name: request.name }]),
           );
+          savedProfileId = this.store.list().find((item) => !existingIds.has(item.id))?.id;
           break;
         }
         const clone = this.store.save(
           { ...profile, id: randomUUID(), name: request.name },
           reference ? this.credentials.read(reference.id) : undefined,
         );
+        savedProfileId = clone.id;
         this.store.setSetting(
           `group:${clone.id}`,
           this.store.getSetting(`group:${profile.id}`) ?? '',
@@ -536,10 +558,10 @@ export class WorkspaceService {
           ...(draft.bucket ? { bucket: draft.bucket } : {}),
           ...(draft.endpoint ? { endpoint: draft.endpoint } : {}),
         };
-        this.store.save(
+        savedProfileId = this.store.save(
           profile,
           JSON.stringify({ secretAccessKey, ...(sessionToken ? { sessionToken } : {}) }),
-        );
+        ).id;
         break;
       }
       case 'preview-delete': {
@@ -608,7 +630,7 @@ export class WorkspaceService {
                       : {}),
                   },
         };
-        this.store.save(profile, request.secret);
+        savedProfileId = this.store.save(profile, request.secret).id;
         break;
       }
       case 'delete-profile': {
@@ -832,6 +854,12 @@ export class WorkspaceService {
         this.store.setSetting('language', request.language);
         this.changeLanguage?.(request.language);
         break;
+      case 'create-profile-folder':
+        this.store.addFolder(request.name);
+        break;
+      case 'set-appearance':
+        this.store.setSetting('appearance', JSON.stringify(request.appearance));
+        break;
     }
     return {
       snapshot: this.snapshot(),
@@ -840,6 +868,7 @@ export class WorkspaceService {
       ...(deletion ? { deletion } : {}),
       ...(document !== undefined ? { document } : {}),
       ...(importSummary ? { importSummary } : {}),
+      ...(savedProfileId ? { savedProfileId } : {}),
     };
   }
 }

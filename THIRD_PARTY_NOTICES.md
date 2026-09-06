@@ -6,6 +6,11 @@ relicense third-party software.
 
 ## Dependency review
 
+The interface contains selected Lucide icons, distributed under the ISC license,
+including icons derived from Feather under MIT. Their copyright and license
+texts are preserved in `src/renderer/src/components/LICENSE.lucide` and included
+with packaged application resources as `licenses/LICENSE.lucide`.
+
 The installed runtime dependency tree from `pnpm-lock.yaml` was reviewed on
 2026-09-04. It uses MIT, Apache-2.0, BSD-3-Clause, 0BSD and Unlicense terms, which
 allow the original application code to be released under MIT while retaining

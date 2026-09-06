@@ -1,6 +1,7 @@
 node_modules/
 .pnpm-store/
 out/
+/design-previews/
 /release/
 build-resources/generated/
 coverage/

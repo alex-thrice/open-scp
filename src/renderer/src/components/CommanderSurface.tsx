@@ -1,5 +1,14 @@
 import { useState, type ReactNode, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
+import { Icon, type IconName } from './Icon';
+
+const commandIcons: Record<string, IconName> = {
+  mkdir: 'FolderPlus',
+  copy: 'Copy',
+  download: 'Copy',
+  rename: 'TextCursorInput',
+  delete: 'Trash2',
+};
 
 export interface FileCommand {
   readonly id: string;
@@ -19,9 +28,9 @@ export const CommandButtons = ({ commands }: { readonly commands: readonly FileC
           disabled={command.disabled}
           onClick={command.run}
           title={command.key ? `${command.label} (${command.key})` : command.label}
+          className={`icon-button command-${command.id}`}
         >
-          {command.label}
-          {command.key ? <kbd aria-hidden="true">{command.key}</kbd> : null}
+          <Icon name={commandIcons[command.id] ?? 'Copy'} />
         </button>
       ))}
   </div>

@@ -41,6 +41,7 @@ export interface IpcHandlerDependencies {
 }
 
 export interface IpcHandlerDependencyOptions {
+  readonly getDriveIcon?: (path: string) => Promise<string | undefined>;
   readonly allowMultipleDrives: boolean;
   readonly localInitialPath: string;
   readonly localRootPath: string;
@@ -49,6 +50,7 @@ export interface IpcHandlerDependencyOptions {
 export const createIpcHandlerDependencies = (
   options: IpcHandlerDependencyOptions,
 ): IpcHandlerDependencies => {
+  const icons = new Map<string, string>();
   const localFileBrowserService = new LocalFileBrowserService(options.localInitialPath, async () =>
     options.allowMultipleDrives
       ? discoverLocalDrives(options.localRootPath)
@@ -61,7 +63,21 @@ export const createIpcHandlerDependencies = (
       runtime: 'electron',
     }),
     listLocalDirectory: (request) => localFileBrowserService.list(request),
-    listLocalDrives: () => localFileBrowserService.listDrives(),
+    listLocalDrives: async () =>
+      Promise.all(
+        (await localFileBrowserService.listDrives()).map(async (drive) => {
+          let icon = icons.get(drive.path);
+          if (!icon && options.getDriveIcon) {
+            try {
+              icon = await options.getDriveIcon(drive.path);
+            } catch {
+              icon = undefined;
+            }
+            if (icon) icons.set(drive.path, icon);
+          }
+          return { ...drive, ...(icon ? { icon } : {}) };
+        }),
+      ),
   };
 };
 

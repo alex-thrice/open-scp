@@ -3,11 +3,13 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { LocalDirectoryEntry } from '@shared/ipc/contracts';
 import { useTranslation } from 'react-i18next';
 import { formatSize, formatDate } from '../i18n/format';
+import { Icon } from './Icon';
 
 type SortDirection = 'ascending' | 'descending';
 type SortKey = 'modifiedAt' | 'name' | 'size';
 
 export interface VirtualFileListProps {
+  readonly rowHeight?: number;
   readonly entries: readonly LocalDirectoryEntry[];
   readonly onOpenDirectory: (path: string) => void;
   readonly onSelect?: (path: string) => void;
@@ -17,7 +19,6 @@ export interface VirtualFileListProps {
   readonly dragSource?: { readonly workspaceId: string; readonly side: 'local' | 'remote' };
 }
 
-const rowHeight = 36;
 const overscanRowCount = 8;
 const fallbackViewportHeight = 360;
 
@@ -30,6 +31,7 @@ const compareBigInt = (left: bigint, right: bigint): number => {
 };
 
 export const VirtualFileList = ({
+  rowHeight = 36,
   entries,
   onOpenDirectory,
   onSelect,
@@ -295,13 +297,17 @@ export const VirtualFileList = ({
                     className="entry-icon"
                     title={`${t(`fileList.kinds.${entry.kind}`)}${entry.permissions == null ? '' : ` · ${(entry.permissions & 0o7777).toString(8)}`}`}
                   >
-                    {isDirectory
-                      ? '▸'
-                      : entry.kind === 'symbolic-link'
-                        ? '↗'
-                        : entry.kind === 'special'
-                          ? '◇'
-                          : '·'}
+                    <Icon
+                      name={
+                        isDirectory
+                          ? 'Folder'
+                          : entry.kind === 'symbolic-link'
+                            ? 'ArrowUpRight'
+                            : /\.(zip|gz|tar|7z)$/iu.test(entry.name)
+                              ? 'FileArchive'
+                              : 'FileText'
+                      }
+                    />
                   </span>
                   <span className="entry-name">{entry.name}</span>
                   {entry.s3Kind ? (
