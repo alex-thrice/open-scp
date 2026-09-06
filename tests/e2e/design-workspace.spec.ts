@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
 import { copySelection, newConnection, finishProfile } from './workspace-ui';
+import { nativeKeyringLaunchOptions } from './electron-launch';
 
 test('local file manager, saved themes, grouped profiles and the S3 editor', async () => {
   const root = await mkdtemp(join(tmpdir(), 'openscp-design-files-'));
@@ -10,6 +11,7 @@ test('local file manager, saved themes, grouped profiles and the S3 editor', asy
   let application: ElectronApplication | undefined;
   const launch = () =>
     electron.launch({
+      ...nativeKeyringLaunchOptions(),
       args: [
         '--disable-gpu',
         '--in-process-gpu',

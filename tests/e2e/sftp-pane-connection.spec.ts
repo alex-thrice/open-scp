@@ -9,6 +9,7 @@ import {
   newConnection,
   openConnection,
 } from './workspace-ui';
+import { nativeKeyringLaunchOptions } from './electron-launch';
 
 const { sftp } = utils;
 
@@ -104,7 +105,7 @@ for (const side of ['left', 'right'] as const) {
         await writeFile(join(root, 'local.txt'), 'Local pane fixture.');
         const executablePath = process.env.OPENSCP_PACKAGED_EXE;
         application = await electron.launch({
-          ...(executablePath ? { executablePath } : {}),
+          ...nativeKeyringLaunchOptions(executablePath),
           args: [
             '--disable-gpu',
             '--in-process-gpu',

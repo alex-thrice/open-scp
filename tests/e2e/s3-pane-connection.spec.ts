@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
 import { finishProfile, newConnection, openConnection } from './workspace-ui';
+import { nativeKeyringLaunchOptions } from './electron-launch';
 
 for (const side of ['left', 'right'] as const) {
   for (const bucket of ['', 'fixture-bucket']) {
@@ -49,7 +50,7 @@ for (const side of ['left', 'right'] as const) {
         await writeFile(join(root, 'local.txt'), 'Local pane fixture.');
         const executablePath = process.env.OPENSCP_PACKAGED_EXE;
         application = await electron.launch({
-          ...(executablePath ? { executablePath } : {}),
+          ...nativeKeyringLaunchOptions(executablePath),
           args: [
             '--disable-gpu',
             '--in-process-gpu',
