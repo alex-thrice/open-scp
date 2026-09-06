@@ -172,10 +172,12 @@ test('restores the maximized main window and its normal bounds', async () => {
   electronApplication = await launchApplication();
   const initialWindow = await electronApplication.firstWindow();
   await expect(initialWindow.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();
-  await electronApplication.evaluate(({ BrowserWindow }) => {
+  const savedBounds = await electronApplication.evaluate(({ BrowserWindow }) => {
     const mainWindow = BrowserWindow.getAllWindows()[0];
     mainWindow?.setBounds({ x: 80, y: 70, width: 980, height: 640 });
+    const bounds = mainWindow?.getNormalBounds();
     mainWindow?.maximize();
+    return bounds;
   });
   await expect
     .poll(() =>
@@ -200,7 +202,7 @@ test('restores the maximized main window and its normal bounds', async () => {
     await electronApplication.evaluate(({ BrowserWindow }) =>
       BrowserWindow.getAllWindows()[0]?.getNormalBounds(),
     ),
-  ).toEqual({ x: 80, y: 70, width: 980, height: 640 });
+  ).toEqual(savedBounds);
 });
 
 test('searches incrementally in either active file pane', async () => {

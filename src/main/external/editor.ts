@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process';
-import { isAbsolute } from 'node:path';
+import { posix, win32 } from 'node:path';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from '../ipc/application-error';
 
@@ -55,8 +55,10 @@ export const openEditor = async (
   options: EditorOptions = {},
 ): Promise<void> => {
   const startProcess = options.startProcess ?? startDetachedProcess;
+  const platform = options.platform ?? process.platform;
   if (configuredPath) {
-    if (!isAbsolute(configuredPath))
+    const isAbsolutePath = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute;
+    if (!isAbsolutePath(configuredPath))
       throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
     await startFirstAvailable(
       [{ executable: configuredPath, arguments_: [filePath] }],
@@ -65,7 +67,6 @@ export const openEditor = async (
     return;
   }
 
-  const platform = options.platform ?? process.platform;
   if (platform === 'win32') {
     await startFirstAvailable(
       [{ executable: 'notepad.exe', arguments_: [filePath] }],
