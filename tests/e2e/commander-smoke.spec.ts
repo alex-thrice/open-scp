@@ -172,9 +172,17 @@ test('restores the maximized main window and its normal bounds', async () => {
   electronApplication = await launchApplication();
   const initialWindow = await electronApplication.firstWindow();
   await expect(initialWindow.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();
-  const savedBounds = await electronApplication.evaluate(({ BrowserWindow }) => {
+  const savedBounds = await electronApplication.evaluate(({ BrowserWindow, screen }) => {
     const mainWindow = BrowserWindow.getAllWindows()[0];
-    mainWindow?.setBounds({ x: 80, y: 70, width: 980, height: 640 });
+    const workArea = screen.getPrimaryDisplay().workArea;
+    const width = Math.min(980, workArea.width);
+    const height = Math.min(640, workArea.height);
+    mainWindow?.setBounds({
+      x: workArea.x + Math.min(80, workArea.width - width),
+      y: workArea.y + Math.min(70, workArea.height - height),
+      width,
+      height,
+    });
     const bounds = mainWindow?.getNormalBounds();
     mainWindow?.maximize();
     return bounds;
