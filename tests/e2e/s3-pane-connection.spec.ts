@@ -1,5 +1,5 @@
 import { createServer } from 'node:http';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
@@ -8,7 +8,7 @@ import { finishProfile, newConnection, openConnection } from './workspace-ui';
 for (const side of ['left', 'right'] as const) {
   for (const bucket of ['', 'fixture-bucket']) {
     test(`opens S3 ${bucket ? 'bucket' : 'account root'} from a populated ${side} local pane`, async () => {
-      const root = await mkdtemp(join(tmpdir(), 'openscp-s3-pane-files-'));
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'openscp-s3-pane-files-')));
       const userData = await mkdtemp(join(tmpdir(), 'openscp-s3-pane-user-'));
       const requests: string[] = [];
       const server = createServer((request, response) => {
@@ -53,6 +53,7 @@ for (const side of ['left', 'right'] as const) {
           args: [
             '--disable-gpu',
             '--in-process-gpu',
+            ...(process.platform === 'linux' ? ['--password-store=gnome-libsecret'] : []),
             `--user-data-dir=${userData}`,
             ...(process.env.OPENSCP_TEST_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
             ...(executablePath ? [] : [resolve('out/main/index.js')]),

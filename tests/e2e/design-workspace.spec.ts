@@ -13,6 +13,7 @@ test('local file manager, saved themes, grouped profiles and the S3 editor', asy
       args: [
         '--disable-gpu',
         '--in-process-gpu',
+        ...(process.platform === 'linux' ? ['--password-store=gnome-libsecret'] : []),
         '--no-sandbox',
         '--user-data-dir=' + userData,
         resolve('out/main/index.js'),

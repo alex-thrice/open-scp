@@ -1,4 +1,4 @@
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Server, utils, type Connection } from 'ssh2';
@@ -15,7 +15,7 @@ const { sftp } = utils;
 for (const side of ['left', 'right'] as const) {
   for (const authenticate of [true, false]) {
     test(`keeps the ${side} pane usable after SFTP host trust and ${authenticate ? 'connection' : 'authentication failure'}`, async () => {
-      const root = await mkdtemp(join(tmpdir(), 'openscp-sftp-pane-files-'));
+      const root = await realpath(await mkdtemp(join(tmpdir(), 'openscp-sftp-pane-files-')));
       const userData = await mkdtemp(join(tmpdir(), 'openscp-sftp-pane-user-'));
       const clients = new Set<Connection>();
       const listedPaths: string[] = [];
@@ -108,6 +108,7 @@ for (const side of ['left', 'right'] as const) {
           args: [
             '--disable-gpu',
             '--in-process-gpu',
+            ...(process.platform === 'linux' ? ['--password-store=gnome-libsecret'] : []),
             `--user-data-dir=${userData}`,
             ...(process.env.OPENSCP_TEST_NO_SANDBOX === '1' ? ['--no-sandbox'] : []),
             ...(executablePath ? [] : [resolve('out/main/index.js')]),
