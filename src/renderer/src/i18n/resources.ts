@@ -65,6 +65,12 @@ export const resources = {
         connect: 'Connect / test',
         disconnect: 'Disconnect',
         reconnect: 'Reconnect',
+        cancelConnect: 'Cancel connection',
+        passwordPromptTitle: 'Connection password',
+        passwordPromptHint: 'Enter the password for {{name}}.',
+        savePassword: 'Save password in secure system storage',
+        submitPassword: 'Connect',
+        progress: 'Connection progress',
         secretHint:
           'Leave the secret blank to keep the stored value. Secrets are encrypted by the operating system.',
         unknownKey:
@@ -79,9 +85,50 @@ export const resources = {
           disconnecting: 'Disconnecting',
           failed: 'Connection lost / failed',
         },
+        stages: {
+          authenticating: 'Authenticating',
+          cancelled: 'Connection cancelled',
+          connected: 'Connected',
+          connecting: 'Connecting to server',
+          failed: 'Connection failed',
+          handshaking: 'Negotiating SSH connection',
+          'loading-directory': 'Loading directory',
+          'opening-sftp': 'Opening SFTP channel',
+          'resolving-credentials': 'Preparing credentials',
+          starting: 'Starting connection',
+          'verifying-host-key': 'Verifying server identity',
+        },
+      },
+      terminal: {
+        configure: 'Configure PuTTY',
+        open: 'Open SSH terminal',
+        settings: 'SSH terminal',
+        settingsHint:
+          'Windows uses PuTTY. Leave the path empty to find putty.exe automatically. macOS and Linux use a system terminal and OpenSSH.',
+        puttyPath: 'PuTTY executable path (Windows)',
+        puttyPathPlaceholder: 'Automatic detection',
+        savePath: 'Save terminal setting',
+      },
+      editor: {
+        settings: 'Editor',
+        settingsHint:
+          'Leave the path empty to use Notepad, TextEdit, or an available Linux text editor.',
+        path: 'Editor executable path',
+        pathPlaceholder: 'Use platform default',
+        chooseFile: 'Choose editor',
+        savePath: 'Save editor setting',
+        changedTitle: 'Edited remote file',
+        changedHint: '{{name}} changed in the external editor. Upload the modified file?',
+        recovered: 'This unsaved edit was recovered after the previous application session.',
+        conflict:
+          'The remote file changed after it was downloaded. Confirm overwrite or discard the local edit.',
+        upload: 'Upload changes',
+        overwrite: 'Overwrite remote file',
+        discard: 'Discard local edit',
       },
       operations: {
         copy: 'Copy',
+        edit: 'Edit',
         mkdir: 'New directory',
         rename: 'Rename',
         delete: 'Delete',
@@ -98,7 +145,10 @@ export const resources = {
         cancel: 'Cancel',
         resume: 'Retry / resume',
         restart: 'Restart from zero',
-        conflict: 'Already exists: {{path}}. Apply this policy to the remaining conflicts:',
+        conflictTitle: 'Destination already exists',
+        conflictSource: 'Source: {{path}}',
+        conflictDestination: 'Destination: {{path}}',
+        applyToAll: 'Apply this decision to all remaining conflicts in this transfer',
         metrics:
           '{{bytes}} / {{total}} bytes · {{speed}} KiB/s · {{elapsed}}s · ETA {{remaining}}s',
         policies: {
@@ -162,6 +212,11 @@ export const resources = {
           notFound: 'The requested file or directory no longer exists.',
           unsupported: 'This provider does not support this operation safely.',
         },
+        external: {
+          failed: 'The external application could not be opened.',
+          unavailable:
+            'The required external application is unavailable. Check its path in Settings.',
+        },
         unexpected: 'An unexpected error occurred.',
       },
       fileList: {
@@ -177,6 +232,10 @@ export const resources = {
         modified: 'Modified',
         name: 'Name',
         openDirectory: 'Open {{name}}',
+        search: 'Search files and folders',
+        searchStatus: '{{current}} of {{total}}',
+        noSearchResults: 'No matches',
+        closeSearch: 'Close search',
         size: 'Size',
         sortAscending: 'Sort {{column}} ascending',
         sortDescending: 'Sort {{column}} descending',
@@ -188,7 +247,14 @@ export const resources = {
         title: 'Local',
       },
       panels: { active: 'Active panel', label: 'File panels' },
-      path: { label: 'Current path', up: 'Go to parent directory' },
+      path: {
+        label: 'Current path',
+        remember: 'Remember session paths',
+        rememberHint: 'Restore the last local and remote directories when the app opens.',
+        up: 'Go to parent directory',
+        restoredFallback:
+          'The saved path is unavailable. The nearest available location was opened.',
+      },
       queue: {
         empty: 'Transfers will appear here.',
         title: 'Transfer queue',
@@ -283,6 +349,12 @@ export const resources = {
         connect: 'Подключить / проверить',
         disconnect: 'Отключить',
         reconnect: 'Переподключить',
+        cancelConnect: 'Отменить подключение',
+        passwordPromptTitle: 'Пароль подключения',
+        passwordPromptHint: 'Введите пароль для «{{name}}».',
+        savePassword: 'Сохранить пароль в защищённом хранилище ОС',
+        submitPassword: 'Подключиться',
+        progress: 'Прогресс подключения',
         secretHint:
           'Оставьте секрет пустым, чтобы сохранить прежнее значение. Секреты шифруются средствами ОС.',
         unknownKey:
@@ -297,9 +369,50 @@ export const resources = {
           disconnecting: 'Отключение',
           failed: 'Связь потеряна / ошибка',
         },
+        stages: {
+          authenticating: 'Аутентификация',
+          cancelled: 'Подключение отменено',
+          connected: 'Подключено',
+          connecting: 'Соединение с сервером',
+          failed: 'Ошибка подключения',
+          handshaking: 'Согласование SSH-соединения',
+          'loading-directory': 'Загрузка каталога',
+          'opening-sftp': 'Открытие SFTP-канала',
+          'resolving-credentials': 'Подготовка учётных данных',
+          starting: 'Запуск подключения',
+          'verifying-host-key': 'Проверка подлинности сервера',
+        },
+      },
+      terminal: {
+        configure: 'Настроить PuTTY',
+        open: 'Открыть SSH-терминал',
+        settings: 'SSH-терминал',
+        settingsHint:
+          'В Windows используется PuTTY. Оставьте путь пустым для автоматического поиска putty.exe. В macOS и Linux используется системный терминал и OpenSSH.',
+        puttyPath: 'Путь к PuTTY (Windows)',
+        puttyPathPlaceholder: 'Автоматический поиск',
+        savePath: 'Сохранить настройку терминала',
+      },
+      editor: {
+        settings: 'Редактор',
+        settingsHint:
+          'Оставьте путь пустым, чтобы использовать Блокнот, TextEdit или доступный текстовый редактор Linux.',
+        path: 'Путь к исполняемому файлу редактора',
+        pathPlaceholder: 'Системный редактор',
+        chooseFile: 'Выбрать редактор',
+        savePath: 'Сохранить настройку редактора',
+        changedTitle: 'Изменён удалённый файл',
+        changedHint: 'Файл «{{name}}» изменён во внешнем редакторе. Загрузить изменения?',
+        recovered: 'Несохранённое редактирование восстановлено после предыдущего запуска.',
+        conflict:
+          'Удалённый файл изменился после скачивания. Подтвердите перезапись или отмените локальную правку.',
+        upload: 'Загрузить изменения',
+        overwrite: 'Перезаписать удалённый файл',
+        discard: 'Отменить локальную правку',
       },
       operations: {
         copy: 'Копировать',
+        edit: 'Редактировать',
         mkdir: 'Новый каталог',
         rename: 'Переименовать',
         delete: 'Удалить',
@@ -316,7 +429,10 @@ export const resources = {
         cancel: 'Отменить',
         resume: 'Повторить / продолжить',
         restart: 'Начать заново',
-        conflict: 'Уже существует: {{path}}. Применить эту политику к оставшимся конфликтам:',
+        conflictTitle: 'Объект назначения уже существует',
+        conflictSource: 'Источник: {{path}}',
+        conflictDestination: 'Назначение: {{path}}',
+        applyToAll: 'Применить это решение ко всем следующим конфликтам этой передачи',
         metrics:
           '{{bytes}} / {{total}} байт · {{speed}} КиБ/с · {{elapsed}}с · осталось {{remaining}}с',
         policies: {
@@ -381,6 +497,11 @@ export const resources = {
           notFound: 'Запрошенный файл или каталог больше не существует.',
           unsupported: 'Провайдер не поддерживает безопасное выполнение этой операции.',
         },
+        external: {
+          failed: 'Не удалось открыть внешнее приложение.',
+          unavailable:
+            'Требуемое внешнее приложение недоступно. Проверьте путь к нему в настройках.',
+        },
         unexpected: 'Произошла непредвиденная ошибка.',
       },
       fileList: {
@@ -396,6 +517,10 @@ export const resources = {
         modified: 'Изменён',
         name: 'Имя',
         openDirectory: 'Открыть {{name}}',
+        search: 'Поиск файлов и папок',
+        searchStatus: '{{current}} из {{total}}',
+        noSearchResults: 'Совпадений нет',
+        closeSearch: 'Закрыть поиск',
         size: 'Размер',
         sortAscending: 'Сортировать «{{column}}» по возрастанию',
         sortDescending: 'Сортировать «{{column}}» по убыванию',
@@ -407,7 +532,13 @@ export const resources = {
         title: 'Локальная',
       },
       panels: { active: 'Активная панель', label: 'Файловые панели' },
-      path: { label: 'Текущий путь', up: 'Перейти в родительский каталог' },
+      path: {
+        label: 'Текущий путь',
+        remember: 'Запоминать пути сеанса',
+        rememberHint: 'Восстанавливать последние локальные и удалённые каталоги при запуске.',
+        up: 'Перейти в родительский каталог',
+        restoredFallback: 'Сохранённый путь недоступен. Открыт ближайший доступный каталог.',
+      },
       queue: {
         empty: 'Здесь появятся операции передачи.',
         title: 'Очередь передач',

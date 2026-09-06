@@ -44,11 +44,8 @@ export const openConnection = async (page: Page, side: 'left' | 'right', name: s
 };
 
 export const copySelection = async (page: Page, panel: Locator) => {
+  void page;
   await panel.getByRole('button', { name: /^Copy to /u }).click();
-  await page
-    .getByRole('dialog', { name: 'Copy', exact: true })
-    .getByRole('button', { name: 'Confirm', exact: true })
-    .click();
 };
 
 export const setLanguage = async (page: Page, language: 'ru' | 'en') => {

@@ -18,4 +18,5 @@ export interface TransferSnapshot {
   readonly remaining: number | null;
   readonly errorKey: string | null;
   readonly conflictPath: string | null;
+  readonly conflictSourcePath?: string | null | undefined;
 }

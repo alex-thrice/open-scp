@@ -123,7 +123,7 @@ export const SourcePicker = ({
     if (!item) return;
     setOpen(false);
     if (item.kind === 'local') {
-      onNavigate(item.id);
+      onNavigate(snapshot.localPathHistory?.[item.id] ?? item.id);
       trigger.current?.focus();
     } else onConnect(item.id);
   };

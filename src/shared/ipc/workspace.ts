@@ -3,6 +3,7 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 
 const id = z.string().min(1).max(200);
+const workspaceId = z.string().regex(/^workspace-[1-9]\d{0,3}$/u);
 const path = z
   .string()
   .min(1)
@@ -20,6 +21,11 @@ export const defaultAppearance: Appearance = {
   density: 'comfortable',
   showHidden: true,
 };
+export const workspaceLayoutSchema = z.strictObject({
+  activeWorkspaceId: workspaceId,
+  workspaceIds: z.array(workspaceId).min(1).max(100),
+});
+export type WorkspaceLayout = z.infer<typeof workspaceLayoutSchema>;
 export const profileDraftSchema = z.strictObject({
   id: z.string().uuid().nullable(),
   name: z.string().trim().min(1).max(200),
@@ -46,6 +52,14 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
       .refine((name) => [...name].every((character) => character.charCodeAt(0) >= 32)),
   }),
   z.strictObject({ action: z.literal('clear-transfer-history') }),
+  z.strictObject({ action: z.literal('open-local-file'), workspaceId: id, path }),
+  z.strictObject({ action: z.literal('edit-file'), workspaceId: id, path }),
+  z.strictObject({ action: z.literal('open-ssh-terminal'), workspaceId: id }),
+  z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('set-remember-paths'), enabled: z.boolean() }),
+  z.strictObject({ action: z.literal('remember-workspace-layout'), layout: workspaceLayoutSchema }),
+  z.strictObject({ action: z.literal('remember-local-path'), workspaceId: id, path }),
   z.strictObject({
     action: z.literal('local-transfer'),
     workspaceId: id,
@@ -105,6 +119,13 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('delete-profile'), profileId: id }),
   z.strictObject({ action: z.literal('connect'), workspaceId: id, profileId: id }),
+  z.strictObject({ action: z.literal('cancel-connect'), workspaceId: id }),
+  z.strictObject({
+    action: z.literal('provide-password'),
+    workspaceId: id,
+    password: z.string().min(1).max(65536),
+    save: z.boolean(),
+  }),
   z.strictObject({ action: z.literal('disconnect'), workspaceId: id }),
   z.strictObject({
     action: z.literal('trust-host'),
@@ -131,7 +152,17 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('cancel-transfer'), id }),
   z.strictObject({ action: z.literal('retry-transfer'), id, resume: z.boolean() }),
-  z.strictObject({ action: z.literal('resolve-conflict'), id, policy }),
+  z.strictObject({
+    action: z.literal('resolve-conflict'),
+    id,
+    policy,
+    applyToAll: z.boolean(),
+  }),
+  z.strictObject({
+    action: z.literal('resolve-external-edit'),
+    id,
+    resolution: z.enum(['upload', 'overwrite', 'discard']),
+  }),
   z.strictObject({ action: z.literal('pick-private-key') }),
   z.strictObject({ action: z.literal('set-language'), language: z.enum(['en', 'ru']) }),
 ]);
@@ -154,6 +185,12 @@ export const remoteListingSchema = z.strictObject({
 export type RemoteDirectoryListing = z.infer<typeof remoteListingSchema>;
 export const workspaceSnapshotSchema = z.strictObject({
   appearance: appearanceSchema.optional(),
+  editorPath: path.nullable().optional(),
+  puttyPath: path.nullable().optional(),
+  rememberPaths: z.boolean().optional(),
+  workspaceLayout: workspaceLayoutSchema.optional(),
+  localPathHistory: z.record(z.string(), path).optional(),
+  localPaths: z.record(z.string(), path).optional(),
   profileFolders: z.array(z.string().max(100)).max(1000).optional(),
   profileGroups: z.record(z.string(), z.string()).optional(),
   recentPaths: z.record(z.string(), z.array(path).max(20)).optional(),
@@ -169,6 +206,24 @@ export const workspaceSnapshotSchema = z.strictObject({
       kind: z.enum(['sftp', 's3']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
+      connectionStage: z
+        .enum([
+          'authenticating',
+          'cancelled',
+          'connected',
+          'connecting',
+          'failed',
+          'handshaking',
+          'loading-directory',
+          'opening-sftp',
+          'resolving-credentials',
+          'starting',
+          'verifying-host-key',
+        ])
+        .optional(),
+      connectionErrorKey: z.string().nullable().optional(),
+      passwordRequired: z.boolean().optional(),
+      pathFallback: z.boolean().optional(),
       hostKey: z.strictObject({ fingerprint: z.string(), changed: z.boolean() }).nullable(),
       currentPath: path.optional(),
       capabilities: z
@@ -210,8 +265,21 @@ export const workspaceSnapshotSchema = z.strictObject({
       remaining: z.number().nonnegative().nullable(),
       errorKey: z.string().nullable(),
       conflictPath: path.nullable(),
+      conflictSourcePath: path.nullable().optional(),
     }),
   ),
+  externalEdits: z
+    .array(
+      z.strictObject({
+        id,
+        workspaceId: id,
+        fileName: z.string().min(1).max(1024),
+        remotePath: path,
+        state: z.enum(['changed', 'conflict', 'failed', 'recovered', 'uploading', 'watching']),
+        errorKey: z.string().nullable(),
+      }),
+    )
+    .optional(),
 });
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export const workspaceResultSchema = z.strictObject({

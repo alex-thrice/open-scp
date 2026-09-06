@@ -55,7 +55,7 @@ export class ProfileStore {
         const owner = this.database
           .prepare('SELECT profile_id FROM credentials WHERE id = ?')
           .get(reference);
-        if (owner?.profile_id !== validated.id)
+        if (owner !== undefined && owner.profile_id !== validated.id)
           throw new ApplicationError(applicationErrorCodes.credentialRequired);
       }
       for (const row of this.database
@@ -74,6 +74,31 @@ export class ProfileStore {
       this.database.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  public replaceCredential(profileId: string, credentialId: string, value: string): void {
+    const profile = this.list().find((item) => item.id === profileId);
+    const reference =
+      profile?.kind === 's3'
+        ? profile.secret
+        : profile?.authentication.method === 'password'
+          ? profile.authentication.secret
+          : profile?.authentication.method === 'private-key'
+            ? profile.authentication.passphrase
+            : undefined;
+    if (reference?.id !== credentialId)
+      throw new ApplicationError(applicationErrorCodes.credentialRequired);
+    const owner = this.database
+      .prepare('SELECT profile_id FROM credentials WHERE id = ?')
+      .get(credentialId);
+    if (owner !== undefined && owner.profile_id !== profileId)
+      throw new ApplicationError(applicationErrorCodes.credentialRequired);
+    const ciphertext = this.credentials.encrypt(value);
+    this.database
+      .prepare(
+        'INSERT INTO credentials (id, profile_id, ciphertext) VALUES (?, ?, ?) ON CONFLICT(id) DO UPDATE SET ciphertext=excluded.ciphertext',
+      )
+      .run(credentialId, profileId, ciphertext);
   }
 
   public delete(id: string): void {

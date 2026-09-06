@@ -3,9 +3,7 @@ name: Release packages
 on:
   push:
     tags:
-      - '*'
-  release:
-    types: [published]
+      - 'v*'
 
 permissions:
   contents: read
@@ -74,3 +72,41 @@ jobs:
             release/*.dmg
             release/*.zip
           retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: packages
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@v5
+      - name: Download packages from every platform
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+      - name: Create release or replace its packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes_file="docs/release/notes/$GITHUB_REF_NAME.md"
+          title="OpenSCP ${GITHUB_REF_NAME#v}"
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" release/* --clobber
+            if [[ -f "$notes_file" ]]; then
+              gh release edit "$GITHUB_REF_NAME" --title "$title" --notes-file "$notes_file"
+            fi
+          elif [[ -f "$notes_file" ]]; then
+            gh release create "$GITHUB_REF_NAME" release/* \
+              --verify-tag \
+              --title "$title" \
+              --notes-file "$notes_file"
+          else
+            gh release create "$GITHUB_REF_NAME" release/* \
+              --verify-tag \
+              --generate-notes \
+              --title "$title"
+          fi

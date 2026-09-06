@@ -13,7 +13,7 @@ import type { FileSystemProvider } from '@shared/providers/file-system-provider'
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError, serializeApplicationError } from '../ipc/application-error';
-import { formatS3Path, s3Prefix, s3Name } from '@shared/models/s3-path';
+import { formatS3Path, parseS3Path, s3Prefix, s3Name } from '@shared/models/s3-path';
 import { classifyTransferError, waitForReconnect } from './reconnect-policy';
 import type { QueueRecord, TransferIntent } from './queue-journal';
 
@@ -42,6 +42,9 @@ interface TransferJob {
   readonly partials: Map<string, PartialFile>;
   readonly completed: Map<string, bigint>;
   readonly targets: Map<string, ProviderPath>;
+  readonly pendingTargets: Map<string, ProviderPath>;
+  readonly overwriteTargets: Set<string>;
+  readonly conflictResolutions: Map<string, TransferConflictPolicy>;
   started: number;
   resume: boolean;
   publishing: boolean;
@@ -101,6 +104,12 @@ const tryStat = async (
     throw error;
   }
 };
+const providerPathFromText = (reference: ProviderPath, path: string): ProviderPath =>
+  reference.provider === 'local'
+    ? createLocalProviderPath(path)
+    : reference.provider === 'sftp'
+      ? createSftpProviderPath(path)
+      : parseS3Path(path);
 
 export class TransferEngine {
   private readonly jobs = new Map<string, TransferJob>();
@@ -117,20 +126,24 @@ export class TransferEngine {
   ) {
     for (const record of persistence?.load() ?? []) {
       const finished = ['completed', 'cancelled'].includes(record.snapshot.state);
+      const pendingConflict =
+        record.snapshot.state === 'requiring-review' && record.snapshot.conflictPath !== null;
       this.restored.set(record.snapshot.id, {
         ...record,
-        snapshot: finished
-          ? record.snapshot
-          : {
-              ...record.snapshot,
-              state: 'requiring-review',
-              reviewReason: 'restart',
-              conflictPolicy: 'ask',
-              conflictPath: null,
-              errorKey: null,
-              speed: 0,
-              remaining: null,
-            },
+        snapshot:
+          finished || pendingConflict
+            ? record.snapshot
+            : {
+                ...record.snapshot,
+                state: 'requiring-review',
+                reviewReason: 'restart',
+                conflictPolicy: 'ask',
+                conflictPath: null,
+                conflictSourcePath: null,
+                errorKey: null,
+                speed: 0,
+                remaining: null,
+              },
       });
     }
     this.persist();
@@ -208,6 +221,9 @@ export class TransferEngine {
       partials: new Map(),
       completed: new Map(),
       targets: new Map(),
+      pendingTargets: new Map(),
+      overwriteTargets: new Set(),
+      conflictResolutions: new Map(),
       started: 0,
       resume: true,
       publishing: false,
@@ -256,6 +272,8 @@ export class TransferEngine {
     void _reviewReason;
     if (job.publishing) {
       job.targets.clear();
+      job.pendingTargets.clear();
+      job.overwriteTargets.clear();
       job.publishing = false;
     }
     job.snapshot = {
@@ -263,16 +281,46 @@ export class TransferEngine {
       state: 'queued',
       errorKey: null,
       conflictPath: null,
+      conflictSourcePath: null,
       conflictPolicy: _reviewReason ? 'ask' : snapshot.conflictPolicy,
     };
     this.persist();
     void this.drain();
   }
-  public resolveConflict(id: string, policy: TransferConflictPolicy): void {
-    const job = this.requireJob(id);
-    if (job.snapshot.state !== 'requiring-review' || policy === 'ask' || policy === 'fail')
+  public async resolveConflict(
+    id: string,
+    policy: TransferConflictPolicy,
+    applyToAll: boolean,
+  ): Promise<void> {
+    if (policy === 'ask' || policy === 'fail')
       throw new ApplicationError(applicationErrorCodes.providerConflict);
-    job.snapshot = { ...job.snapshot, conflictPolicy: policy };
+
+    const restored = this.restored.get(id);
+    if (restored) {
+      if (
+        restored.snapshot.state !== 'requiring-review' ||
+        !restored.snapshot.conflictPath ||
+        !this.persistence
+      )
+        throw new ApplicationError(applicationErrorCodes.providerConflict);
+      const request = await this.persistence.resolve(restored.intent, restored.snapshot);
+      this.restored.delete(id);
+      this.enqueue({ ...request, conflictPolicy: applyToAll ? policy : 'ask' }, id);
+      const job = this.requireJob(id);
+      if (restored.snapshot.conflictSourcePath)
+        job.pendingTargets.set(
+          restored.snapshot.conflictSourcePath,
+          providerPathFromText(request.destinationPath, restored.snapshot.conflictPath),
+        );
+      if (!applyToAll) job.conflictResolutions.set(restored.snapshot.conflictPath, policy);
+      return;
+    }
+
+    const job = this.requireJob(id);
+    if (job.snapshot.state !== 'requiring-review' || !job.snapshot.conflictPath)
+      throw new ApplicationError(applicationErrorCodes.providerConflict);
+    if (applyToAll) job.snapshot = { ...job.snapshot, conflictPolicy: policy };
+    else job.conflictResolutions.set(job.snapshot.conflictPath, policy);
     void this.retry(id, true);
   }
   private requireJob(id: string): TransferJob {
@@ -375,6 +423,7 @@ export class TransferEngine {
   }
   private async target(
     job: TransferJob,
+    sourcePath: ProviderPath,
     requested: ProviderPath,
     sourceEntry: FileSystemEntry,
   ): Promise<ProviderPath | undefined> {
@@ -383,13 +432,25 @@ export class TransferEngine {
     if (cached) return cached;
     const existing = await tryStat(job.request.destination, requested);
     if (!existing) {
+      job.conflictResolutions.delete(key);
+      job.pendingTargets.delete(localPath(sourcePath));
       job.targets.set(key, requested);
       return requested;
     }
-    const policy = job.snapshot.conflictPolicy;
-    if (policy === 'skip') return undefined;
+    const policy = job.conflictResolutions.get(key) ?? job.snapshot.conflictPolicy;
+    if (policy === 'skip') {
+      job.conflictResolutions.delete(key);
+      job.pendingTargets.delete(localPath(sourcePath));
+      return undefined;
+    }
     if (policy === 'ask') {
-      job.snapshot = { ...job.snapshot, state: 'requiring-review', conflictPath: key };
+      job.snapshot = {
+        ...job.snapshot,
+        state: 'requiring-review',
+        conflictPath: key,
+        conflictSourcePath: localPath(sourcePath),
+      };
+      job.pendingTargets.set(localPath(sourcePath), requested);
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     }
     if (policy === 'fail') throw new ApplicationError(applicationErrorCodes.providerConflict);
@@ -399,16 +460,42 @@ export class TransferEngine {
         (existing.kind !== 'file' && existing.kind !== 'directory')
       )
         throw new ApplicationError(applicationErrorCodes.providerConflict);
+      job.conflictResolutions.delete(key);
+      job.pendingTargets.delete(localPath(sourcePath));
       job.targets.set(key, requested);
+      job.overwriteTargets.add(key);
       return requested;
     }
     for (let index = 1; index <= 10000; index += 1) {
       const candidate = siblingPath(requested, `${nameOf(requested)} (${index})`);
       if (!(await tryStat(job.request.destination, candidate))) {
+        job.conflictResolutions.delete(key);
+        job.pendingTargets.delete(localPath(sourcePath));
         job.targets.set(key, candidate);
         return candidate;
       }
     }
+    throw new ApplicationError(applicationErrorCodes.providerConflict);
+  }
+  private pauseForConflict(
+    job: TransferJob,
+    sourcePath: ProviderPath,
+    target: ProviderPath,
+    error: unknown,
+  ): never {
+    if (classifyTransferError(error) !== 'conflict') throw error;
+    const path = localPath(target);
+    for (const [key, value] of job.targets) if (localPath(value) === path) job.targets.delete(key);
+    job.pendingTargets.set(localPath(sourcePath), target);
+    job.overwriteTargets.delete(path);
+    job.publishing = false;
+    job.snapshot = {
+      ...job.snapshot,
+      state: 'requiring-review',
+      conflictPolicy: 'ask',
+      conflictPath: path,
+      conflictSourcePath: localPath(sourcePath),
+    };
     throw new ApplicationError(applicationErrorCodes.providerConflict);
   }
   private async prefixHash(
@@ -447,12 +534,16 @@ export class TransferEngine {
     if (job.completed.has(key)) return;
     const { source, destination } = job.request;
     const entry = await source.stat(sourcePath, { signal: job.controller.signal });
+    requested = job.pendingTargets.get(key) ?? requested;
     if (requested.provider === 'local')
       childPath(createLocalProviderPath(dirname(requested.path)), basename(requested.path));
     if (requested.provider === 's3' && entry.kind === 'directory')
       requested = createS3ProviderPath(requested.bucket, s3Prefix(requested.key));
-    const target = await this.target(job, requested, entry);
-    if (target === undefined) return;
+    const target = await this.target(job, sourcePath, requested, entry);
+    if (target === undefined) {
+      job.completed.set(key, entry.kind === 'file' ? entry.size : 0n);
+      return;
+    }
     if (entry.kind === 'directory') {
       if (!(await tryStat(destination, target)))
         await destination.createDirectory(target, { signal: job.controller.signal });
@@ -469,7 +560,7 @@ export class TransferEngine {
       ).getReader();
       const writer = await destination
         .openWrite(target, {
-          overwrite: job.snapshot.conflictPolicy === 'overwrite' && existing !== undefined,
+          overwrite: job.overwriteTargets.has(localPath(target)) && existing !== undefined,
           expectedSize: entry.size,
           ...(existing?.versionTag ? { versionTag: existing.versionTag } : {}),
           signal: job.controller.signal,
@@ -497,7 +588,11 @@ export class TransferEngine {
         this.check(job);
         job.publishing = true;
         this.persist();
-        await writer.close();
+        try {
+          await writer.close();
+        } catch (error) {
+          this.pauseForConflict(job, sourcePath, target, error);
+        }
         job.publishing = false;
         job.completed.set(key, entry.size);
       } catch (error) {
@@ -599,12 +694,26 @@ export class TransferEngine {
     )
       throw new ApplicationError(applicationErrorCodes.unsafeResume);
     this.check(job);
+    if (
+      !job.overwriteTargets.has(localPath(target)) &&
+      (await tryStat(destination, target)) !== undefined
+    )
+      this.pauseForConflict(
+        job,
+        sourcePath,
+        target,
+        new ApplicationError(applicationErrorCodes.providerConflict),
+      );
     job.publishing = true;
     this.persist();
-    await destination.rename(partial.temporary, target, {
-      overwrite: job.snapshot.conflictPolicy === 'overwrite',
-      signal: job.controller.signal,
-    });
+    try {
+      await destination.rename(partial.temporary, target, {
+        overwrite: job.overwriteTargets.has(localPath(target)),
+        signal: job.controller.signal,
+      });
+    } catch (error) {
+      this.pauseForConflict(job, sourcePath, target, error);
+    }
     job.publishing = false;
     job.completed.set(key, entry.size);
     job.partials.delete(key);

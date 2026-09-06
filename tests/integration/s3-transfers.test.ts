@@ -112,7 +112,7 @@ describe('Local ↔ MinIO transfer engine', () => {
     await writeFile(join(root, 'tree', 'Unicode файл.txt'), 'second');
     const ask = upload('tree', 'ask');
     await wait(ask, 'requiring-review');
-    engine.resolveConflict(ask, 'skip');
+    void engine.resolveConflict(ask, 'skip', false);
     await wait(ask);
     await wait(download('tree/'));
     expect(await readFile(join(root, 'download-tree', 'Unicode файл.txt'), 'utf8')).toBe('first');

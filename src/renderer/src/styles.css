@@ -441,8 +441,6 @@ small {
   color: var(--muted);
 }
 .command-bar .command-copy {
-  background: var(--accent-soft);
-  color: var(--accent);
   margin-right: 5px;
 }
 .selection-summary {
@@ -450,11 +448,46 @@ small {
   font-size: 11px;
   white-space: nowrap;
 }
-.file-list {
+.file-list-shell {
   display: flex;
   flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.file-list {
+  display: flex;
+  width: 100%;
   flex-direction: column;
   min-height: 0;
+}
+.file-list-search {
+  position: absolute;
+  z-index: 20;
+  top: 40px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: min(340px, calc(100% - 24px));
+  padding: 6px 8px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  box-shadow: var(--shadow);
+}
+.file-list-search input {
+  min-width: 80px;
+  height: 28px;
+  flex: 1;
+}
+.file-list-search span {
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.file-list-search button {
+  min-height: 28px;
+  padding: 2px 7px;
 }
 .file-list__header,
 .file-list__row {
@@ -553,6 +586,10 @@ small {
 }
 .panel-state strong {
   color: var(--text);
+}
+.panel-state progress {
+  width: min(240px, 80%);
+  accent-color: var(--accent);
 }
 .panel-footer {
   display: flex;
@@ -706,6 +743,22 @@ small {
   min-height: 26px;
   padding: 4px 7px;
   font-size: 11px;
+}
+.transfer-conflict {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--danger);
+  border-radius: 6px;
+  background: var(--danger-soft);
+}
+.transfer-conflict > strong,
+.transfer-conflict > span,
+.transfer-conflict > label {
+  width: 100%;
 }
 .queue-clear {
   max-width: 115px;
@@ -1102,6 +1155,13 @@ kbd {
   border-radius: 6px;
   color: var(--danger);
   background: var(--danger-soft);
+  font-size: 12px;
+}
+.inline-notice {
+  padding: 9px 12px;
+  border-radius: 6px;
+  color: var(--accent);
+  background: var(--accent-soft);
   font-size: 12px;
 }
 .inline-error button {

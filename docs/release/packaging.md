@@ -88,7 +88,12 @@ Signed candidate использует MIT для кода OpenSCP; сам зап
 
 `ci.yml` проверяет исходники на трёх ОС, включая filesystem/permissions/symlinks, storage policy
 и packaging contracts. `packages.yml` собирает dev packages на Windows x64, Ubuntu 22.04 x64,
-macOS 15 arm64 и выполняет smoke из установленной/скопированной сборки.
+macOS 15 arm64 и выполняет smoke из установленной/скопированной сборки. Теги с префиксом `v`
+запускают этот workflow; после успешной сборки всех платформ он автоматически создаёт GitHub
+Release и прикладывает Windows, Linux и macOS пакеты. Англоязычное описание берётся из
+`docs/release/notes/<tag>.md`; без такого файла используются сгенерированные GitHub release notes.
+Повторный запуск workflow заменяет пакеты и обновляет curated description существующего релиза
+без создания дубликата.
 Архитектура Mac проверяется явно, без молчаливого перехода на Rosetta.
 Выбранные labels сверены с [таблицей GitHub runners](https://docs.github.com/en/actions/how-tos/write-workflows/choose-where-workflows-run/choose-the-runner-for-a-job).
 
@@ -114,7 +119,7 @@ Windows, в рабочей копии, без уже установленног�
 
 ```powershell
 pnpm fixtures:up
-./scripts/smoke-installed-windows.ps1 -InstallerPath ./release/openscp-0.1.0-win-x64-setup.exe -Protocols
+./scripts/smoke-installed-windows.ps1 -InstallerPath ./release/openscp-0.2.0-win-x64-setup.exe -Protocols
 pnpm fixtures:down
 ```
 

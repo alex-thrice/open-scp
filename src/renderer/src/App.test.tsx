@@ -140,6 +140,16 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
     if (request.action === 'set-appearance')
       snapshot = { ...snapshot, appearance: request.appearance };
     if (request.action === 'set-language') snapshot = { ...snapshot, language: request.language };
+    if (request.action === 'set-putty-path') snapshot = { ...snapshot, puttyPath: request.path };
+    if (request.action === 'set-editor-path') snapshot = { ...snapshot, editorPath: request.path };
+    if (request.action === 'set-remember-paths')
+      snapshot = {
+        ...snapshot,
+        rememberPaths: request.enabled,
+        ...(request.enabled ? {} : { localPathHistory: {}, localPaths: {}, recentPaths: {} }),
+      };
+    if (request.action === 'remember-workspace-layout')
+      snapshot = { ...snapshot, workspaceLayout: request.layout };
     if (request.action === 'connect') {
       const profile = snapshot.profiles.find((item) => item.id === request.profileId);
       if (profile)
@@ -363,9 +373,26 @@ describe('App', () => {
       ],
     });
     render(<App />);
-    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
     fireEvent.click(screen.getByRole('button', { name: 'New workspace' }));
     expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-5');
+  });
+
+  it('does not keep a provisional default tab when migrating saved pane paths', async () => {
+    statefulApi({
+      localPaths: {
+        'workspace-1:left': rootPath,
+        'workspace-2:left': childPath,
+      },
+    });
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2'),
+    );
+    expect(screen.getAllByRole('tab')).toHaveLength(1);
+    await waitFor(() =>
+      expect(pane('left').getByLabelText('Current path')).toHaveProperty('value', childPath),
+    );
   });
   it('renders two local panels, per-panel icon actions and a folder-based tab title', async () => {
     setDesktopApi(createDesktopApi(listingApi()));
@@ -498,6 +525,59 @@ describe('App', () => {
     await waitFor(() => expect(list).toHaveBeenLastCalledWith(usersPath));
   });
 
+  it('restores file-list focus after entering a directory', async () => {
+    const nestedListing: LocalDirectoryListing = {
+      ...childListing,
+      entries: [
+        {
+          kind: 'directory',
+          modifiedAt: null,
+          name: 'Alpha',
+          path: `${childPath}\\Alpha`,
+          size: 0n,
+        },
+        {
+          kind: 'directory',
+          modifiedAt: null,
+          name: 'Beta',
+          path: `${childPath}\\Beta`,
+          size: 0n,
+        },
+      ],
+    };
+    const list = vi.fn(async (path: string | null) => ({
+      correlationId,
+      data: path === childPath ? nestedListing : rootListing,
+      ok: true as const,
+    }));
+    setDesktopApi(createDesktopApi(list));
+    render(<App />);
+    const directory = await pane('left').findByRole('row', { name: 'Open Documents' });
+    fireEvent.click(directory);
+    fireEvent.doubleClick(directory);
+    const firstNestedDirectory = await pane('left').findByRole('row', { name: 'Open Alpha' });
+    await waitFor(() => expect(document.activeElement).toBe(firstNestedDirectory));
+    fireEvent.keyDown(firstNestedDirectory, { key: 'ArrowDown' });
+    const secondNestedDirectory = pane('left').getByRole('row', { name: 'Open Beta' });
+    await waitFor(() => expect(document.activeElement).toBe(secondNestedDirectory));
+    fireEvent.keyDown(secondNestedDirectory, { key: 'Backspace' });
+    const restoredDirectory = await pane('left').findByRole('row', { name: 'Open Documents' });
+    await waitFor(() => expect(document.activeElement).toBe(restoredDirectory));
+  });
+
+  it('opens a local file through the constrained workspace action', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    fireEvent.doubleClick(await pane('left').findByRole('row', { name: 'notes.txt' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'open-local-file',
+        workspaceId: 'workspace-1:left',
+        path: `${rootPath}\\notes.txt`,
+      }),
+    );
+  });
+
   it('retries the failed requested path, preserving the previous directory', async () => {
     const list = vi.fn(async (path: string | null) =>
       path === childPath
@@ -552,17 +632,13 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: /^Close /u })).toBeNull();
   });
 
-  it('queues local copies toward the other panel only after confirmation', async () => {
+  it('queues local copies immediately and defers conflict decisions', async () => {
     const workspace = statefulApi();
     render(<App />);
     fireEvent.doubleClick(await pane('right').findByRole('row', { name: 'Open Documents' }));
     await screen.findByRole('tab', { name: 'test - Documents' });
     fireEvent.click(pane('left').getByRole('row', { name: 'notes.txt' }));
     fireEvent.keyDown(pane('left').getByRole('row', { name: 'notes.txt' }), { key: 'F5' });
-    expect(workspace.mock.calls.some(([request]) => request.action === 'local-transfer')).toBe(
-      false,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'local-transfer',
@@ -570,6 +646,189 @@ describe('App', () => {
         sourcePath: rootPath + '\\notes.txt',
         destinationDirectory: childPath,
         conflictPolicy: 'ask',
+      }),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Copy' })).toBeNull();
+  });
+
+  it('uses F4 for editing and Ctrl+F5 for refreshing the active pane', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    const row = await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'F4' });
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'edit-file',
+        workspaceId: 'workspace-1:left',
+        path: `${rootPath}\\notes.txt`,
+      }),
+    );
+    const listLocalDirectory = vi.mocked(window.desktop.listLocalDirectory);
+    listLocalDirectory.mockClear();
+    fireEvent.keyDown(row, { ctrlKey: true, key: 'F5' });
+    await waitFor(() => expect(listLocalDirectory).toHaveBeenCalledWith(rootPath));
+    expect(workspace.mock.calls.some(([request]) => request.action === 'local-transfer')).toBe(
+      false,
+    );
+    expect(pane('left').getByRole('button', { name: 'Refresh' }).title).toContain('Ctrl+F5');
+  });
+
+  it('asks about an actual transfer conflict and scopes apply-to-all to that transfer', async () => {
+    const workspace = statefulApi({
+      transfers: [
+        {
+          id: 'conflicting-transfer',
+          workspaceId: 'workspace-1:left',
+          sourcePath: 'C:\\source.txt',
+          destinationPath: 'D:\\source.txt',
+          direction: 'download',
+          state: 'requiring-review',
+          conflictPolicy: 'ask',
+          transferredBytes: 0n,
+          totalBytes: 10n,
+          speed: 0,
+          elapsed: 0,
+          remaining: null,
+          errorKey: null,
+          conflictPath: 'D:\\source.txt',
+          conflictSourcePath: 'C:\\source.txt',
+        },
+      ],
+    });
+    render(<App />);
+    const prompt = await screen.findByRole('alertdialog');
+    fireEvent.click(
+      within(prompt).getByRole('checkbox', {
+        name: 'Apply this decision to all remaining conflicts in this transfer',
+      }),
+    );
+    fireEvent.click(within(prompt).getByRole('button', { name: 'Skip' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'resolve-conflict',
+        id: 'conflicting-transfer',
+        policy: 'skip',
+        applyToAll: true,
+      }),
+    );
+  });
+
+  it('restores local pane and per-drive paths and falls back to the nearest parent', async () => {
+    statefulApi({
+      localPaths: { 'workspace-1:left': `${childPath}\\missing` },
+      localPathHistory: { 'D:\\': 'D:\\Projects' },
+    });
+    const list = vi.fn(async (path: string | null) => {
+      if (path === `${childPath}\\missing`)
+        return {
+          correlationId,
+          ok: false as const,
+          error: {
+            code: 'PROVIDER_NOT_FOUND' as const,
+            messageKey: 'errors.provider.notFound' as const,
+          },
+        };
+      if (path === 'D:\\Projects')
+        return {
+          correlationId,
+          ok: true as const,
+          data: { ...secondDrive, currentPath: path },
+        };
+      return {
+        correlationId,
+        ok: true as const,
+        data: path === childPath ? childListing : rootListing,
+      };
+    });
+    setDesktopApi({ ...window.desktop, listLocalDirectory: list });
+    render(<App />);
+    expect(
+      await pane('left').findByText(
+        'The saved path is unavailable. The nearest available location was opened.',
+      ),
+    ).toBeTruthy();
+    expect(list).toHaveBeenCalledWith(childPath);
+    await chooseDrive('left', 'D:\\');
+    await waitFor(() => expect(list).toHaveBeenCalledWith('D:\\Projects'));
+  });
+
+  it('shows SFTP connection progress with cancellation and a correctable password prompt', async () => {
+    const workspace = statefulApi({
+      sessions: [
+        {
+          workspaceId: 'workspace-1:left',
+          profileId: 'sftp-one',
+          kind: 'sftp',
+          name: 'Development',
+          state: 'connecting',
+          connectionStage: 'handshaking',
+          hostKey: null,
+        },
+        {
+          workspaceId: 'workspace-1:right',
+          profileId: 'sftp-one',
+          kind: 'sftp',
+          name: 'Development',
+          state: 'failed',
+          connectionStage: 'failed',
+          connectionErrorKey: 'errors.security.authenticationFailed',
+          passwordRequired: true,
+          hostKey: null,
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByRole('tab', { name: 'Development - Development' });
+    expect(await pane('left').findByText('Negotiating SSH connection')).toBeTruthy();
+    expect(pane('left').getByRole('progressbar', { name: 'Connection progress' })).toBeTruthy();
+    fireEvent.click(pane('left').getByRole('button', { name: 'Cancel connection' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'cancel-connect',
+        workspaceId: 'workspace-1:left',
+      }),
+    );
+
+    const dialog = await screen.findByRole('dialog', { name: 'Connection password' });
+    fireEvent.change(within(dialog).getByLabelText('Password'), {
+      target: { value: 'corrected-password' },
+    });
+    fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: 'Save password in secure system storage' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Connect' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'provide-password',
+        workspaceId: 'workspace-1:right',
+        password: 'corrected-password',
+        save: true,
+      }),
+    );
+  });
+
+  it('offers to upload a changed remote editor copy', async () => {
+    const workspace = statefulApi({
+      externalEdits: [
+        {
+          id: 'external-edit-one',
+          workspaceId: 'workspace-1:right',
+          remotePath: '/remote.txt',
+          fileName: 'remote.txt',
+          state: 'changed',
+          errorKey: null,
+        },
+      ],
+    });
+    render(<App />);
+    const dialog = await screen.findByRole('dialog', { name: 'Edited remote file' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Upload changes' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'resolve-external-edit',
+        id: 'external-edit-one',
+        resolution: 'upload',
       }),
     );
   });
@@ -620,6 +879,86 @@ describe('App', () => {
     });
     expect(screen.getAllByRole('tab')).toHaveLength(1);
     expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2');
+  });
+
+  it('shows the SSH terminal action only for a connected SFTP pane', async () => {
+    const workspace = statefulApi({
+      sessions: [
+        {
+          workspaceId: 'workspace-1:right',
+          profileId: 'sftp-one',
+          kind: 'sftp',
+          name: 'Development',
+          currentPath: '/',
+          state: 'connected',
+          hostKey: null,
+          capabilities: {
+            read: true,
+            write: true,
+            rename: true,
+            delete: true,
+            createDirectory: true,
+            serverSideCopy: false,
+          },
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByRole('tab', { name: 'test - Development' });
+    const terminal = screen.getByRole('button', { name: 'Open SSH terminal' });
+    expect(pane('left').queryByRole('button', { name: 'Open SSH terminal' })).toBeNull();
+    fireEvent.click(terminal);
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'open-ssh-terminal',
+        workspaceId: 'workspace-1:right',
+      }),
+    );
+  });
+
+  it('opens the PuTTY setting after an unavailable terminal error', async () => {
+    const successfulWorkspace = statefulApi({
+      sessions: [
+        {
+          workspaceId: 'workspace-1:right',
+          profileId: 'sftp-one',
+          kind: 'sftp',
+          name: 'Development',
+          currentPath: '/',
+          state: 'connected',
+          hostKey: null,
+          capabilities: {
+            read: true,
+            write: true,
+            rename: true,
+            delete: true,
+            createDirectory: true,
+            serverSideCopy: false,
+          },
+        },
+      ],
+    });
+    const workspace = vi.fn<DesktopApi['workspace']>(async (request) => {
+      if (request.action === 'open-ssh-terminal')
+        return {
+          correlationId,
+          ok: false,
+          error: {
+            code: 'EXTERNAL_APPLICATION_UNAVAILABLE',
+            messageKey: 'errors.external.unavailable',
+          },
+        };
+      return successfulWorkspace(request);
+    });
+    setDesktopApi({ ...window.desktop, workspace });
+
+    render(<App />);
+    await screen.findByRole('tab', { name: 'test - Development' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open SSH terminal' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Configure PuTTY' }));
+
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByLabelText('PuTTY executable path (Windows)')).toBeTruthy();
   });
 
   it('opens profiles in the active pane and prevents replacing its connection', async () => {
@@ -705,5 +1044,66 @@ describe('App', () => {
     expect(workspace).toHaveBeenCalledWith({ action: 'set-language', language: 'ru' });
     fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
     expect(screen.getByRole('button', { name: 'Подключения' })).toBeTruthy();
+  });
+
+  it('remembers session paths by default and allows disabling path history', async () => {
+    await i18n.changeLanguage('en');
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    const checkbox = screen.getByRole('checkbox', { name: /Remember session paths/u });
+    expect((checkbox as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(checkbox);
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({ action: 'set-remember-paths', enabled: false }),
+    );
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+  });
+
+  it('stores an optional PuTTY executable path in advanced settings', async () => {
+    await i18n.changeLanguage('en');
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    const input = screen.getByLabelText('PuTTY executable path (Windows)');
+    fireEvent.change(input, { target: { value: 'C:\\Tools\\PuTTY\\putty.exe' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save terminal setting' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'set-putty-path',
+        path: 'C:\\Tools\\PuTTY\\putty.exe',
+      }),
+    );
+  });
+
+  it('stores an optional external editor executable path in advanced settings', async () => {
+    await i18n.changeLanguage('en');
+    const workspace = statefulApi();
+    const selectedEditorPath = 'C:\\Program Files (x86)\\Notepad++\\notepad++.exe';
+    const getPathForFile = vi.fn(() => selectedEditorPath);
+    setDesktopApi({ ...window.desktop, getPathForFile });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    const input = screen.getByLabelText('Editor executable path');
+    fireEvent.change(input, { target: { value: 'C:\\Tools\\Editor\\editor.exe' } });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1100)));
+    expect((input as HTMLInputElement).value).toBe('C:\\Tools\\Editor\\editor.exe');
+    fireEvent.change(screen.getByLabelText('Choose editor'), {
+      target: { files: [new File([''], 'notepad++.exe')] },
+    });
+    expect(getPathForFile).toHaveBeenCalledOnce();
+    expect((input as HTMLInputElement).value).toBe(selectedEditorPath);
+    fireEvent.click(screen.getByRole('button', { name: 'Save editor setting' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'set-editor-path',
+        path: selectedEditorPath,
+      }),
+    );
   });
 });

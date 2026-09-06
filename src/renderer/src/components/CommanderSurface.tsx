@@ -6,17 +6,24 @@ const commandIcons: Record<string, IconName> = {
   mkdir: 'FolderPlus',
   copy: 'Copy',
   download: 'Copy',
+  edit: 'TextCursorInput',
   rename: 'TextCursorInput',
   delete: 'Trash2',
+  terminal: 'SquareTerminal',
 };
 
 export interface FileCommand {
   readonly id: string;
   readonly label: string;
   readonly key?: string;
+  readonly ctrlKey?: boolean;
   readonly disabled?: boolean;
   readonly run: () => void;
 }
+
+export const fileCommandShortcut = (command: FileCommand): string | undefined =>
+  command.key ? `${command.ctrlKey ? 'Ctrl+' : ''}${command.key}` : undefined;
+
 export const CommandButtons = ({ commands }: { readonly commands: readonly FileCommand[] }) => (
   <div className="remote-controls command-bar">
     {commands
@@ -27,7 +34,11 @@ export const CommandButtons = ({ commands }: { readonly commands: readonly FileC
           key={command.id}
           disabled={command.disabled}
           onClick={command.run}
-          title={command.key ? `${command.label} (${command.key})` : command.label}
+          title={
+            fileCommandShortcut(command)
+              ? `${command.label} (${fileCommandShortcut(command)})`
+              : command.label
+          }
           className={`icon-button command-${command.id}`}
         >
           <Icon name={commandIcons[command.id] ?? 'Copy'} />
@@ -50,7 +61,14 @@ export const CommanderSurface = ({
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('input, select, textarea, dialog, [role="dialog"]'))
       return;
-    const command = commands.find((item) => item.key?.toLowerCase() === event.key.toLowerCase());
+    const command = commands.find(
+      (item) =>
+        item.key?.toLowerCase() === event.key.toLowerCase() &&
+        Boolean(item.ctrlKey) === event.ctrlKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        !event.shiftKey,
+    );
     if (command) {
       event.preventDefault();
       event.stopPropagation();
@@ -119,7 +137,7 @@ export const CommanderSurface = ({
                 command.run();
               }}
             >
-              {command.label} <kbd>{command.key}</kbd>
+              {command.label} <kbd>{fileCommandShortcut(command)}</kbd>
             </button>
           ))}
         </div>

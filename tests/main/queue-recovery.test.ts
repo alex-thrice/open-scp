@@ -145,6 +145,61 @@ describe('durable queue and finite reconnect', () => {
     engine.cancel(id);
     engine.dispose();
   });
+  it('restores a pending conflict without changing the destination before a decision', async () => {
+    const { request, root } = await setup();
+    await writeFile(join(root, 'target.txt'), 'existing content');
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, {
+      isEncryptionAvailable: () => false,
+      encryptString: () => {
+        throw new Error();
+      },
+      decryptString: () => {
+        throw new Error();
+      },
+    });
+    const journal = new QueueJournal(new ProfileStore(database, credentials));
+    const id = randomUUID();
+    journal.save([
+      {
+        intent: { sourcePath: request.sourcePath, destinationPath: request.destinationPath },
+        snapshot: {
+          id,
+          workspaceId: request.workspaceId,
+          sourcePath: join(root, 'source.txt'),
+          destinationPath: join(root, 'target.txt'),
+          direction: request.direction,
+          state: 'requiring-review',
+          conflictPolicy: 'ask',
+          transferredBytes: 0n,
+          totalBytes: 21n,
+          speed: 0,
+          elapsed: 0,
+          remaining: null,
+          errorKey: null,
+          conflictPath: join(root, 'target.txt'),
+          conflictSourcePath: join(root, 'source.txt'),
+        },
+      },
+    ]);
+    const engine = new TransferEngine({
+      load: () => journal.load(),
+      save: (records) => journal.save(records),
+      resolve: async () => request,
+    });
+
+    expect(engine.snapshots()[0]).toMatchObject({
+      state: 'requiring-review',
+      conflictPath: join(root, 'target.txt'),
+    });
+    expect(await readFile(join(root, 'target.txt'), 'utf8')).toBe('existing content');
+    await engine.resolveConflict(id, 'overwrite', false);
+    await vi.waitFor(() => expect(engine.snapshots()[0]?.state).toBe('completed'));
+    expect(await readFile(join(root, 'target.txt'), 'utf8')).toBe('queue fixture content');
+
+    engine.dispose();
+    database.close();
+  });
   it('bounds transient retries, classifies authentication and conflict failures, and adds jitter', async () => {
     const { request, provider } = await setup();
     const connect = vi

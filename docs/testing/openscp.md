@@ -30,10 +30,10 @@ AppImage проверен через extract/AppRun. Linux unit: **115 passed, 2
 
 Артефакты:
 
-- `release/openscp-0.1.0-win-x64-setup.exe`
-- `release/openscp-0.1.0-win-x64-portable.exe`
-- `release/linux-container/openscp-0.1.0-linux-amd64.deb`
-- `release/linux-container/openscp-0.1.0-linux-x86_64.AppImage`
+- `release/openscp-0.2.0-win-x64-setup.exe`
+- `release/openscp-0.2.0-win-x64-portable.exe`
+- `release/linux-container/openscp-0.2.0-linux-amd64.deb`
+- `release/linux-container/openscp-0.2.0-linux-x86_64.AppImage`
 
 UI smoke проверяет имя процесса Electron, заголовок, файловые операции, SFTP/S3 transfers,
 шифрование credentials, перезапуск и наличие MIT/сторонних уведомлений в packaged resources.

@@ -215,7 +215,8 @@ export const SftpPanel = ({
           {
             id: 'refresh',
             label: t('commander.refresh'),
-            key: 'F4',
+            key: 'F5',
+            ctrlKey: true,
             run: () => void load(listing.currentPath),
           },
           {

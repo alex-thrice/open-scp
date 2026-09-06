@@ -15,7 +15,7 @@ const { sftp } = utils;
 
 for (const side of ['left', 'right'] as const) {
   for (const authenticate of [true, false]) {
-    test(`keeps the ${side} pane usable after SFTP host trust and ${authenticate ? 'connection' : 'authentication failure'}`, async () => {
+    test(`keeps the ${side} pane usable after SFTP host trust and ${authenticate ? 'connection' : 'password correction'}`, async () => {
       const root = await realpath(await mkdtemp(join(tmpdir(), 'openscp-sftp-pane-files-')));
       const userData = await mkdtemp(join(tmpdir(), 'openscp-sftp-pane-user-'));
       const clients = new Set<Connection>();
@@ -29,7 +29,6 @@ for (const side of ['left', 'right'] as const) {
           client.on('close', () => clients.delete(client));
           client.on('authentication', (context) => {
             if (
-              authenticate &&
               context.method === 'password' &&
               context.username === 'fixture' &&
               context.password === 'fixture-password-only'
@@ -41,7 +40,7 @@ for (const side of ['left', 'right'] as const) {
             client.on('session', (acceptSession) => {
               acceptSession().on('sftp', (acceptSftp) => {
                 const stream = acceptSftp();
-                const handles = new Map<string, boolean>();
+                const handles = new Map<string, { path: string; read: boolean }>();
                 let sequence = 0;
                 const attributes = {
                   mode: 0o100644,
@@ -62,27 +61,44 @@ for (const side of ['left', 'right'] as const) {
                 });
                 stream.on('OPENDIR', (id, path) => {
                   listedPaths.push(path);
-                  if (path !== '/fixture') {
+                  if (path !== '/fixture' && path !== '/fixture/nested') {
                     stream.status(id, sftp.STATUS_CODE.NO_SUCH_FILE);
                     return;
                   }
                   const handle = String(++sequence);
-                  handles.set(handle, false);
+                  handles.set(handle, { path, read: false });
                   stream.handle(id, Buffer.from(handle));
                 });
                 stream.on('READDIR', (id, handle) => {
                   const key = handle.toString();
-                  if (!handles.has(key)) stream.status(id, sftp.STATUS_CODE.FAILURE);
-                  else if (handles.get(key)) stream.status(id, sftp.STATUS_CODE.EOF);
+                  const directory = handles.get(key);
+                  if (!directory) stream.status(id, sftp.STATUS_CODE.FAILURE);
+                  else if (directory.read) stream.status(id, sftp.STATUS_CODE.EOF);
                   else {
-                    handles.set(key, true);
-                    stream.name(id, [
-                      {
-                        filename: 'remote.txt',
-                        longname: '-rw-r--r-- 1 fixture fixture 12 Sep 1 12:00 remote.txt',
-                        attrs: attributes,
-                      },
-                    ]);
+                    directory.read = true;
+                    stream.name(
+                      id,
+                      directory.path === '/fixture'
+                        ? [
+                            {
+                              filename: 'nested',
+                              longname: 'drwxr-xr-x 1 fixture fixture 0 Sep 1 12:00 nested',
+                              attrs: { ...attributes, mode: 0o40755, size: 0 },
+                            },
+                            {
+                              filename: 'remote.txt',
+                              longname: '-rw-r--r-- 1 fixture fixture 12 Sep 1 12:00 remote.txt',
+                              attrs: attributes,
+                            },
+                          ]
+                        : [
+                            {
+                              filename: 'nested.txt',
+                              longname: '-rw-r--r-- 1 fixture fixture 12 Sep 1 12:00 nested.txt',
+                              attrs: attributes,
+                            },
+                          ],
+                    );
                   }
                 });
                 stream.on('CLOSE', (id, handle) => {
@@ -137,7 +153,9 @@ for (const side of ['left', 'right'] as const) {
         await form.getByLabel('Host', { exact: true }).fill('127.0.0.1');
         await form.getByLabel('Port', { exact: true }).fill(String(address.port));
         await form.getByLabel('Username', { exact: true }).fill('fixture');
-        await form.getByLabel('Password', { exact: true }).fill('fixture-password-only');
+        await form
+          .getByLabel('Password', { exact: true })
+          .fill(authenticate ? 'fixture-password-only' : 'incorrect-password');
         await form.getByLabel('Initial directory').fill('/fixture');
         await finishProfile(page, form);
         await openConnection(page, side, 'Local SFTP fixture');
@@ -146,24 +164,32 @@ for (const side of ['left', 'right'] as const) {
         await expect(other.getByRole('row', { name: 'local.txt', exact: true })).toBeVisible();
         await expect(panel.getByRole('button', { name: 'Drive or connection' })).toBeDisabled();
         await panel.getByRole('button', { name: 'Trust this key and connect' }).click();
-        if (authenticate) {
-          await expect(panel.getByRole('row', { name: 'remote.txt', exact: true })).toBeVisible();
-          await expect(panel.getByLabel('Current path')).toHaveValue('/fixture');
+        if (!authenticate) {
+          const passwordDialog = page.getByRole('dialog', { name: 'Connection password' });
+          await expect(passwordDialog).toBeVisible();
           await expect(
-            panel.getByRole('button', { name: 'New directory', exact: true }),
-          ).toBeEnabled();
-          expect(listedPaths.length).toBeGreaterThan(0);
-          expect(listedPaths.every((path) => path === '/fixture')).toBe(true);
-        } else {
-          await expect(panel.getByRole('button', { name: 'Retry connection' })).toBeVisible();
-          await expect(
-            panel.getByRole('button', { name: 'Trust this key and connect' }),
-          ).toHaveCount(0);
-          await expect(
-            panel.getByRole('button', { name: 'New directory', exact: true }),
-          ).toBeDisabled();
-          expect(listedPaths).toEqual([]);
+            passwordDialog.getByText('Authentication failed. Check your credentials.'),
+          ).toBeVisible();
+          await passwordDialog
+            .getByLabel('Password', { exact: true })
+            .fill('fixture-password-only');
+          await passwordDialog
+            .getByRole('checkbox', { name: 'Save password in secure system storage' })
+            .check();
+          await passwordDialog.getByRole('button', { name: 'Connect', exact: true }).click();
         }
+        await expect(panel.getByRole('row', { name: 'remote.txt', exact: true })).toBeVisible();
+        await expect(panel.getByLabel('Current path')).toHaveValue('/fixture');
+        await expect(
+          panel.getByRole('button', { name: 'New directory', exact: true }),
+        ).toBeEnabled();
+        expect(listedPaths.length).toBeGreaterThan(0);
+        expect(listedPaths.every((path) => ['/fixture', '/fixture/nested'].includes(path))).toBe(
+          true,
+        );
+        await panel.getByRole('row', { name: 'Open nested', exact: true }).dblclick();
+        await expect(panel.getByRole('row', { name: 'nested.txt', exact: true })).toBeVisible();
+        await expect(panel.getByLabel('Current path')).toHaveValue('/fixture/nested');
         await expectSourceIndicatorAtEnd(panel);
         await page.getByRole('button', { name: 'Settings', exact: true }).click();
         await page.getByRole('button', { name: 'Dark', exact: true }).click();
@@ -183,6 +209,13 @@ for (const side of ['left', 'right'] as const) {
         await expect(
           page.getByTestId('right-panel').getByRole('button', { name: 'Drive or connection' }),
         ).toBeEnabled();
+        await openConnection(page, side, 'Local SFTP fixture');
+        await expect(
+          page.getByTestId(`${side}-panel`).getByRole('row', { name: 'nested.txt', exact: true }),
+        ).toBeVisible();
+        await expect(page.getByTestId(`${side}-panel`).getByLabel('Current path')).toHaveValue(
+          '/fixture/nested',
+        );
       } finally {
         await application?.close();
         for (const client of clients) client.end();

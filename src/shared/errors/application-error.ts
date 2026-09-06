@@ -10,6 +10,8 @@ export const applicationErrorCodes = {
   hostKeyChanged: 'HOST_KEY_CHANGED',
   authenticationFailed: 'AUTHENTICATION_FAILED',
   connectionFailed: 'CONNECTION_FAILED',
+  externalApplicationFailed: 'EXTERNAL_APPLICATION_FAILED',
+  externalApplicationUnavailable: 'EXTERNAL_APPLICATION_UNAVAILABLE',
   unsafeResume: 'UNSAFE_RESUME',
   internalError: 'INTERNAL_ERROR',
   invalidIpcPayload: 'INVALID_IPC_PAYLOAD',
@@ -78,6 +80,14 @@ const safeErrors = {
   [applicationErrorCodes.connectionFailed]: {
     code: applicationErrorCodes.connectionFailed,
     messageKey: 'errors.security.connectionFailed',
+  },
+  [applicationErrorCodes.externalApplicationFailed]: {
+    code: applicationErrorCodes.externalApplicationFailed,
+    messageKey: 'errors.external.failed',
+  },
+  [applicationErrorCodes.externalApplicationUnavailable]: {
+    code: applicationErrorCodes.externalApplicationUnavailable,
+    messageKey: 'errors.external.unavailable',
   },
   [applicationErrorCodes.unsafeResume]: {
     code: applicationErrorCodes.unsafeResume,

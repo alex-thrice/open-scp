@@ -1,6 +1,6 @@
 import { open } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { basename, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
+import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import type {
   ConnectionProfile,
   S3ConnectionProfile,
@@ -19,13 +19,14 @@ import {
 } from '@shared/models/provider-path';
 import { formatS3Path, parseS3Path, s3Prefix, s3Name } from '@shared/models/s3-path';
 import { s3CredentialsSchema } from '@shared/models/s3-profile';
-import { applicationErrorCodes } from '@shared/errors/application-error';
+import { applicationErrorCodes, getSafeApplicationError } from '@shared/errors/application-error';
 import { ApplicationError } from '../ipc/application-error';
 import { CredentialService } from '../security/credential-service';
 import { ProfileStore } from '../persistence/profile-store';
 import { SftpConnection, type SftpCredentials } from '../providers/sftp/sftp-connection';
 import { SftpProvider } from '../providers/sftp/sftp-provider';
 import { LocalProvider } from '../providers/local/local-provider';
+import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
 import type { LocalDrive } from '@shared/ipc/contracts';
 import { TransferEngine, type TransferRequest } from '../transfers/transfer-engine';
 import { QueueJournal, type TransferIntent } from '../transfers/queue-journal';
@@ -35,7 +36,17 @@ import { SqliteMultipartJournal } from '../providers/s3/multipart-journal';
 import { exportProfiles, importProfiles } from '../persistence/profile-library';
 import { importKnownHosts } from '../security/known-hosts';
 import { Diagnostics } from '../security/diagnostics';
-import { appearanceSchema, defaultAppearance } from '@shared/ipc/workspace';
+import { appearanceSchema, defaultAppearance, workspaceLayoutSchema } from '@shared/ipc/workspace';
+import { ExternalEditService } from '../external/external-edit-service';
+
+export interface WorkspaceExternalActions {
+  readonly openEditor?: (path: string, configuredPath: string | null) => Promise<void>;
+  readonly openLocalFile?: (path: string) => Promise<void>;
+  readonly openSshTerminal?: (
+    profile: SftpConnectionProfile,
+    puttyPath: string | null,
+  ) => Promise<void>;
+}
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -46,11 +57,68 @@ const readAppearance = (value: string | undefined) => {
   }
 };
 
+const readPathRecord = (value: string | undefined): Record<string, string> => {
+  try {
+    const parsed: unknown = JSON.parse(value ?? '{}');
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    return Object.fromEntries(
+      Object.entries(parsed).filter(
+        (entry): entry is [string, string] =>
+          entry[0].length > 0 &&
+          entry[0].length <= 32768 &&
+          typeof entry[1] === 'string' &&
+          entry[1].length > 0 &&
+          entry[1].length <= 32768 &&
+          !entry[1].includes('\0'),
+      ),
+    );
+  } catch {
+    return {};
+  }
+};
+
+const readWorkspaceLayout = (value: string | undefined) => {
+  try {
+    const parsed = workspaceLayoutSchema.safeParse(JSON.parse(value ?? 'null'));
+    if (!parsed.success) return undefined;
+    const workspaceIds = [...new Set(parsed.data.workspaceIds)];
+    if (
+      workspaceIds.length !== parsed.data.workspaceIds.length ||
+      !workspaceIds.includes(parsed.data.activeWorkspaceId)
+    )
+      return undefined;
+    return { ...parsed.data, workspaceIds };
+  } catch {
+    return undefined;
+  }
+};
+
+const readRecentPaths = (value: string | undefined): string[] => {
+  try {
+    const parsed: unknown = JSON.parse(value ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (path): path is string =>
+          typeof path === 'string' &&
+          path.length > 0 &&
+          path.length <= 32768 &&
+          !path.includes('\0'),
+      )
+      .slice(0, 20);
+  } catch {
+    return [];
+  }
+};
+
 export class WorkspaceService {
   public readonly transfers: TransferEngine;
+  private readonly externalEdits: ExternalEditService;
   private readonly sessions = new Map<string, SftpProvider | S3Provider>();
   private readonly mutating = new Set<string>();
   private readonly currentPaths = new Map<string, string>();
+  private readonly pathFallbacks = new Map<string, boolean>();
+  private readonly pendingPasswords = new Map<string, string>();
   private readonly diagnostics = new Diagnostics();
   public constructor(
     private readonly store: ProfileStore,
@@ -62,6 +130,7 @@ export class WorkspaceService {
       content: string,
     ) => Promise<void>,
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
+    private readonly externalActions: WorkspaceExternalActions = {},
   ) {
     const journal = new QueueJournal(store);
     this.transfers = new TransferEngine({
@@ -69,6 +138,34 @@ export class WorkspaceService {
       save: (records) => journal.save(records),
       resolve: (intent, snapshot) => this.restoreTransfer(intent, snapshot),
     });
+    this.externalEdits = new ExternalEditService(
+      store,
+      this.transfers,
+      async (path, configuredPath) => {
+        if (!this.externalActions.openEditor)
+          throw new ApplicationError(applicationErrorCodes.externalApplicationUnavailable);
+        await this.externalActions.openEditor(path, configuredPath);
+      },
+      async (workspaceId, path) => {
+        const provider = this.session(workspaceId);
+        if (
+          provider.connectionState !== 'connected' ||
+          !provider.capabilities.read ||
+          !provider.capabilities.write
+        )
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        return {
+          provider,
+          path: this.remotePath(provider, path),
+          profileId: this.profile(provider).id,
+        };
+      },
+      async (path) => {
+        const provider = new LocalProvider({ rootPath: dirname(path) });
+        await provider.connect();
+        return provider;
+      },
+    );
   }
   private async restoreTransfer(
     intent: TransferIntent,
@@ -91,7 +188,11 @@ export class WorkspaceService {
         (profile.kind === 's3'
           ? this.s3Provider(profile)
           : new SftpProvider(
-              new SftpConnection(profile, () => this.credentialsFor(profile), this.store),
+              new SftpConnection(
+                profile,
+                () => this.credentialsFor(profile, workspaceId),
+                this.store,
+              ),
             ));
       this.sessions.set(workspaceId, provider);
       return provider;
@@ -114,8 +215,29 @@ export class WorkspaceService {
   }
   public snapshot(): WorkspaceSnapshot {
     const language = this.store.getSetting('language');
+    const rememberPaths = this.shouldRememberPaths();
+    const localHistory = rememberPaths
+      ? readPathRecord(this.store.getSetting('local-paths-v1'))
+      : {};
+    const localPaneRoots = rememberPaths
+      ? readPathRecord(this.store.getSetting('local-pane-roots-v1'))
+      : {};
+    const localPanePaths = rememberPaths
+      ? readPathRecord(this.store.getSetting('local-pane-paths-v1'))
+      : {};
     return {
       appearance: readAppearance(this.store.getSetting('appearance')),
+      editorPath: this.store.getSetting('editor-path') || null,
+      puttyPath: this.store.getSetting('putty-path') || null,
+      rememberPaths,
+      workspaceLayout: readWorkspaceLayout(this.store.getSetting('workspace-layout-v1')),
+      localPathHistory: localHistory,
+      localPaths: Object.fromEntries(
+        Object.entries(localPaneRoots).flatMap(([workspaceId, rootPath]) => {
+          const rememberedPath = localPanePaths[workspaceId] ?? localHistory[rootPath];
+          return rememberedPath ? [[workspaceId, rememberedPath]] : [];
+        }),
+      ),
       profileFolders: this.store.folders(),
       profileGroups: Object.fromEntries(
         this.store
@@ -149,6 +271,19 @@ export class WorkspaceService {
         name: this.profile(provider).name,
         kind: provider.kind,
         state: provider.connectionState,
+        ...(provider instanceof SftpProvider
+          ? {
+              connectionStage: provider.connection.stage,
+              connectionErrorKey: provider.connection.failureCode
+                ? getSafeApplicationError(provider.connection.failureCode).messageKey
+                : null,
+              passwordRequired:
+                provider.connection.profile.authentication.method === 'password' &&
+                (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
+                  provider.connection.failureCode === applicationErrorCodes.authenticationFailed),
+              pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
+            }
+          : {}),
         hostKey: provider instanceof SftpProvider ? (provider.connection.hostKey ?? null) : null,
         ...(this.currentPaths.get(workspaceId)
           ? { currentPath: this.currentPaths.get(workspaceId) ?? '' }
@@ -163,12 +298,20 @@ export class WorkspaceService {
         },
       })),
       transfers: [...this.transfers.snapshots()],
+      externalEdits: [...this.externalEdits.snapshots()],
     };
   }
   private recentPaths(profileId: string): string[] {
-    return JSON.parse(this.store.getSetting(`recent:${profileId}`) ?? '[]') as string[];
+    return this.shouldRememberPaths()
+      ? readRecentPaths(this.store.getSetting(`recent:${profileId}`))
+      : [];
+  }
+  private shouldRememberPaths(): boolean {
+    return this.store.getSetting('remember-paths') !== 'false';
   }
   public dispose(): void {
+    this.pendingPasswords.clear();
+    this.externalEdits.dispose();
     this.transfers.dispose();
     for (const provider of this.sessions.values()) void provider.disconnect();
     this.sessions.clear();
@@ -212,10 +355,17 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
     }
   }
-  private async credentialsFor(profile: SftpConnectionProfile): Promise<SftpCredentials> {
+  private async credentialsFor(
+    profile: SftpConnectionProfile,
+    workspaceId?: string,
+  ): Promise<SftpCredentials> {
     const authentication = profile.authentication;
-    if (authentication.method === 'password')
-      return { password: this.credentials.read(authentication.secret.id) };
+    if (authentication.method === 'password') {
+      const pendingPassword = workspaceId ? this.pendingPasswords.get(workspaceId) : undefined;
+      return {
+        password: pendingPassword ?? this.credentials.read(authentication.secret.id),
+      };
+    }
     if (authentication.method === 'agent') {
       const agent =
         process.env.SSH_AUTH_SOCK ??
@@ -308,11 +458,46 @@ export class WorkspaceService {
         })),
       };
     }
-    const currentPath = posix.resolve(
+    const profile = provider.connection.profile;
+    const preferredPath = posix.resolve(
       '/',
-      requested ?? provider.connection.profile.initialDirectory ?? '/',
+      requested ?? this.recentPaths(profile.id)[0] ?? profile.initialDirectory ?? '/',
     );
-    const entries = await provider.list(createSftpProviderPath(currentPath));
+    const candidates = [preferredPath];
+    if (requested === null) {
+      let parent = preferredPath;
+      while (parent !== '/') {
+        parent = posix.dirname(parent);
+        candidates.push(parent);
+      }
+      candidates.push(posix.resolve('/', profile.initialDirectory ?? '/'), '/');
+    }
+    let currentPath = preferredPath;
+    let entries: Awaited<ReturnType<SftpProvider['list']>> | undefined;
+    let listingError: unknown;
+    provider.connection.setDirectoryLoading(true);
+    try {
+      for (const candidate of [...new Set(candidates)]) {
+        try {
+          entries = await provider.list(createSftpProviderPath(candidate));
+          currentPath = candidate;
+          break;
+        } catch (error) {
+          listingError = error;
+          if (
+            requested !== null ||
+            !(error instanceof ProviderError) ||
+            (error.code !== providerErrorCodes.notFound &&
+              error.code !== providerErrorCodes.accessDenied)
+          )
+            throw error;
+        }
+      }
+    } finally {
+      provider.connection.setDirectoryLoading(false);
+    }
+    if (!entries) throw listingError;
+    this.pathFallbacks.set(workspaceId, requested === null && currentPath !== preferredPath);
     const breadcrumbs = [{ label: '/', path: '/' }];
     let prefix = '/';
     for (const segment of currentPath.split('/').filter(Boolean)) {
@@ -333,7 +518,7 @@ export class WorkspaceService {
       })),
     };
   }
-  private async localProvider(path: string): Promise<LocalProvider> {
+  private async localDrive(path: string): Promise<LocalDrive> {
     if (!isAbsolute(path)) throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
     const target = resolve(path);
     const drive = (await this.listDrives()).find((item) => {
@@ -341,6 +526,10 @@ export class WorkspaceService {
       return remainder !== '..' && !remainder.startsWith(`..${sep}`) && !isAbsolute(remainder);
     });
     if (!drive) throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+    return drive;
+  }
+  private async localProvider(path: string): Promise<LocalProvider> {
+    const drive = await this.localDrive(path);
     const provider = new LocalProvider({ rootPath: drive.path });
     await provider.connect();
     return provider;
@@ -388,6 +577,94 @@ export class WorkspaceService {
       case 'clear-transfer-history':
         this.transfers.clearHistory();
         break;
+      case 'set-putty-path':
+        this.store.setSetting('putty-path', request.path ?? '');
+        break;
+      case 'set-editor-path':
+        if (request.path && !isAbsolute(request.path))
+          throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+        this.store.setSetting('editor-path', request.path ?? '');
+        break;
+      case 'set-remember-paths':
+        this.store.setSetting('remember-paths', request.enabled ? 'true' : 'false');
+        if (!request.enabled) {
+          this.store.setSetting('local-paths-v1', '{}');
+          this.store.setSetting('local-pane-roots-v1', '{}');
+          this.store.setSetting('local-pane-paths-v1', '{}');
+          for (const profile of this.store.list())
+            this.store.setSetting(`recent:${profile.id}`, '[]');
+        }
+        break;
+      case 'remember-workspace-layout':
+        if (
+          new Set(request.layout.workspaceIds).size !== request.layout.workspaceIds.length ||
+          !request.layout.workspaceIds.includes(request.layout.activeWorkspaceId)
+        )
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        this.store.setSetting('workspace-layout-v1', JSON.stringify(request.layout));
+        break;
+      case 'remember-local-path': {
+        if (!this.shouldRememberPaths()) break;
+        const provider = await this.localProvider(request.path);
+        const entry = await provider.stat(createLocalProviderPath(request.path));
+        if (entry.kind !== 'directory')
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        const drive = await this.localDrive(request.path);
+        const history = readPathRecord(this.store.getSetting('local-paths-v1'));
+        const paneRoots = readPathRecord(this.store.getSetting('local-pane-roots-v1'));
+        const panePaths = readPathRecord(this.store.getSetting('local-pane-paths-v1'));
+        history[drive.path] = resolve(request.path);
+        paneRoots[request.workspaceId] = drive.path;
+        panePaths[request.workspaceId] = resolve(request.path);
+        this.store.setSetting('local-paths-v1', JSON.stringify(history));
+        this.store.setSetting('local-pane-roots-v1', JSON.stringify(paneRoots));
+        this.store.setSetting('local-pane-paths-v1', JSON.stringify(panePaths));
+        break;
+      }
+      case 'edit-file': {
+        const remote = this.sessions.get(request.workspaceId);
+        if (remote) await this.externalEdits.open(request.workspaceId, request.path);
+        else {
+          const provider = await this.localProvider(request.path);
+          const entry = await provider.stat(createLocalProviderPath(request.path));
+          if (entry.kind !== 'file')
+            throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+          if (!this.externalActions.openEditor)
+            throw new ApplicationError(applicationErrorCodes.externalApplicationUnavailable);
+          await this.externalActions.openEditor(
+            request.path,
+            this.store.getSetting('editor-path') || null,
+          );
+        }
+        break;
+      }
+      case 'resolve-external-edit':
+        await this.externalEdits.resolve(request.id, request.resolution);
+        break;
+      case 'open-local-file': {
+        const provider = await this.localProvider(request.path);
+        const entry = await provider.stat(createLocalProviderPath(request.path));
+        if (entry.kind !== 'file')
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        if (!this.externalActions.openLocalFile)
+          throw new ApplicationError(applicationErrorCodes.externalApplicationUnavailable);
+        await this.externalActions.openLocalFile(request.path);
+        break;
+      }
+      case 'open-ssh-terminal': {
+        const provider = this.session(request.workspaceId);
+        if (
+          !(provider instanceof SftpProvider) ||
+          provider.connectionState !== 'connected' ||
+          !this.externalActions.openSshTerminal
+        )
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        await this.externalActions.openSshTerminal(
+          provider.connection.profile,
+          this.store.getSetting('putty-path') || null,
+        );
+        break;
+      }
       case 'save-export':
         await this.saveExport?.(
           request.kind,
@@ -487,6 +764,7 @@ export class WorkspaceService {
         if (this.transfers.hasActive(request.workspaceId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         await this.sessions.get(request.workspaceId)?.disconnect();
+        this.pendingPasswords.delete(request.workspaceId);
         this.sessions.delete(request.workspaceId);
         this.currentPaths.delete(request.workspaceId);
         break;
@@ -596,12 +874,6 @@ export class WorkspaceService {
         const previous = this.store.list().find((profile) => profile.id === draft.id);
         const existing = previous?.kind === 'sftp' ? previous.authentication : undefined;
         const reference = { id: randomUUID(), storage: 'safe-storage' as const };
-        if (
-          draft.authMode === 'password' &&
-          request.secret === undefined &&
-          existing?.method !== 'password'
-        )
-          throw new ApplicationError(applicationErrorCodes.credentialRequired);
         if (draft.authMode === 'private-key' && !isAbsolute(draft.privateKeyPath))
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
         const profile: SftpConnectionProfile = {
@@ -661,12 +933,43 @@ export class WorkspaceService {
             profile.kind === 's3'
               ? this.s3Provider(profile)
               : new SftpProvider(
-                  new SftpConnection(profile, () => this.credentialsFor(profile), this.store),
+                  new SftpConnection(
+                    profile,
+                    () => this.credentialsFor(profile, request.workspaceId),
+                    this.store,
+                  ),
                 );
           this.sessions.set(request.workspaceId, provider);
         }
         if (provider instanceof S3Provider) await provider.testConnection();
         else await provider.connect();
+        break;
+      }
+      case 'cancel-connect': {
+        const provider = this.session(request.workspaceId);
+        if (!(provider instanceof SftpProvider))
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        this.pendingPasswords.delete(request.workspaceId);
+        await provider.disconnect();
+        break;
+      }
+      case 'provide-password': {
+        const provider = this.session(request.workspaceId);
+        const profile = provider instanceof SftpProvider ? provider.connection.profile : undefined;
+        if (!profile || profile.authentication.method !== 'password')
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        this.pendingPasswords.set(request.workspaceId, request.password);
+        try {
+          await provider.connect();
+          if (request.save)
+            this.store.replaceCredential(
+              profile.id,
+              profile.authentication.secret.id,
+              request.password,
+            );
+        } finally {
+          this.pendingPasswords.delete(request.workspaceId);
+        }
         break;
       }
       case 'trust-host': {
@@ -686,13 +989,14 @@ export class WorkspaceService {
       case 'disconnect':
         if (this.transfers.hasActive(request.workspaceId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
+        this.pendingPasswords.delete(request.workspaceId);
         await this.sessions.get(request.workspaceId)?.disconnect();
         this.sessions.delete(request.workspaceId);
         break;
       case 'list':
         listing = await this.listing(request.workspaceId, request.path);
         this.currentPaths.set(request.workspaceId, listing.currentPath);
-        {
+        if (this.shouldRememberPaths()) {
           const profileId = this.profile(this.session(request.workspaceId)).id;
           const currentPath = listing.currentPath;
           this.store.setSetting(
@@ -845,7 +1149,7 @@ export class WorkspaceService {
         await this.transfers.retry(request.id, request.resume);
         break;
       case 'resolve-conflict':
-        this.transfers.resolveConflict(request.id, request.policy);
+        await this.transfers.resolveConflict(request.id, request.policy, request.applyToAll);
         break;
       case 'pick-private-key':
         privateKeyPath = await this.pickPrivateKey();

@@ -8,10 +8,12 @@ export const useWorkspaceService = (isActive: boolean) => {
     transfers: [],
     language: null,
   });
+  const [initialized, setInitialized] = useState(false);
   const [errorKey, setErrorKey] = useState<string | null>(null);
   const refresh = useCallback(async () => {
     const response = await window.desktop.workspace({ action: 'snapshot' });
     if (response.ok) setSnapshot(response.data.snapshot);
+    setInitialized(true);
   }, []);
   const run = useCallback(
     async (request: WorkspaceRequest) => {
@@ -33,6 +35,6 @@ export const useWorkspaceService = (isActive: boolean) => {
     const timer = setInterval(() => void refresh(), 1000);
     return () => clearInterval(timer);
   }, [isActive, refresh]);
-  return { snapshot, run, errorKey };
+  return { snapshot, run, errorKey, initialized };
 };
 export type WorkspaceRunner = ReturnType<typeof useWorkspaceService>['run'];

@@ -11,6 +11,7 @@ export const WorkspaceView = ({
   tabId,
   tabPanelId,
   initialPaths,
+  initialized,
   snapshot,
   run,
   errorKey,
@@ -27,6 +28,7 @@ export const WorkspaceView = ({
   readonly tabPanelId: string;
   readonly initialPaths:
     { readonly left: string | null; readonly right: string | null } | undefined;
+  readonly initialized: boolean;
   readonly snapshot: WorkspaceSnapshot;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
@@ -93,7 +95,8 @@ export const WorkspaceView = ({
               paneId={paneId}
               active={activeSide === side}
               isActive={isActive}
-              initialPath={initialPaths?.[side] ?? null}
+              initialPath={initialPaths?.[side] ?? snapshot.localPaths?.[paneId] ?? null}
+              initialized={initialized}
               snapshot={snapshot}
               run={run}
               errorKey={errorKey}

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Appearance } from '@shared/ipc/workspace';
 import { Dialog } from './Dialog';
@@ -7,22 +7,39 @@ import type { WorkspaceRunner } from './useWorkspaceService';
 
 export const SettingsDialog = ({
   appearance,
+  editorPath,
+  initialPage,
+  puttyPath,
+  rememberPaths,
   run,
   errorKey,
   onClose,
 }: {
   readonly appearance: Appearance;
+  readonly editorPath: string | null;
+  readonly initialPage: 'appearance' | 'shortcuts' | 'advanced';
+  readonly puttyPath: string | null;
+  readonly rememberPaths: boolean;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
   readonly onClose: () => void;
 }) => {
   const { t, i18n } = useTranslation();
-  const [page, setPage] = useState<'appearance' | 'shortcuts' | 'advanced'>('appearance');
+  const [page, setPage] = useState<'appearance' | 'shortcuts' | 'advanced'>(initialPage);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState(appearance);
+  const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
+  const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
+  const editorFileInput = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (!busy) setDraft(appearance);
-  }, [appearance, busy]);
+    setDraft(appearance);
+  }, [appearance]);
+  useEffect(() => {
+    setEditorPathDraft(editorPath ?? '');
+  }, [editorPath]);
+  useEffect(() => {
+    setPuttyPathDraft(puttyPath ?? '');
+  }, [puttyPath]);
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
   const update = async (value: Partial<Appearance>) => {
@@ -118,6 +135,24 @@ export const SettingsDialog = ({
                   <small>{t('ui.hiddenHint')}</small>
                 </span>
               </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={rememberPaths}
+                  disabled={busy}
+                  onChange={(event) => {
+                    const enabled = event.currentTarget.checked;
+                    setBusy(true);
+                    void run({ action: 'set-remember-paths', enabled }).finally(() =>
+                      setBusy(false),
+                    );
+                  }}
+                />
+                <span>
+                  {t('path.remember')}
+                  <small>{t('path.rememberHint')}</small>
+                </span>
+              </label>
               <label>
                 {t('language.label')}
                 <select
@@ -147,9 +182,10 @@ export const SettingsDialog = ({
                 ['F6', 'commander.switchPanel'],
                 ['F7', 'operations.mkdir'],
                 ['F5', 'operations.copy'],
+                ['Ctrl+F5', 'commander.refresh'],
                 ['F2', 'operations.rename'],
                 ['Delete', 'operations.delete'],
-                ['F4', 'commander.refresh'],
+                ['F4', 'operations.edit'],
                 ['Backspace', 'commander.up'],
               ].map(([key, label]) => (
                 <div key={key}>
@@ -176,6 +212,82 @@ export const SettingsDialog = ({
                 <Icon name="FileOutput" />
                 {t('library.report')}
               </button>
+              <h4>{t('terminal.settings')}</h4>
+              <p className="muted">{t('terminal.settingsHint')}</p>
+              <label>
+                {t('terminal.puttyPath')}
+                <input
+                  aria-label={t('terminal.puttyPath')}
+                  disabled={busy}
+                  maxLength={32768}
+                  placeholder={t('terminal.puttyPathPlaceholder')}
+                  value={puttyPathDraft}
+                  onChange={(event) => setPuttyPathDraft(event.currentTarget.value)}
+                />
+              </label>
+              <button
+                disabled={busy || puttyPathDraft === (puttyPath ?? '')}
+                onClick={() => {
+                  setBusy(true);
+                  const path = puttyPathDraft.trim();
+                  void run({ action: 'set-putty-path', path: path || null }).finally(() =>
+                    setBusy(false),
+                  );
+                }}
+              >
+                <Icon name="SquareTerminal" />
+                {t('terminal.savePath')}
+              </button>
+              <h4>{t('editor.settings')}</h4>
+              <p className="muted">{t('editor.settingsHint')}</p>
+              <label>
+                {t('editor.path')}
+                <input
+                  aria-label={t('editor.path')}
+                  disabled={busy}
+                  maxLength={32768}
+                  placeholder={t('editor.pathPlaceholder')}
+                  value={editorPathDraft}
+                  onChange={(event) => setEditorPathDraft(event.currentTarget.value)}
+                />
+              </label>
+              <input
+                ref={editorFileInput}
+                aria-label={t('editor.chooseFile')}
+                disabled={busy}
+                hidden
+                type="file"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  const path = file ? window.desktop.getPathForFile?.(file) : undefined;
+                  if (path) setEditorPathDraft(path);
+                  event.currentTarget.value = '';
+                }}
+              />
+              <div className="button-group">
+                <button
+                  disabled={busy}
+                  type="button"
+                  onClick={() => editorFileInput.current?.click()}
+                >
+                  <Icon name="FileInput" />
+                  {t('editor.chooseFile')}
+                </button>
+                <button
+                  disabled={busy || editorPathDraft === (editorPath ?? '')}
+                  type="button"
+                  onClick={() => {
+                    setBusy(true);
+                    const path = editorPathDraft.trim();
+                    void run({ action: 'set-editor-path', path: path || null }).finally(() =>
+                      setBusy(false),
+                    );
+                  }}
+                >
+                  <Icon name="TextCursorInput" />
+                  {t('editor.savePath')}
+                </button>
+              </div>
               <h4>{t('library.knownHosts')}</h4>
               <p className="muted">{t('library.importWarning')}</p>
               <label>

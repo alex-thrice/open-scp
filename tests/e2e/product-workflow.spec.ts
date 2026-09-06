@@ -199,18 +199,10 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
     await local.getByRole('row', { name: 'a.txt', exact: true }).focus();
     await window.keyboard.press('Shift+ArrowDown');
     await window.keyboard.press('F5');
-    await window
-      .getByRole('dialog', { name: 'Copy', exact: true })
-      .getByRole('button', { name: 'Confirm', exact: true })
-      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
     await local
       .getByRole('row', { name: 'drag.txt', exact: true })
       .dragTo(remote.locator('.commander-surface'));
-    await window
-      .getByRole('dialog', { name: 'Copy', exact: true })
-      .getByRole('button', { name: 'Confirm', exact: true })
-      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(3);
     await writeFile(join(root, 'external.txt'), 'external file fixture');
     await window.evaluate(`(() => {
@@ -236,10 +228,6 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
       return path;
     })()`);
     expect(resolvedFilePath).toBe(join(root, 'external.txt'));
-    await window
-      .getByRole('dialog', { name: 'Copy', exact: true })
-      .getByRole('button', { name: 'Confirm', exact: true })
-      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(4);
     await window.getByRole('button', { name: 'New workspace' }).click();
     await openConnection(window, 'right', 'Product SFTP');
@@ -256,15 +244,11 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
     await window.getByRole('tab').first().click();
     await local.getByRole('row', { name: 'a.txt', exact: true }).click();
     await window.keyboard.press('F5');
-    await window
-      .getByRole('dialog', { name: 'Copy', exact: true })
-      .getByRole('button', { name: 'Confirm', exact: true })
-      .click();
-    await expect(window.getByText(/^Already exists:/u)).toBeVisible();
+    await expect(window.getByRole('alertdialog')).toContainText('Destination already exists');
     await application.close();
     application = await launch();
     window = await application.firstWindow();
-    await expect(window.getByText(/The app stopped before this transfer finished/u)).toBeVisible();
+    await expect(window.getByRole('alertdialog')).toContainText('Destination already exists');
     const state = await window.evaluate(async () => {
       const desktop = Reflect.get(globalThis, 'desktop') as DesktopApi;
       const result = await desktop.workspace({ action: 'snapshot' });

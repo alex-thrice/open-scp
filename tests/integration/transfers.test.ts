@@ -123,7 +123,7 @@ describe('Local ↔ OpenSSH transfers', () => {
     await writeFile(join(localRoot, 'tree', 'Unicode файл.txt'), 'second');
     const ask = upload('tree', 'ask');
     await wait(ask, 'requiring-review');
-    engine.resolveConflict(ask, 'skip');
+    void engine.resolveConflict(ask, 'skip', false);
     await wait(ask);
     await wait(download('tree'));
     expect(await readFile(join(localRoot, 'download-tree', 'Unicode файл.txt'), 'utf8')).toBe(

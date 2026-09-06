@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceTab } from '@shared/models/workspace-tab';
-import { defaultAppearance } from '@shared/ipc/workspace';
+import { defaultAppearance, type WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
 import { ProfileLibrary } from './components/ProfileLibrary';
@@ -10,6 +10,7 @@ import { Dialog } from './components/Dialog';
 import { Icon } from './components/Icon';
 import { useWorkspaceService } from './components/useWorkspaceService';
 import { TransferQueue } from './components/TransferQueue';
+import { ExternalEditPrompt } from './components/ExternalEditPrompt';
 import {
   hasWorkspaceConnection,
   sessionPaneId,
@@ -27,6 +28,29 @@ const createWorkspace = (sequence: number): WorkspaceTab => ({
 });
 const getTabId = (id: string) => `workspace-tab-${id}`;
 const getTabPanelId = (id: string) => `workspace-panel-${id}`;
+const workspaceSequences = (ids: readonly (string | undefined)[]): number[] =>
+  [
+    ...new Set(
+      ids.flatMap((id) => {
+        if (!id) return [];
+        const workspaceId = workspaceOf(id);
+        const match = /^workspace-([1-9]\d{0,3})$/u.exec(workspaceId);
+        return match?.[1] ? [Number(match[1])] : [];
+      }),
+    ),
+  ].sort((left, right) => left - right);
+
+const restoredWorkspaceSequences = (snapshot: WorkspaceSnapshot): number[] => {
+  const stored = workspaceSequences(snapshot.workspaceLayout?.workspaceIds ?? []);
+  if (stored.length) return stored;
+  const required = workspaceSequences([
+    ...snapshot.transfers.flatMap((item) => [item.workspaceId, item.destinationWorkspaceId]),
+    ...snapshot.sessions.map((item) => item.workspaceId),
+  ]);
+  if (required.length) return required;
+  const local = workspaceSequences(Object.keys(snapshot.localPaths ?? {}));
+  return [local.at(-1) ?? 1];
+};
 
 export const App = () => {
   const { i18n, t } = useTranslation();
@@ -45,6 +69,8 @@ export const App = () => {
   const closingRef = useRef(false);
   const connecting = useRef(new Set<string>());
   const [connectingIds, setConnectingIds] = useState<ReadonlySet<string>>(new Set());
+  const [workspaceLayoutReady, setWorkspaceLayoutReady] = useState(false);
+  const restoredWorkspaceLayout = useRef(false);
   const service = useWorkspaceService(true);
   const appearance = service.snapshot.appearance ?? defaultAppearance;
   useEffect(() => {
@@ -61,38 +87,35 @@ export const App = () => {
     return () => media?.removeEventListener('change', apply);
   }, [appearance.theme]);
   useEffect(() => {
-    let live = true;
-    void window.desktop.workspace({ action: 'snapshot' }).then((result) => {
-      if (!live || !result.ok) return;
-      const ids = [
-        ...result.data.snapshot.transfers.flatMap((item) => [
-          item.workspaceId,
-          item.destinationWorkspaceId,
-        ]),
-        ...result.data.snapshot.sessions.map((item) => item.workspaceId),
-      ];
-      const sequences = [
-        ...new Set(
-          ids
-            .filter((id): id is string => !!id)
-            .map(workspaceOf)
-            .filter((id) => /^workspace-\d+$/u.test(id))
-            .map((id) => Number(id.slice(10))),
-        ),
-      ].filter((value) => value > 0 && value < 10000);
-      sequence.current = Math.max(sequence.current, ...sequences);
-      setWorkspaces((current) => [
-        ...current,
-        ...sequences
-          .filter((value) => !current.some((item) => item.sequence === value))
-          .map(createWorkspace),
-      ]);
-      if (result.data.snapshot.language) void i18n.changeLanguage(result.data.snapshot.language);
+    if (!service.snapshot.language) return;
+    void i18n.changeLanguage(service.snapshot.language);
+  }, [i18n, service.snapshot.language]);
+  useEffect(() => {
+    if (!service.initialized || restoredWorkspaceLayout.current) return;
+    restoredWorkspaceLayout.current = true;
+    const sequences = restoredWorkspaceSequences(service.snapshot);
+    sequence.current = Math.max(...sequences);
+    setWorkspaces(sequences.map(createWorkspace));
+    const storedActiveSequence = workspaceSequences([
+      service.snapshot.workspaceLayout?.activeWorkspaceId,
+    ])[0];
+    const activeSequence =
+      storedActiveSequence && sequences.includes(storedActiveSequence)
+        ? storedActiveSequence
+        : (sequences.at(-1) ?? 1);
+    setActiveWorkspaceId(`workspace-${activeSequence}`);
+    setWorkspaceLayoutReady(true);
+  }, [service.initialized, service.snapshot]);
+  useEffect(() => {
+    if (!workspaceLayoutReady || !workspaces.length) return;
+    void service.run({
+      action: 'remember-workspace-layout',
+      layout: {
+        activeWorkspaceId,
+        workspaceIds: workspaces.map((workspace) => workspace.id),
+      },
     });
-    return () => {
-      live = false;
-    };
-  }, [i18n]);
+  }, [activeWorkspaceId, service.run, workspaceLayoutReady, workspaces]);
   const reportLocations = useCallback(
     (id: string, value: Partial<Record<PaneSide, PaneLocation>>) => {
       setLocations((current) => ({ ...current, [id]: value }));
@@ -288,7 +311,7 @@ export const App = () => {
           <button
             aria-label={t('tabs.add')}
             className="workspace-tab__add icon-button"
-            disabled={closing}
+            disabled={closing || !workspaceLayoutReady}
             onClick={addWorkspace}
             title={t('tabs.addHint')}
           >
@@ -318,6 +341,11 @@ export const App = () => {
       {error && !libraryOpen && !settingsOpen && !pendingClose ? (
         <div className="app-error inline-error" role="alert">
           {t(error)}
+          {error === 'errors.external.unavailable' ? (
+            <button type="button" onClick={() => setSettingsOpen(true)}>
+              {t('terminal.configure')}
+            </button>
+          ) : null}
         </div>
       ) : null}
       {workspaces.map((workspace) => (
@@ -328,6 +356,7 @@ export const App = () => {
           tabId={getTabId(workspace.id)}
           tabPanelId={getTabPanelId(workspace.id)}
           initialPaths={workspace.initialPaths}
+          initialized={service.initialized && workspaceLayoutReady}
           snapshot={service.snapshot}
           run={service.run}
           errorKey={error}
@@ -340,6 +369,7 @@ export const App = () => {
         />
       ))}
       <TransferQueue transfers={service.snapshot.transfers} run={service.run} />
+      <ExternalEditPrompt edits={service.snapshot.externalEdits ?? []} run={service.run} />
       {libraryOpen ? (
         <ProfileLibrary
           snapshot={service.snapshot}
@@ -354,6 +384,10 @@ export const App = () => {
       {settingsOpen ? (
         <SettingsDialog
           appearance={appearance}
+          editorPath={service.snapshot.editorPath ?? null}
+          initialPage={error === 'errors.external.unavailable' ? 'advanced' : 'appearance'}
+          puttyPath={service.snapshot.puttyPath ?? null}
+          rememberPaths={service.snapshot.rememberPaths !== false}
           run={service.run}
           errorKey={error}
           onClose={() => setSettingsOpen(false)}

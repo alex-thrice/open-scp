@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { app, BrowserWindow, ipcMain, session, safeStorage, dialog } from 'electron';
+import { app, BrowserWindow, ipcMain, session, safeStorage, dialog, shell, screen } from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { openDatabase } from './persistence/database';
 import { CredentialService } from './security/credential-service';
@@ -17,6 +17,11 @@ import { configureProductionContentSecurityPolicy } from './security/content-sec
 import { configureWebContentsSecurity } from './security/web-contents-security';
 import { createWindowOptions } from './window-options';
 import { setApplicationLanguage } from './application-menu';
+import { openSshTerminal } from './external/ssh-terminal';
+import { openEditor } from './external/editor';
+import { applicationErrorCodes } from '@shared/errors/application-error';
+import { ApplicationError } from './ipc/application-error';
+import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
 
 if (!app.isPackaged) app.setName('OpenSCP');
 
@@ -33,10 +38,45 @@ const createAppReadyEvent = (): IpcEventEnvelope<AppReadyEvent> => ({
   },
 });
 
-const createMainWindow = (): BrowserWindow => {
+const createMainWindow = (profileStore: ProfileStore): BrowserWindow => {
+  const persistedState = readWindowState(profileStore.getSetting('main-window-state-v1'));
+  const restoredBounds = persistedState
+    ? fitWindowBounds(
+        persistedState.bounds,
+        [screen.getPrimaryDisplay(), ...screen.getAllDisplays()].map((display) => display.workArea),
+        { width: 880, height: 560 },
+      )
+    : undefined;
   const mainWindow = new BrowserWindow({
     ...createWindowOptions(__dirname),
+    ...restoredBounds,
     ...(app.isPackaged ? { icon: join(process.resourcesPath, 'icon.png') } : {}),
+  });
+  let saveTimer: ReturnType<typeof setTimeout> | undefined;
+  let hasWindowShown = false;
+  const saveWindowState = (): void => {
+    if (mainWindow.isDestroyed()) return;
+    const state: PersistedWindowState = {
+      bounds: mainWindow.getNormalBounds(),
+      isFullScreen: mainWindow.isFullScreen(),
+      isMaximized: mainWindow.isMaximized(),
+    };
+    profileStore.setSetting('main-window-state-v1', JSON.stringify(state));
+  };
+  const scheduleWindowStateSave = (): void => {
+    if (!hasWindowShown) return;
+    if (saveTimer) clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveWindowState, 250);
+  };
+  mainWindow.on('enter-full-screen', scheduleWindowStateSave);
+  mainWindow.on('leave-full-screen', scheduleWindowStateSave);
+  mainWindow.on('maximize', scheduleWindowStateSave);
+  mainWindow.on('move', scheduleWindowStateSave);
+  mainWindow.on('resize', scheduleWindowStateSave);
+  mainWindow.on('unmaximize', scheduleWindowStateSave);
+  mainWindow.once('close', () => {
+    if (saveTimer) clearTimeout(saveTimer);
+    if (hasWindowShown) saveWindowState();
   });
   mainWindows.add(mainWindow);
 
@@ -62,6 +102,9 @@ const createMainWindow = (): BrowserWindow => {
 
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
+    if (persistedState?.isFullScreen) mainWindow.setFullScreen(true);
+    else if (persistedState?.isMaximized) mainWindow.maximize();
+    hasWindowShown = true;
   });
 
   mainWindow.webContents.once('did-finish-load', () => {
@@ -123,6 +166,14 @@ app.whenReady().then(async () => {
         await writeFile(result.filePath, content, { encoding: 'utf8', mode: 0o600 });
     },
     setApplicationLanguage,
+    {
+      openEditor,
+      openLocalFile: async (path) => {
+        const error = await shell.openPath(path);
+        if (error) throw new ApplicationError(applicationErrorCodes.externalApplicationFailed);
+      },
+      openSshTerminal,
+    },
   );
   app.once('will-quit', () => {
     workspaceService.dispose();
@@ -150,11 +201,11 @@ app.whenReady().then(async () => {
     });
   }
 
-  createMainWindow();
+  createMainWindow(profileStore);
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow();
+      createMainWindow(profileStore);
     }
   });
 });

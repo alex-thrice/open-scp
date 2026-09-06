@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import type { Appearance, WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
-import { CommanderSurface, CommandButtons, type FileCommand } from './CommanderSurface';
+import {
+  CommanderSurface,
+  CommandButtons,
+  fileCommandShortcut,
+  type FileCommand,
+} from './CommanderSurface';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import { SourcePicker } from './SourcePicker';
@@ -18,12 +23,32 @@ import {
   type PaneSide,
 } from './workspace-layout';
 
+const localFallbackPaths = (path: string): string[] => {
+  const candidates: string[] = [];
+  let current = path;
+  while (true) {
+    const withoutTrailingSeparator = current.replace(/[\\/]+$/u, '');
+    const separatorIndex = Math.max(
+      withoutTrailingSeparator.lastIndexOf('\\'),
+      withoutTrailingSeparator.lastIndexOf('/'),
+    );
+    let parent = withoutTrailingSeparator.slice(0, separatorIndex);
+    if (/^[A-Za-z]:$/u.test(parent)) parent += '\\';
+    else if (!parent && current.startsWith('/')) parent = '/';
+    if (!parent || parent === current || candidates.includes(parent)) break;
+    candidates.push(parent);
+    current = parent;
+  }
+  return candidates;
+};
+
 export const FilePane = ({
   paneId,
   side,
   active,
   isActive,
   initialPath,
+  initialized,
   snapshot,
   run,
   errorKey,
@@ -40,6 +65,7 @@ export const FilePane = ({
   readonly active: boolean;
   readonly isActive: boolean;
   readonly initialPath: string | null;
+  readonly initialized: boolean;
   readonly snapshot: WorkspaceSnapshot;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
@@ -59,13 +85,11 @@ export const FilePane = ({
   const [listing, setListing] = useState<LocalDirectoryListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [pathFallback, setPathFallback] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
-  const [operation, setOperation] = useState<'mkdir' | 'rename' | 'delete' | 'copy' | null>(null);
+  const [operation, setOperation] = useState<'mkdir' | 'rename' | 'delete' | null>(null);
   const [busy, setBusy] = useState(false);
-  const [copyRequests, setCopyRequests] = useState<FileTransferRequest[]>([]);
-  const [conflictPolicy, setConflictPolicy] = useState<'ask' | 'overwrite' | 'skip' | 'rename'>(
-    'ask',
-  );
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [deletions, setDeletions] = useState<Record<
     string,
     NonNullable<WorkspaceResult['deletion']>
@@ -74,19 +98,53 @@ export const FilePane = ({
   const operationVersion = useRef(0);
   const panel = useRef<HTMLElement>(null);
   const pathInput = useRef<HTMLInputElement>(null);
-  const attemptedPath = useRef<string | null>(initialPath);
+  const initialPathReference = useRef(initialPath);
+  const hasSuccessfulListing = useRef(false);
+  const attemptedPath = useRef<string | null>(initialPathReference.current);
+  const shouldRestoreFileFocus = useRef(false);
   const load = useCallback(
     async (path: string | null) => {
+      shouldRestoreFileFocus.current =
+        panel.current?.querySelector('.file-list-shell')?.contains(document.activeElement) ?? false;
       attemptedPath.current = path;
       const request = ++version.current;
       setLoading(true);
       setLoadError(null);
+      setPathFallback(false);
       if (kind === 'local') {
         const result = await window.desktop.listLocalDirectory(path);
         if (request !== version.current) return;
         if (result.ok) {
           setListing(result.data);
           setSelection([]);
+          hasSuccessfulListing.current = true;
+          await run({
+            action: 'remember-local-path',
+            workspaceId: paneId,
+            path: result.data.currentPath,
+          });
+        } else if (
+          path !== null &&
+          path === initialPathReference.current &&
+          !hasSuccessfulListing.current
+        ) {
+          let fallback: Awaited<ReturnType<typeof window.desktop.listLocalDirectory>> | undefined;
+          for (const candidate of [...localFallbackPaths(path), null]) {
+            fallback = await window.desktop.listLocalDirectory(candidate);
+            if (fallback.ok) break;
+          }
+          if (request !== version.current) return;
+          if (fallback?.ok) {
+            setListing(fallback.data);
+            setSelection([]);
+            setPathFallback(true);
+            hasSuccessfulListing.current = true;
+            await run({
+              action: 'remember-local-path',
+              workspaceId: paneId,
+              path: fallback.data.currentPath,
+            });
+          } else setLoadError(result.error.messageKey);
         } else setLoadError(result.error.messageKey);
       } else {
         const result = await run({ action: 'list', workspaceId: paneId, path });
@@ -101,14 +159,18 @@ export const FilePane = ({
     [kind, run, paneId],
   );
   useEffect(() => {
+    if (!hasSuccessfulListing.current) initialPathReference.current = initialPath;
+  }, [initialPath]);
+  useEffect(() => {
     setListing(null);
     setSelection([]);
-    if (ready) void load(kind === 'local' ? initialPath : null);
+    if (!initialized) setLoading(true);
+    else if (ready) void load(kind === 'local' ? initialPathReference.current : null);
     else setLoading(false);
     return () => {
       version.current++;
     };
-  }, [load, ready, initialPath, kind]);
+  }, [load, ready, kind, initialized]);
   const completed = snapshot.transfers
     .filter((transfer) => transfer.state === 'completed')
     .map((transfer) => transfer.id)
@@ -135,6 +197,19 @@ export const FilePane = ({
   }, [side, kind, currentPath, title, ready, listing, loading, writable, onLocation]);
   const entries =
     listing?.entries.filter((entry) => appearance.showHidden || !entry.name.startsWith('.')) ?? [];
+  useLayoutEffect(() => {
+    if (loading || !shouldRestoreFileFocus.current) return;
+    shouldRestoreFileFocus.current = false;
+    if (
+      panel.current?.dataset.active !== 'true' ||
+      (document.activeElement !== null && document.activeElement !== document.body)
+    )
+      return;
+    const focusTarget =
+      panel.current.querySelector<HTMLElement>('[data-testid="file-row"][tabindex="0"]') ??
+      panel.current.querySelector<HTMLElement>('.commander-surface');
+    focusTarget?.focus();
+  }, [currentPath, entries.length, loading]);
   const selected = selection.filter((path) => entries.some((entry) => entry.path === path));
   const selectedEntry = entries.find((entry) => entry.path === selected[0]);
   const invalidSelection =
@@ -162,9 +237,9 @@ export const FilePane = ({
       })();
   };
   const queueCopy = (requests: FileTransferRequest[]) => {
-    setCopyRequests(requests);
-    setConflictPolicy('ask');
-    setOperation('copy');
+    void (async () => {
+      for (const request of requests) if (!(await run(request))) return;
+    })();
   };
   const commands: FileCommand[] = [
     {
@@ -212,6 +287,23 @@ export const FilePane = ({
       run: () => begin('rename'),
     },
     {
+      id: 'edit',
+      label: t('operations.edit'),
+      key: 'F4',
+      disabled:
+        selected.length !== 1 ||
+        selectedEntry?.kind !== 'file' ||
+        !ready ||
+        busy ||
+        loading ||
+        (kind !== 'local' &&
+          (!session?.capabilities?.read || !session.capabilities.write || isBucketList)),
+      run: () => {
+        const path = selected[0];
+        if (path) void run({ action: 'edit-file', workspaceId: paneId, path });
+      },
+    },
+    {
       id: 'delete',
       label: t('operations.delete'),
       key: 'Delete',
@@ -226,7 +318,8 @@ export const FilePane = ({
     {
       id: 'refresh',
       label: t('commander.refresh'),
-      key: 'F4',
+      key: 'F5',
+      ctrlKey: true,
       disabled: !ready || loading,
       run: () => void load(listing?.currentPath ?? null),
     },
@@ -240,6 +333,12 @@ export const FilePane = ({
       },
     },
   ];
+  if (kind === 'sftp' && session?.state === 'connected')
+    commands.push({
+      id: 'terminal',
+      label: t('terminal.open'),
+      run: () => void run({ action: 'open-ssh-terminal', workspaceId: paneId }),
+    });
   const retry = () => {
     if (session)
       void run({ action: 'connect', workspaceId: paneId, profileId: session.profileId }).then(
@@ -249,6 +348,8 @@ export const FilePane = ({
       );
   };
   const hostProfile = snapshot.profiles.find((profile) => profile.id === session?.profileId);
+  const refreshCommand = commands.find((command) => command.id === 'refresh');
+  const refreshShortcut = refreshCommand ? fileCommandShortcut(refreshCommand) : undefined;
   return (
     <section
       ref={panel}
@@ -291,7 +392,11 @@ export const FilePane = ({
           <span className="source-state">
             {kind === 'local'
               ? t('ui.local')
-              : `${kind.toUpperCase()} · ${t(`connections.states.${session?.state}`)}`}
+              : `${kind.toUpperCase()} · ${t(
+                  session?.connectionStage
+                    ? `connections.stages.${session.connectionStage}`
+                    : `connections.states.${session?.state}`,
+                )}`}
           </span>
         </div>
         <div className="pathbar">
@@ -309,7 +414,11 @@ export const FilePane = ({
           <button
             className="icon-button"
             aria-label={t('toolbar.refresh')}
-            title={t('toolbar.refresh')}
+            title={
+              refreshShortcut
+                ? `${t('toolbar.refresh')} (${refreshShortcut})`
+                : t('toolbar.refresh')
+            }
             disabled={!ready || loading}
             onClick={() => void load(listing?.currentPath ?? null)}
           >
@@ -346,6 +455,16 @@ export const FilePane = ({
             ) : null}
           </div>
         ) : null}
+        {session?.pathFallback && !loadError ? (
+          <div className="inline-notice" role="status">
+            {t('path.restoredFallback')}
+          </div>
+        ) : null}
+        {pathFallback && !loadError ? (
+          <div className="inline-notice" role="status">
+            {t('path.restoredFallback')}
+          </div>
+        ) : null}
         {session?.hostKey ? (
           <div className="host-key" role="alert">
             <code>
@@ -373,9 +492,29 @@ export const FilePane = ({
           </div>
         ) : null}
         {session && session.state !== 'connected' && !session.hostKey ? (
-          <div className="panel-state">
+          <div className="panel-state" role="status">
             <Icon name={isS3 ? 'Database' : 'ShieldCheck'} />
-            <strong>{t(`connections.states.${session.state}`)}</strong>
+            {session.state === 'connecting' ? (
+              <progress aria-label={t('connections.progress')} />
+            ) : null}
+            <strong>
+              {t(
+                session.connectionStage
+                  ? `connections.stages.${session.connectionStage}`
+                  : `connections.states.${session.state}`,
+              )}
+            </strong>
+            {session.connectionErrorKey ? (
+              <span className="inline-error">{t(session.connectionErrorKey)}</span>
+            ) : null}
+            {session.state === 'connecting' ? (
+              <button
+                disabled={passwordBusy}
+                onClick={() => void run({ action: 'cancel-connect', workspaceId: paneId })}
+              >
+                {t('connections.cancelConnect')}
+              </button>
+            ) : null}
             {session.state === 'failed' || session.state === 'disconnected' ? (
               <button onClick={retry}>{t('ui.reconnect')}</button>
             ) : null}
@@ -396,7 +535,7 @@ export const FilePane = ({
               </button>
             </div>
           ))}
-        {loading || isConnecting ? (
+        {loading || (isConnecting && !session) ? (
           <div className="panel-state" role="status">
             <span className="spinner" />
             {t('fileList.loading')}
@@ -409,6 +548,12 @@ export const FilePane = ({
               selectedPaths={selected}
               onSelectionChange={setSelection}
               onOpenDirectory={(path) => void load(path)}
+              {...(kind === 'local'
+                ? {
+                    onOpenFile: (path: string) =>
+                      void run({ action: 'open-local-file', workspaceId: paneId, path }),
+                  }
+                : {})}
               dragSource={{ workspaceId: paneId, side: kind === 'local' ? 'local' : 'remote' }}
               rowHeight={appearance.density === 'compact' ? 30 : 38}
             />
@@ -425,6 +570,69 @@ export const FilePane = ({
           </span>
         </footer>
       </CommanderSurface>
+      {session?.passwordRequired ? (
+        <Dialog
+          title={t('connections.passwordPromptTitle')}
+          onClose={() => {
+            if (!passwordBusy) void run({ action: 'cancel-connect', workspaceId: paneId });
+          }}
+        >
+          <p>{t('connections.passwordPromptHint', { name: session.name })}</p>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (passwordBusy) return;
+              const form = event.currentTarget;
+              const data = new FormData(form);
+              const password = String(data.get('password') ?? '');
+              const save = data.get('save') === 'on';
+              if (!password) return;
+              form.reset();
+              setPasswordBusy(true);
+              void run({
+                action: 'provide-password',
+                workspaceId: paneId,
+                password,
+                save,
+              }).finally(() => setPasswordBusy(false));
+            }}
+          >
+            <label>
+              {t('connections.password')}
+              <input
+                autoFocus
+                autoComplete="current-password"
+                disabled={passwordBusy}
+                maxLength={65536}
+                name="password"
+                required
+                type="password"
+              />
+            </label>
+            <label className="checkbox-label">
+              <input disabled={passwordBusy} name="save" type="checkbox" />
+              <span>{t('connections.savePassword')}</span>
+            </label>
+            {errorKey ? (
+              <p role="alert" className="inline-error">
+                {t(errorKey)}
+              </p>
+            ) : null}
+            <div className="dialog-actions">
+              <button
+                disabled={passwordBusy}
+                type="button"
+                onClick={() => void run({ action: 'cancel-connect', workspaceId: paneId })}
+              >
+                {t('connections.cancel')}
+              </button>
+              <button className="primary" disabled={passwordBusy}>
+                {t(passwordBusy ? 'ui.working' : 'connections.submitPassword')}
+              </button>
+            </div>
+          </form>
+        </Dialog>
+      ) : null}
       {operation ? (
         <Dialog title={t(`operations.${operation}`)} onClose={closeOperation}>
           {operation === 'rename' && isS3 ? (
@@ -437,10 +645,7 @@ export const FilePane = ({
               const name = String(new FormData(event.currentTarget).get('name') ?? '');
               setBusy(true);
               void (async () => {
-                if (operation === 'copy') {
-                  for (const request of copyRequests)
-                    if (!(await run({ ...request, conflictPolicy }))) return;
-                } else if (listing) {
+                if (listing) {
                   const separator =
                     kind === 'local' && listing.currentPath.includes('\\') ? '\\' : '/';
                   const destinationPath = isS3
@@ -487,34 +692,7 @@ export const FilePane = ({
               })().finally(() => setBusy(false));
             }}
           >
-            {operation === 'copy' ? (
-              <>
-                <p>
-                  {t('ui.copyCount', {
-                    count: copyRequests.length,
-                    path: copyRequests[0]?.destinationDirectory,
-                  })}
-                </p>
-                <label>
-                  {t('transfers.conflictPolicy')}
-                  <select
-                    value={conflictPolicy}
-                    onChange={(event) =>
-                      setConflictPolicy(event.currentTarget.value as typeof conflictPolicy)
-                    }
-                  >
-                    {(['ask', 'overwrite', 'skip', 'rename'] as const).map((policy) => (
-                      <option value={policy} key={policy}>
-                        {t(`transfers.policies.${policy}`)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                {conflictPolicy === 'overwrite' ? (
-                  <p className="inline-error">{t('commander.overwrite')}</p>
-                ) : null}
-              </>
-            ) : operation === 'delete' ? (
+            {operation === 'delete' ? (
               <>
                 <p>{t('commander.deleteSelection')}</p>
                 <ul className="operation-selection">
