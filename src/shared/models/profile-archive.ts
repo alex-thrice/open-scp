@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { profileDraftSchema } from '../ipc/workspace';
 import { s3ProfileDraftSchema } from './s3-profile';
+import { ftpProfileDraftSchema } from './ftp-profile';
 
 export const profileArchiveSchema = z.strictObject({
   version: z.literal(1),
@@ -8,6 +9,11 @@ export const profileArchiveSchema = z.strictObject({
   profiles: z
     .array(
       z.discriminatedUnion('kind', [
+        z.strictObject({
+          kind: z.literal('ftp'),
+          profile: ftpProfileDraftSchema.refine((profile) => profile.id === null),
+          group: z.string().max(100),
+        }),
         z.strictObject({
           kind: z.literal('sftp'),
           profile: profileDraftSchema.refine((profile) => profile.id === null),

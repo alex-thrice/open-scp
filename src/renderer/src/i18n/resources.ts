@@ -9,6 +9,12 @@ export const resources = {
       ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
+      ftp: {
+        profile: 'FTP profile',
+        new: 'New FTP',
+        insecureWarning:
+          'Unencrypted FTP sends the password, file names and file contents without encryption. Use it only with a server and network you trust.',
+      },
       s3: {
         profile: 'S3 profile',
         selector: 'Connection profile',
@@ -93,6 +99,7 @@ export const resources = {
           failed: 'Connection failed',
           handshaking: 'Negotiating SSH connection',
           'loading-directory': 'Loading directory',
+          negotiating: 'Negotiating FTP features',
           'opening-sftp': 'Opening SFTP channel',
           'resolving-credentials': 'Preparing credentials',
           starting: 'Starting connection',
@@ -293,6 +300,12 @@ export const resources = {
         tagline: 'Кроссплатформенный файловый клиент',
       },
       common: { notAvailable: '—' },
+      ftp: {
+        profile: 'Профиль FTP',
+        new: 'Новый FTP',
+        insecureWarning:
+          'Незашифрованный FTP передаёт пароль, имена и содержимое файлов без шифрования. Используйте его только с доверенными сервером и сетью.',
+      },
       s3: {
         profile: 'Профиль S3',
         selector: 'Профиль подключения',
@@ -377,6 +390,7 @@ export const resources = {
           failed: 'Ошибка подключения',
           handshaking: 'Согласование SSH-соединения',
           'loading-directory': 'Загрузка каталога',
+          negotiating: 'Согласование возможностей FTP',
           'opening-sftp': 'Открытие SFTP-канала',
           'resolving-credentials': 'Подготовка учётных данных',
           starting: 'Запуск подключения',

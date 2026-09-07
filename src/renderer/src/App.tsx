@@ -13,6 +13,7 @@ import { TransferQueue } from './components/TransferQueue';
 import { ExternalEditPrompt } from './components/ExternalEditPrompt';
 import {
   hasWorkspaceConnection,
+  protocolIcon,
   sessionPaneId,
   workspaceIds,
   workspaceOf,
@@ -270,6 +271,9 @@ export const App = () => {
                 t('tabs.workspace', { number: workspace.sequence }),
               );
               const remote = hasWorkspaceConnection(service.snapshot, workspace.id);
+              const remoteSession = service.snapshot.sessions.find((item) =>
+                workspaceIds(workspace.id).includes(item.workspaceId),
+              );
               return (
                 <div
                   className="workspace-tab"
@@ -288,7 +292,15 @@ export const App = () => {
                     role="tab"
                     tabIndex={active ? 0 : -1}
                   >
-                    <Icon name={remote ? 'ShieldCheck' : 'PanelsTopLeft'} />
+                    <Icon
+                      name={
+                        remoteSession
+                          ? protocolIcon(remoteSession.kind ?? 'sftp')
+                          : remote
+                            ? 'Plug'
+                            : 'PanelsTopLeft'
+                      }
+                    />
                     <span>{name}</span>
                   </button>
                   {workspaces.length > 1 || remote ? (

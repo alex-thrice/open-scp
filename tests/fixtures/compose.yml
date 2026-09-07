@@ -1,5 +1,17 @@
 name: openscp-integration
 services:
+  ftp:
+    build:
+      context: .
+      dockerfile: ftp/Dockerfile
+    ports:
+      - '127.0.0.1:21210:21'
+      - '127.0.0.1:30000-30009:30000-30009'
+    healthcheck:
+      test: ['CMD', 'pidof', 'vsftpd']
+      interval: 2s
+      timeout: 3s
+      retries: 30
   openssh:
     build:
       context: .

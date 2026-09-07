@@ -14,6 +14,19 @@ export type SftpConnectionStage =
   | 'starting'
   | 'verifying-host-key';
 
+export type FtpConnectionStage =
+  | 'authenticating'
+  | 'cancelled'
+  | 'connected'
+  | 'connecting'
+  | 'failed'
+  | 'loading-directory'
+  | 'negotiating'
+  | 'resolving-credentials'
+  | 'starting';
+
+export type ProviderConnectionStage = FtpConnectionStage | SftpConnectionStage;
+
 export interface ProviderSessionSnapshot {
   readonly connectedAt?: string;
   readonly id: string;

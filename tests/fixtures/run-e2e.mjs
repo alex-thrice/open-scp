@@ -9,6 +9,7 @@ const result = spawnSync(
     require.resolve('@playwright/test/cli'),
     'test',
     'sftp-transfer.spec.ts',
+    'ftp-transfer.spec.ts',
     's3-transfer.spec.ts',
     'product-workflow.spec.ts',
   ],

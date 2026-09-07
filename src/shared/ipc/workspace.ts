@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
+import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 
 const id = z.string().min(1).max(200);
 const workspaceId = z.string().regex(/^workspace-[1-9]\d{0,3}$/u);
@@ -108,6 +109,11 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
     secretAccessKey: z.string().min(1).max(65536).optional(),
     sessionToken: z.string().max(65536).optional(),
   }),
+  z.strictObject({
+    action: z.literal('save-ftp-profile'),
+    profile: ftpProfileDraftSchema,
+    password: z.string().max(65536).optional(),
+  }),
   z.strictObject({ action: z.literal('preview-delete'), workspaceId: id, path }),
   z.strictObject({ action: z.literal('copy'), workspaceId: id, path, destinationPath: path }),
   z.strictObject({ action: z.literal('cleanup-multipart'), profileId: id }),
@@ -203,7 +209,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['sftp', 's3']).optional(),
+      kind: z.enum(['ftp', 'sftp', 's3']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z
@@ -215,6 +221,7 @@ export const workspaceSnapshotSchema = z.strictObject({
           'failed',
           'handshaking',
           'loading-directory',
+          'negotiating',
           'opening-sftp',
           'resolving-credentials',
           'starting',
@@ -223,6 +230,7 @@ export const workspaceSnapshotSchema = z.strictObject({
         .optional(),
       connectionErrorKey: z.string().nullable().optional(),
       passwordRequired: z.boolean().optional(),
+      insecure: z.boolean().optional(),
       pathFallback: z.boolean().optional(),
       hostKey: z.strictObject({ fingerprint: z.string(), changed: z.boolean() }).nullable(),
       currentPath: path.optional(),

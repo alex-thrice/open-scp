@@ -261,7 +261,7 @@ export const ProfileLibrary = ({
                       >
                         <strong>{item.name}</strong>
                         <small>
-                          {item.kind === 'sftp'
+                          {item.kind === 'sftp' || item.kind === 'ftp'
                             ? `${item.username}@${item.host}`
                             : item.bucket || item.endpoint || item.region}
                         </small>

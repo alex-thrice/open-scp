@@ -10,7 +10,7 @@ interface SourceItem {
   readonly id: string;
   readonly name: string;
   readonly detail: string;
-  readonly kind: 'local' | 'sftp' | 's3';
+  readonly kind: 'ftp' | 'local' | 'sftp' | 's3';
   readonly image: string | undefined;
 }
 
@@ -111,7 +111,10 @@ export const SourcePicker = ({
         .map((item) => ({
           id: item.id,
           name: item.name,
-          detail: item.kind === 'sftp' ? item.host : item.bucket || item.endpoint || item.region,
+          detail:
+            item.kind === 'sftp' || item.kind === 'ftp'
+              ? item.host
+              : item.bucket || item.endpoint || item.region,
           kind: item.kind,
           image: undefined,
         })),

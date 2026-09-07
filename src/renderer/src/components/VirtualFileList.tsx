@@ -18,7 +18,11 @@ export interface VirtualFileListProps {
   readonly selectedPath?: string | null;
   readonly selectedPaths?: readonly string[];
   readonly onSelectionChange?: (paths: string[]) => void;
-  readonly dragSource?: { readonly workspaceId: string; readonly side: 'local' | 'remote' };
+  readonly dragSource?: {
+    readonly workspaceId: string;
+    readonly side: 'local' | 'remote';
+    readonly kind: 'ftp' | 'local' | 's3' | 'sftp';
+  };
 }
 
 const overscanRowCount = 8;

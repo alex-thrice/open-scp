@@ -17,7 +17,7 @@ export const expectSourceIndicatorAtEnd = async (panel: Locator) => {
   expect(geometry.indicatorWidth).toBe(14);
 };
 
-export const newConnection = async (page: Page, kind: 'sftp' | 's3') => {
+export const newConnection = async (page: Page, kind: 'ftp' | 'sftp' | 's3') => {
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByRole('button', { name: 'Connection', exact: true }).click();
   const form = page.getByRole('dialog', { name: 'Connections', exact: true });
@@ -25,7 +25,7 @@ export const newConnection = async (page: Page, kind: 'sftp' | 's3') => {
   if (kind === 'sftp') {
     await form.getByLabel('Authentication').selectOption('password');
     await form.getByText('Advanced', { exact: true }).click();
-  }
+  } else if (kind === 'ftp') await form.getByText('Advanced', { exact: true }).click();
   return form;
 };
 

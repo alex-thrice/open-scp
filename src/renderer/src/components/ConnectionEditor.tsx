@@ -4,6 +4,7 @@ import type { ConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { ConnectionForm } from './ConnectionForm';
 import { S3ConnectionForm } from './S3ConnectionForm';
+import { FtpConnectionForm } from './FtpConnectionForm';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
 export const ConnectionEditor = ({
@@ -20,7 +21,7 @@ export const ConnectionEditor = ({
   readonly errorKey: string | null;
 }) => {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<'sftp' | 's3'>(profile?.kind ?? 'sftp');
+  const [kind, setKind] = useState<'ftp' | 'sftp' | 's3'>(profile?.kind ?? 'sftp');
   const [group, setGroup] = useState(profile ? (snapshot.profileGroups?.[profile.id] ?? '') : '');
   const [busy, setBusy] = useState(false);
   const savedId = useRef(profile?.id);
@@ -71,6 +72,7 @@ export const ConnectionEditor = ({
         >
           <option value="sftp">SFTP</option>
           <option value="s3">S3</option>
+          <option value="ftp">FTP</option>
         </select>
       </label>
     </>
@@ -78,6 +80,15 @@ export const ConnectionEditor = ({
   return kind === 's3' ? (
     <S3ConnectionForm
       profile={profile?.kind === 's3' ? profile : undefined}
+      run={execute}
+      onClose={onClose}
+      errorKey={errorKey}
+      editorControls={editorControls}
+      afterSave={afterSave}
+    />
+  ) : kind === 'ftp' ? (
+    <FtpConnectionForm
+      profile={profile?.kind === 'ftp' ? profile : undefined}
       run={execute}
       onClose={onClose}
       errorKey={errorKey}
