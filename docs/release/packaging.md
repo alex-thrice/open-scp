@@ -119,7 +119,7 @@ Windows, в рабочей копии, без уже установленног�
 
 ```powershell
 pnpm fixtures:up
-./scripts/smoke-installed-windows.ps1 -InstallerPath ./release/openscp-0.2.0-win-x64-setup.exe -Protocols
+./scripts/smoke-installed-windows.ps1 -InstallerPath ./release/openscp-0.3.0-win-x64-setup.exe -Protocols
 pnpm fixtures:down
 ```
 
