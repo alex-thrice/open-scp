@@ -123,10 +123,14 @@ export const runFileSystemProviderContractTests = (
       expect(capabilities.read).toBe(true);
       expect(capabilities.rename).toBe(true);
       expect(capabilities.trueDirectories).toBe(getHarness().provider.kind !== 's3');
-      if (getHarness().provider.kind === 's3') {
+      if (getHarness().provider.kind === 's3' || getHarness().provider.kind === 'ftp') {
         expect(capabilities.atomicRename).toBe(false);
         expect(capabilities.symbolicLinks).toBe(false);
         expect(capabilities.permissions).toBe(false);
+      }
+      if (getHarness().provider.kind === 'ftp') {
+        expect(capabilities.resumeRead).toBe(false);
+        expect(capabilities.resumeWrite).toBe(false);
       }
       expect(capabilities.write).toBe(true);
     });

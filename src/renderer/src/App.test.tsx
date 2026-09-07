@@ -987,7 +987,7 @@ describe('App', () => {
     );
   });
 
-  it('shows only SFTP/S3 editors and no redundant footer Close button', async () => {
+  it('shows SFTP, S3 and explicitly insecure FTP editors without a redundant Close button', async () => {
     statefulApi();
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
@@ -999,11 +999,14 @@ describe('App', () => {
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3']);
+    ).toEqual(['SFTP', 'S3', 'FTP']);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();
     expect(screen.queryByLabelText('Port')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'ftp' } });
+    expect(screen.getByText(/Unencrypted FTP sends the password/u)).toBeTruthy();
+    expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('21');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();
   });

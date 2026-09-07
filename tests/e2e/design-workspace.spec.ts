@@ -66,7 +66,7 @@ test('local file manager, saved themes, grouped profiles and the S3 editor', asy
     await form.getByLabel('Access key ID', { exact: true }).fill('dummy-access');
     await form.getByLabel('Secret access key', { exact: true }).fill('dummy-secret-not-production');
     await expect(form.getByRole('button', { name: 'Close', exact: true })).toHaveCount(1);
-    await expect(form.getByLabel('Connection type').getByRole('option')).toHaveCount(2);
+    await expect(form.getByLabel('Connection type').getByRole('option')).toHaveCount(3);
     await page.screenshot({ path: test.info().outputPath('s3-editor-dark.png') });
     await finishProfile(page, form);
     await page.getByRole('button', { name: 'Connections', exact: true }).click();

@@ -383,6 +383,12 @@ small {
 .source-icon[data-kind='s3'] {
   color: #ab6b13;
 }
+.source-icon[data-kind='ftp'] {
+  color: #c2410c;
+}
+:root[data-theme='dark'] .source-icon[data-kind='ftp'] {
+  color: #fb923c;
+}
 :root[data-theme='dark'] .source-icon[data-kind='s3'] {
   color: #e6b96d;
 }

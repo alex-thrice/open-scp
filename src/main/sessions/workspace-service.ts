@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import type {
   ConnectionProfile,
+  FtpConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
 } from '@shared/models/connection-profile';
@@ -14,6 +15,7 @@ import type {
 } from '@shared/ipc/workspace';
 import {
   createLocalProviderPath,
+  createFtpProviderPath,
   createSftpProviderPath,
   createS3ProviderPath,
 } from '@shared/models/provider-path';
@@ -25,6 +27,8 @@ import { CredentialService } from '../security/credential-service';
 import { ProfileStore } from '../persistence/profile-store';
 import { SftpConnection, type SftpCredentials } from '../providers/sftp/sftp-connection';
 import { SftpProvider } from '../providers/sftp/sftp-provider';
+import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connection';
+import { FtpProvider } from '../providers/ftp/ftp-provider';
 import { LocalProvider } from '../providers/local/local-provider';
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
 import type { LocalDrive } from '@shared/ipc/contracts';
@@ -47,6 +51,8 @@ export interface WorkspaceExternalActions {
     puttyPath: string | null,
   ) => Promise<void>;
 }
+
+type RemoteProvider = FtpProvider | S3Provider | SftpProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -114,7 +120,7 @@ const readRecentPaths = (value: string | undefined): string[] => {
 export class WorkspaceService {
   public readonly transfers: TransferEngine;
   private readonly externalEdits: ExternalEditService;
-  private readonly sessions = new Map<string, SftpProvider | S3Provider>();
+  private readonly sessions = new Map<string, RemoteProvider>();
   private readonly mutating = new Set<string>();
   private readonly currentPaths = new Map<string, string>();
   private readonly pathFallbacks = new Map<string, boolean>();
@@ -183,17 +189,7 @@ export class WorkspaceService {
       const current = this.sessions.get(workspaceId);
       if (current && this.profile(current).id !== profileId)
         throw new ApplicationError(applicationErrorCodes.providerConflict);
-      const provider =
-        current ??
-        (profile.kind === 's3'
-          ? this.s3Provider(profile)
-          : new SftpProvider(
-              new SftpConnection(
-                profile,
-                () => this.credentialsFor(profile, workspaceId),
-                this.store,
-              ),
-            ));
+      const provider = current ?? this.remoteProvider(profile, workspaceId);
       this.sessions.set(workspaceId, provider);
       return provider;
     };
@@ -271,7 +267,7 @@ export class WorkspaceService {
         name: this.profile(provider).name,
         kind: provider.kind,
         state: provider.connectionState,
-        ...(provider instanceof SftpProvider
+        ...(provider instanceof SftpProvider || provider instanceof FtpProvider
           ? {
               connectionStage: provider.connection.stage,
               connectionErrorKey: provider.connection.failureCode
@@ -282,6 +278,7 @@ export class WorkspaceService {
                 (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
                   provider.connection.failureCode === applicationErrorCodes.authenticationFailed),
               pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
+              ...(provider instanceof FtpProvider ? { insecure: true } : {}),
             }
           : {}),
         hostKey: provider instanceof SftpProvider ? (provider.connection.hostKey ?? null) : null,
@@ -316,12 +313,12 @@ export class WorkspaceService {
     for (const provider of this.sessions.values()) void provider.disconnect();
     this.sessions.clear();
   }
-  private session(workspaceId: string): SftpProvider | S3Provider {
+  private session(workspaceId: string): RemoteProvider {
     const provider = this.sessions.get(workspaceId);
     if (!provider) throw new ApplicationError(applicationErrorCodes.providerNotConnected);
     return provider;
   }
-  private profile(provider: SftpProvider | S3Provider): ConnectionProfile {
+  private profile(provider: RemoteProvider): ConnectionProfile {
     return provider instanceof S3Provider ? provider.profile : provider.connection.profile;
   }
   private journal(profileId: string) {
@@ -347,13 +344,33 @@ export class WorkspaceService {
       this.journal(profile.id),
     );
   }
-  private remotePath(provider: SftpProvider | S3Provider, path: string) {
+  private ftpProvider(profile: FtpConnectionProfile, workspaceId?: string): FtpProvider {
+    return new FtpProvider(
+      new FtpConnection(profile, () => this.ftpCredentialsFor(profile, workspaceId)),
+    );
+  }
+  private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
+    if (profile.kind === 's3') return this.s3Provider(profile);
+    if (profile.kind === 'ftp') return this.ftpProvider(profile, workspaceId);
+    return new SftpProvider(
+      new SftpConnection(profile, () => this.credentialsFor(profile, workspaceId), this.store),
+    );
+  }
+  private remotePath(provider: RemoteProvider, path: string) {
+    if (provider instanceof FtpProvider) return createFtpProviderPath(path);
     if (provider instanceof SftpProvider) return createSftpProviderPath(path);
     try {
       return parseS3Path(path);
     } catch {
       throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
     }
+  }
+  private async ftpCredentialsFor(
+    profile: FtpConnectionProfile,
+    workspaceId?: string,
+  ): Promise<FtpCredentials> {
+    const pendingPassword = workspaceId ? this.pendingPasswords.get(workspaceId) : undefined;
+    return { password: pendingPassword ?? this.credentials.read(profile.authentication.secret.id) };
   }
   private async credentialsFor(
     profile: SftpConnectionProfile,
@@ -479,7 +496,7 @@ export class WorkspaceService {
     try {
       for (const candidate of [...new Set(candidates)]) {
         try {
-          entries = await provider.list(createSftpProviderPath(candidate));
+          entries = await provider.list(this.remotePath(provider, candidate));
           currentPath = candidate;
           break;
         } catch (error) {
@@ -510,7 +527,8 @@ export class WorkspaceService {
       parentPath: currentPath === '/' ? null : posix.dirname(currentPath),
       entries: entries.map((entry) => ({
         name: entry.name,
-        path: entry.path.provider === 'sftp' ? entry.path.path : '',
+        path:
+          entry.path.provider === 'sftp' || entry.path.provider === 'ftp' ? entry.path.path : '',
         kind: entry.kind,
         size: entry.size,
         modifiedAt: entry.modifiedAt ?? null,
@@ -542,7 +560,9 @@ export class WorkspaceService {
     if (request.action === 'remote-transfer' && this.mutating.has(request.destinationWorkspaceId))
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
-      (request.action === 'save-profile' || request.action === 'save-s3-profile') &&
+      (request.action === 'save-profile' ||
+        request.action === 'save-s3-profile' ||
+        request.action === 'save-ftp-profile') &&
       request.profile.id &&
       [...this.sessions].some(
         ([id, provider]) =>
@@ -712,11 +732,13 @@ export class WorkspaceService {
         const reference =
           profile.kind === 's3'
             ? profile.secret
-            : profile.authentication.method === 'password'
+            : profile.kind === 'ftp'
               ? profile.authentication.secret
-              : profile.authentication.method === 'private-key'
-                ? profile.authentication.passphrase
-                : undefined;
+              : profile.authentication.method === 'password'
+                ? profile.authentication.secret
+                : profile.authentication.method === 'private-key'
+                  ? profile.authentication.passphrase
+                  : undefined;
         if (
           reference &&
           !this.store.database
@@ -842,6 +864,29 @@ export class WorkspaceService {
         ).id;
         break;
       }
+      case 'save-ftp-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'ftp')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        const reference =
+          previous?.kind === 'ftp'
+            ? previous.authentication.secret
+            : { id: randomUUID(), storage: 'safe-storage' as const };
+        const profile: FtpConnectionProfile = {
+          id: draft.id ?? randomUUID(),
+          name: draft.name,
+          kind: 'ftp',
+          host: draft.host,
+          port: draft.port,
+          username: draft.username,
+          initialDirectory: draft.initialDirectory,
+          timeout: draft.timeout,
+          authentication: { method: 'password', secret: reference },
+        };
+        savedProfileId = this.store.save(profile, request.password).id;
+        break;
+      }
       case 'preview-delete': {
         const provider = this.session(request.workspaceId);
         if (!(provider instanceof S3Provider))
@@ -929,16 +974,7 @@ export class WorkspaceService {
           JSON.stringify(this.profile(provider)) !== JSON.stringify(profile)
         ) {
           await provider?.disconnect();
-          provider =
-            profile.kind === 's3'
-              ? this.s3Provider(profile)
-              : new SftpProvider(
-                  new SftpConnection(
-                    profile,
-                    () => this.credentialsFor(profile, request.workspaceId),
-                    this.store,
-                  ),
-                );
+          provider = this.remoteProvider(profile, request.workspaceId);
           this.sessions.set(request.workspaceId, provider);
         }
         if (provider instanceof S3Provider) await provider.testConnection();
@@ -947,7 +983,7 @@ export class WorkspaceService {
       }
       case 'cancel-connect': {
         const provider = this.session(request.workspaceId);
-        if (!(provider instanceof SftpProvider))
+        if (!(provider instanceof SftpProvider) && !(provider instanceof FtpProvider))
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.delete(request.workspaceId);
         await provider.disconnect();
@@ -955,7 +991,10 @@ export class WorkspaceService {
       }
       case 'provide-password': {
         const provider = this.session(request.workspaceId);
-        const profile = provider instanceof SftpProvider ? provider.connection.profile : undefined;
+        const profile =
+          provider instanceof SftpProvider || provider instanceof FtpProvider
+            ? provider.connection.profile
+            : undefined;
         if (!profile || profile.authentication.method !== 'password')
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.set(request.workspaceId, request.password);
@@ -1042,7 +1081,7 @@ export class WorkspaceService {
             request.confirmationId,
           );
         } else
-          await provider.delete(createSftpProviderPath(request.path), {
+          await provider.delete(this.remotePath(provider, request.path), {
             recursive: request.recursive,
           });
         break;
@@ -1086,7 +1125,9 @@ export class WorkspaceService {
           destinationPath: isUpload
             ? remoteSource.provider === 's3'
               ? createS3ProviderPath(remoteSource.bucket, `${s3Prefix(remoteSource.key)}${name}`)
-              : createSftpProviderPath(posix.join(request.destinationDirectory, name))
+              : remoteSource.provider === 'ftp'
+                ? createFtpProviderPath(posix.join(request.destinationDirectory, name))
+                : createSftpProviderPath(posix.join(request.destinationDirectory, name))
             : createLocalProviderPath(join(request.destinationDirectory, name)),
         });
         break;
@@ -1107,16 +1148,21 @@ export class WorkspaceService {
         const destinationPath =
           parent.provider === 's3'
             ? createS3ProviderPath(parent.bucket, `${s3Prefix(parent.key)}${name}`)
-            : createSftpProviderPath(posix.join(request.destinationDirectory, name));
+            : parent.provider === 'ftp'
+              ? createFtpProviderPath(posix.join(request.destinationDirectory, name))
+              : createSftpProviderPath(posix.join(request.destinationDirectory, name));
         const sourceProfile = this.profile(source);
         const targetProfile = this.profile(destination);
         const sameServer =
           sourceProfile.kind === 'sftp' && targetProfile.kind === 'sftp'
             ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
               sourceProfile.port === targetProfile.port
-            : sourceProfile.kind === 's3' &&
-              targetProfile.kind === 's3' &&
-              (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
+            : sourceProfile.kind === 'ftp' && targetProfile.kind === 'ftp'
+              ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
+                sourceProfile.port === targetProfile.port
+              : sourceProfile.kind === 's3' &&
+                targetProfile.kind === 's3' &&
+                (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
         const original =
           sourcePath.provider === 's3'
             ? formatS3Path(sourcePath)

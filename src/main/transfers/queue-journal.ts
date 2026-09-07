@@ -4,6 +4,7 @@ import type { TransferSnapshot } from '@shared/models/transfer-snapshot';
 import type { ProfileStore } from '../persistence/profile-store';
 
 const providerPath = z.discriminatedUnion('provider', [
+  z.strictObject({ provider: z.literal('ftp'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('local'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('sftp'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('s3'), bucket: z.string(), key: z.string() }),

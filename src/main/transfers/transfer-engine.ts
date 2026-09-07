@@ -3,6 +3,7 @@ import { basename, dirname, join, posix } from 'node:path';
 import type { FileSystemEntry } from '@shared/models/file-system-entry';
 import {
   createLocalProviderPath,
+  createFtpProviderPath,
   createSftpProviderPath,
   createS3ProviderPath,
   type ProviderPath,
@@ -75,7 +76,9 @@ const childPath = (parent: ProviderPath, name: string): ProviderPath => {
     throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
   return parent.provider === 'local'
     ? createLocalProviderPath(join(parent.path, name))
-    : createSftpProviderPath(posix.join(localPath(parent), name));
+    : parent.provider === 'ftp'
+      ? createFtpProviderPath(posix.join(localPath(parent), name))
+      : createSftpProviderPath(posix.join(localPath(parent), name));
 };
 const siblingPath = (path: ProviderPath, name: string): ProviderPath =>
   path.provider === 's3'
@@ -85,7 +88,9 @@ const siblingPath = (path: ProviderPath, name: string): ProviderPath =>
       )
     : path.provider === 'local'
       ? createLocalProviderPath(join(dirname(path.path), name))
-      : createSftpProviderPath(posix.join(posix.dirname(localPath(path)), name));
+      : path.provider === 'ftp'
+        ? createFtpProviderPath(posix.join(posix.dirname(localPath(path)), name))
+        : createSftpProviderPath(posix.join(posix.dirname(localPath(path)), name));
 const nameOf = (path: ProviderPath) =>
   path.provider === 's3'
     ? s3Name(path.key)
@@ -107,9 +112,11 @@ const tryStat = async (
 const providerPathFromText = (reference: ProviderPath, path: string): ProviderPath =>
   reference.provider === 'local'
     ? createLocalProviderPath(path)
-    : reference.provider === 'sftp'
-      ? createSftpProviderPath(path)
-      : parseS3Path(path);
+    : reference.provider === 's3'
+      ? parseS3Path(path)
+      : reference.provider === 'ftp'
+        ? createFtpProviderPath(path)
+        : createSftpProviderPath(path);
 
 export class TransferEngine {
   private readonly jobs = new Map<string, TransferJob>();

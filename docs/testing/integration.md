@@ -1,4 +1,4 @@
-# Интеграционное окружение OpenSSH и MinIO
+# Интеграционное окружение OpenSSH, FTP и MinIO
 
 Требования: Docker с Linux containers / Docker Compose v2, Node.js и pnpm из настроек проекта,
 `ssh-keygen` в PATH. Все порты публикуются только на `127.0.0.1`. Не используйте это окружение
@@ -11,7 +11,9 @@ pnpm fixtures:down
 ```
 
 `fixtures:up` генерирует одноразовый тестовый ключ, пересоздаёт контейнеры, ожидает успешных
-health checks и заполняет MinIO. Повторный запуск очищает серверное состояние. `fixtures:wait`
+health checks и заполняет MinIO. Повторный запуск очищает серверное состояние. FTP fixture
+собирается из закреплённого Alpine и vsftpd, слушает только loopback и passive-порты.
+`fixtures:wait`
 ожидает готовности уже созданных серверов. `fixtures:down` удаляет только контейнеры и volumes
 Compose-проекта `openscp-integration`. Сгенерированный клиентский ключ остаётся в
 игнорируемом `tests/fixtures/runtime/`; его можно использовать повторно.
@@ -21,6 +23,7 @@ Compose-проекта `openscp-integration`. Сгенерированный к�
 | Сервис  | Адрес                    | Пользователь / ключ   | Тестовый пароль / секрет             |
 | ------- | ------------------------ | --------------------- | ------------------------------------ |
 | OpenSSH | `127.0.0.1:22222`        | `fixture`             | `fixture-password-only`              |
+| FTP     | `127.0.0.1:21210`        | `fixture`             | `fixture-ftp-password-only`          |
 | MinIO   | `http://127.0.0.1:29000` | `fixture-access-only` | `fixture-secret-only-not-production` |
 
 Passphrase генерируемого SSH-ключа: `fixture-passphrase-only`. Эти значения намеренно публичные,
@@ -52,6 +55,8 @@ fingerprint, выполняет файловые операции, upload/downlo
 credentials и доверенный ключ. Тестовые директории удаляются по завершении.
 S3 E2E создаёт encrypted профиль MinIO, держит две S3-вкладки и одну SFTP одновременно,
 проверяет copy/rename, preview/delete prefix и upload/download через общую очередь.
+FTP E2E проверяет постоянное предупреждение о незашифрованном протоколе, навигацию,
+Local ↔ FTP передачу, отсутствие пароля в SQLite и повторное подключение после перезапуска.
 
 После `pnpm package` дополнительно можно проверить именно packaged-приложение (PowerShell):
 
@@ -96,6 +101,19 @@ S3-подключение и download фиктивного объекта MinIO 
 
 Команды: `pnpm test`, `pnpm test:integration`, `pnpm test:e2e:integration`.
 Live AWS credentials не требуются и не использовались.
+
+## Проверки T30
+
+- FTP profile сохраняется отдельно от encrypted password и импортируется/экспортируется без
+  credentials.
+- Passive connect, password failure, UTF-8, MLSD или fallback `LIST -a`/`LIST`, list/stat,
+  mkdir, rename/move, recursive delete и bounded streaming проверяются на vsftpd.
+- Общий provider contract запускается для FTP; capabilities не обещают FTPS, resume, atomic
+  rename, permissions или symbolic links.
+- Local ↔ FTP использует общую очередь и фактический conflict prompt; SFTP/S3 regression tests
+  остаются в тех же suites.
+
+Команды: `pnpm test`, `pnpm test:integration`, `pnpm test:e2e:integration`.
 
 ## Проверки T14–T17
 

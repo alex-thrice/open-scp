@@ -35,6 +35,7 @@ export default tseslint.config(
                 'electron',
                 'node:*',
                 '@aws-sdk/*',
+                'basic-ftp',
                 'better-sqlite3',
                 'ssh2',
                 '@main/*',
@@ -71,7 +72,14 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@aws-sdk/*', 'better-sqlite3', 'ssh2', '@renderer/*', '@main/*'],
+              group: [
+                '@aws-sdk/*',
+                'basic-ftp',
+                'better-sqlite3',
+                'ssh2',
+                '@renderer/*',
+                '@main/*',
+              ],
               message: 'Preload may only depend on Electron and shared contracts.',
             },
           ],
@@ -87,7 +95,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['electron', 'node:*', '@aws-sdk/*', 'better-sqlite3', 'ssh2'],
+              group: ['electron', 'node:*', '@aws-sdk/*', 'basic-ftp', 'better-sqlite3', 'ssh2'],
               message: 'Shared contracts must remain process-neutral.',
             },
           ],

@@ -35,10 +35,12 @@ if (action === 'up') {
     '--wait',
     '--wait-timeout',
     '180',
+    'ftp',
     'openssh',
     'minio',
   );
   compose('run', '--rm', 'seed-minio');
 } else if (action === 'down') compose('down', '--volumes', '--remove-orphans');
-else if (action === 'wait') compose('up', '--wait', '--wait-timeout', '180', 'openssh', 'minio');
+else if (action === 'wait')
+  compose('up', '--wait', '--wait-timeout', '180', 'ftp', 'openssh', 'minio');
 else throw new Error('Expected up, wait or down.');

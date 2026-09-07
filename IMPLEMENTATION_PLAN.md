@@ -1423,7 +1423,7 @@ T19 + T20 → T21
 
 ### M8. FTP
 
-#### [ ] T30. Добавить FTP-подключения
+#### [x] T30. Добавить FTP-подключения
 
 **Зависимости:** T24, T27, T28, T29.
 
@@ -1455,6 +1455,24 @@ T19 + T20 → T21
 - отсутствие или ошибка пароля обрабатывается диалогом из T28;
 - обычное FTP-подключение невозможно принять за защищённое;
 - SFTP и S3 не получают регрессий в общих contract и transfer tests.
+
+**Результат:**
+
+- ADR фиксирует обычный FTP без FTPS, passive mode, парольную аутентификацию, UTF-8 и
+  fallback MLSD → LIST; `basic-ftp` изолирован в main process, а protocol errors получают
+  безопасные типизированные коды;
+- добавлены FTP-профиль, encrypted credential persistence, импорт/экспорт без секретов,
+  диагностика, форма подключения и постоянное предупреждение о незашифрованном протоколе;
+- `FtpProvider` реализует list/stat, bounded read/write streams, mkdir, rename/move и recursive
+  delete; capabilities не обещают FTPS, resume, atomic rename, permissions или symbolic links;
+- FTP подключён к общей навигации, последнему пути, password prompt и очереди с progress,
+  cancel/retry и ask/overwrite/skip/rename conflicts;
+- воспроизводимая passive vsftpd fixture, provider contract и Electron-сценарий покрывают
+  пароль, Unicode, файловые операции, Local ↔ FTP, конфликт и повторное подключение;
+- проверки: `pnpm lint`, `pnpm typecheck`, `pnpm test` — 175 passed, 1 platform skip;
+  `pnpm test:integration` — 39 passed; `pnpm test:e2e` — 14 passed, 6 conditional skips;
+  `pnpm test:e2e:integration` — 5 passed; `pnpm test:packaging`, `pnpm licenses:check` и
+  `pnpm package` выполнены успешно.
 
 ### Рекомендуемый порядок выполнения
 

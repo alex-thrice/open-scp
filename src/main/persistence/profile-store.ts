@@ -25,7 +25,9 @@ export class ProfileStore {
     const secretId = randomUUID();
     if (ciphertext !== undefined) {
       const reference = { id: secretId, storage: 'safe-storage' as const };
-      if (validated.kind === 'sftp' && validated.authentication.method === 'password') {
+      if (validated.kind === 'ftp') {
+        validated = { ...validated, authentication: { method: 'password', secret: reference } };
+      } else if (validated.kind === 'sftp' && validated.authentication.method === 'password') {
         validated = { ...validated, authentication: { method: 'password', secret: reference } };
       } else if (validated.kind === 'sftp' && validated.authentication.method === 'private-key') {
         validated = {
@@ -44,11 +46,13 @@ export class ProfileStore {
       const references =
         validated.kind === 's3'
           ? [validated.secret?.id]
-          : validated.authentication.method === 'agent'
-            ? []
-            : validated.authentication.method === 'password'
-              ? [validated.authentication.secret.id]
-              : [validated.authentication.passphrase?.id];
+          : validated.kind === 'ftp'
+            ? [validated.authentication.secret.id]
+            : validated.authentication.method === 'agent'
+              ? []
+              : validated.authentication.method === 'password'
+                ? [validated.authentication.secret.id]
+                : [validated.authentication.passphrase?.id];
       for (const reference of references) {
         if (reference === undefined || (ciphertext !== undefined && reference === secretId))
           continue;
@@ -81,11 +85,13 @@ export class ProfileStore {
     const reference =
       profile?.kind === 's3'
         ? profile.secret
-        : profile?.authentication.method === 'password'
+        : profile?.kind === 'ftp'
           ? profile.authentication.secret
-          : profile?.authentication.method === 'private-key'
-            ? profile.authentication.passphrase
-            : undefined;
+          : profile?.authentication.method === 'password'
+            ? profile.authentication.secret
+            : profile?.authentication.method === 'private-key'
+              ? profile.authentication.passphrase
+              : undefined;
     if (reference?.id !== credentialId)
       throw new ApplicationError(applicationErrorCodes.credentialRequired);
     const owner = this.database

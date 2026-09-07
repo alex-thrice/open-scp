@@ -9,6 +9,7 @@ import type {
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { ConnectionForm } from './ConnectionForm';
+import { FtpConnectionForm } from './FtpConnectionForm';
 import { PathBreadcrumbs } from './PathBreadcrumbs';
 import { VirtualFileList } from './VirtualFileList';
 import type { WorkspaceRunner } from './useWorkspaceService';
@@ -37,7 +38,7 @@ export const SftpPanel = ({
   const [profileId, setProfileId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isNew, setIsNew] = useState(false);
-  const [newKind, setNewKind] = useState<'sftp' | 's3'>('sftp');
+  const [newKind, setNewKind] = useState<'ftp' | 'sftp' | 's3'>('sftp');
   const [operation, setOperation] = useState<'mkdir' | 'rename' | 'copy' | 'delete' | null>(null);
   const [deletion, setDeletion] = useState<WorkspaceResult['deletion']>();
   const [listing, setListing] = useState<RemoteDirectoryListing | null>(null);
@@ -294,6 +295,15 @@ export const SftpPanel = ({
           {t('s3.new')}
         </button>
         <button
+          onClick={() => {
+            setIsNew(true);
+            setNewKind('ftp');
+            setIsEditing(true);
+          }}
+        >
+          {t('ftp.new')}
+        </button>
+        <button
           disabled={!selectedProfile}
           onClick={() => {
             setIsNew(false);
@@ -462,7 +472,7 @@ export const SftpPanel = ({
               selectedPath={selected}
               selectedPaths={selectedPaths}
               onSelectionChange={setSelectedPaths}
-              dragSource={{ workspaceId, side: 'remote' }}
+              dragSource={{ workspaceId, side: 'remote', kind: selectedProfile?.kind ?? 'sftp' }}
             />
           )}
         </>
@@ -480,6 +490,13 @@ export const SftpPanel = ({
           <S3ConnectionForm
             errorKey={errorKey}
             profile={!isNew && selectedProfile?.kind === 's3' ? selectedProfile : undefined}
+            run={run}
+            onClose={() => setIsEditing(false)}
+          />
+        ) : (isNew ? newKind === 'ftp' : selectedProfile?.kind === 'ftp') ? (
+          <FtpConnectionForm
+            errorKey={errorKey}
+            profile={!isNew && selectedProfile?.kind === 'ftp' ? selectedProfile : undefined}
             run={run}
             onClose={() => setIsEditing(false)}
           />

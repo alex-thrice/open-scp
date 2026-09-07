@@ -18,6 +18,7 @@ import { readFileDrop } from './file-drop';
 import {
   copyRequest,
   directoryName,
+  protocolIcon,
   type FileTransferRequest,
   type PaneLocation,
   type PaneSide,
@@ -368,13 +369,13 @@ export const FilePane = ({
           if (!payload || !listing || !ready || !writable) return;
           queueCopy(
             payload.paths.map((path) =>
-              copyRequest(
-                payload.workspaceId,
-                payload.side === 'local' ? 'local' : 'sftp',
-                path,
-                paneId,
-                { kind, path: listing.currentPath, title, ready, writable },
-              ),
+              copyRequest(payload.workspaceId, payload.kind, path, paneId, {
+                kind,
+                path: listing.currentPath,
+                title,
+                ready,
+                writable,
+              }),
             ),
           );
         }}
@@ -465,6 +466,11 @@ export const FilePane = ({
             {t('path.restoredFallback')}
           </div>
         ) : null}
+        {session?.insecure ? (
+          <div className="inline-error" role="alert">
+            {t('ftp.insecureWarning')}
+          </div>
+        ) : null}
         {session?.hostKey ? (
           <div className="host-key" role="alert">
             <code>
@@ -493,7 +499,7 @@ export const FilePane = ({
         ) : null}
         {session && session.state !== 'connected' && !session.hostKey ? (
           <div className="panel-state" role="status">
-            <Icon name={isS3 ? 'Database' : 'ShieldCheck'} />
+            <Icon name={protocolIcon(kind)} />
             {session.state === 'connecting' ? (
               <progress aria-label={t('connections.progress')} />
             ) : null}
@@ -554,7 +560,11 @@ export const FilePane = ({
                       void run({ action: 'open-local-file', workspaceId: paneId, path }),
                   }
                 : {})}
-              dragSource={{ workspaceId: paneId, side: kind === 'local' ? 'local' : 'remote' }}
+              dragSource={{
+                workspaceId: paneId,
+                side: kind === 'local' ? 'local' : 'remote',
+                kind,
+              }}
               rowHeight={appearance.density === 'compact' ? 30 : 38}
             />
           ) : (

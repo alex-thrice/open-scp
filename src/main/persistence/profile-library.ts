@@ -23,21 +23,31 @@ export const exportProfiles = (store: ProfileStore, profiles = store.list()): st
                 accessKeyId: profile.accessKeyId ?? '',
                 forcePathStyle: profile.forcePathStyle,
               }
-            : {
-                id: null,
-                name: profile.name,
-                host: profile.host,
-                port: profile.port,
-                username: profile.username,
-                authMode: profile.authentication.method,
-                privateKeyPath:
-                  profile.authentication.method === 'private-key'
-                    ? profile.authentication.privateKeyPath
-                    : '',
-                initialDirectory: profile.initialDirectory ?? '/',
-                timeout: profile.timeout ?? 20000,
-                keepalive: profile.keepalive ?? 10000,
-              },
+            : profile.kind === 'ftp'
+              ? {
+                  id: null,
+                  name: profile.name,
+                  host: profile.host,
+                  port: profile.port,
+                  username: profile.username,
+                  initialDirectory: profile.initialDirectory ?? '/',
+                  timeout: profile.timeout ?? 20000,
+                }
+              : {
+                  id: null,
+                  name: profile.name,
+                  host: profile.host,
+                  port: profile.port,
+                  username: profile.username,
+                  authMode: profile.authentication.method,
+                  privateKeyPath:
+                    profile.authentication.method === 'private-key'
+                      ? profile.authentication.privateKeyPath
+                      : '',
+                  initialDirectory: profile.initialDirectory ?? '/',
+                  timeout: profile.timeout ?? 20000,
+                  keepalive: profile.keepalive ?? 10000,
+                },
       })),
     },
     null,
@@ -64,6 +74,22 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
           initialPrefix: draft.initialPrefix,
           ...(draft.endpoint ? { endpoint: draft.endpoint } : {}),
           ...(draft.bucket ? { bucket: draft.bucket } : {}),
+        };
+      } else if (entry.kind === 'ftp') {
+        const draft = entry.profile;
+        profile = {
+          id,
+          name: draft.name,
+          kind: 'ftp',
+          host: draft.host,
+          port: draft.port,
+          username: draft.username,
+          initialDirectory: draft.initialDirectory,
+          timeout: draft.timeout,
+          authentication: {
+            method: 'password',
+            secret: { id: randomUUID(), storage: 'safe-storage' },
+          },
         };
       } else {
         const draft = entry.profile;

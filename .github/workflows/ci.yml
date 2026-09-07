@@ -53,3 +53,19 @@ jobs:
           name: ui-failure-${{ matrix.os }}
           path: test-results/
           retention-days: 7
+
+  integration:
+    name: Provider integration tests
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: pnpm/setup@v2
+        with:
+          runtime: node@24.20.0
+          cache: true
+      - run: pnpm fixtures:up
+      - run: pnpm test:integration
+      - name: Stop provider fixtures
+        if: always()
+        run: pnpm fixtures:down

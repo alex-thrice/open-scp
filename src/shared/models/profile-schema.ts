@@ -30,6 +30,40 @@ export const connectionProfileSchema = z
     z.strictObject({
       id: z.string().uuid(),
       name: z.string().trim().min(1).max(200),
+      kind: z.literal('ftp'),
+      host: z
+        .string()
+        .trim()
+        .min(1)
+        .max(253)
+        .refine((value) => !value.includes('\0') && !value.includes('\r') && !value.includes('\n')),
+      port: z.number().int().min(1).max(65535),
+      username: z
+        .string()
+        .min(1)
+        .max(200)
+        .refine((value) => !value.includes('\0') && !value.includes('\r') && !value.includes('\n')),
+      initialDirectory: z
+        .string()
+        .min(1)
+        .max(32768)
+        .refine(
+          (value) =>
+            value.startsWith('/') &&
+            !value.includes('\0') &&
+            !value.includes('\r') &&
+            !value.includes('\n'),
+        )
+        .optional(),
+      timeout: z.number().int().min(1000).max(120000).optional(),
+      authentication: z.strictObject({
+        method: z.literal('password'),
+        secret: secretReference,
+      }),
+    }),
+    z.strictObject({
+      id: z.string().uuid(),
+      name: z.string().trim().min(1).max(200),
       kind: z.literal('s3'),
       initialPrefix: z.string().max(1024).optional(),
       accessKeyId: z.string().optional(),
@@ -53,6 +87,20 @@ export const connectionProfileSchema = z
         ...(profile.bucket === undefined ? {} : { bucket: profile.bucket }),
         ...(profile.endpoint === undefined ? {} : { endpoint: profile.endpoint }),
         ...(profile.secret === undefined ? {} : { secret: profile.secret }),
+      };
+    if (profile.kind === 'ftp')
+      return {
+        id: profile.id,
+        name: profile.name,
+        kind: profile.kind,
+        host: profile.host,
+        port: profile.port,
+        username: profile.username,
+        ...(profile.initialDirectory === undefined
+          ? {}
+          : { initialDirectory: profile.initialDirectory }),
+        ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
+        authentication: profile.authentication,
       };
     const authentication = profile.authentication;
     return {

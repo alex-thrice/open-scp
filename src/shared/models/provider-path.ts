@@ -1,4 +1,9 @@
-export type ProviderKind = 'local' | 's3' | 'sftp';
+export type ProviderKind = 'ftp' | 'local' | 's3' | 'sftp';
+
+export interface FtpProviderPath {
+  readonly path: string;
+  readonly provider: 'ftp';
+}
 
 export interface LocalProviderPath {
   readonly path: string;
@@ -16,7 +21,12 @@ export interface S3ProviderPath {
   readonly provider: 's3';
 }
 
-export type ProviderPath = LocalProviderPath | S3ProviderPath | SftpProviderPath;
+export type ProviderPath = FtpProviderPath | LocalProviderPath | S3ProviderPath | SftpProviderPath;
+
+export const createFtpProviderPath = (path: string): FtpProviderPath => ({
+  path,
+  provider: 'ftp',
+});
 
 export const createLocalProviderPath = (path: string): LocalProviderPath => ({
   path,
