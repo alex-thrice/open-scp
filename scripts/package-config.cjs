@@ -44,7 +44,7 @@ function createPackageConfig(environment, platform) {
       desktopName: 'openscp.desktop',
       author: signed ? environment.APP_PUBLISHER : 'OpenSCP contributors',
       license: 'MIT',
-      homepage: signed ? environment.APP_HOMEPAGE : 'https://github.com/AlextThice/open-csp',
+      homepage: signed ? environment.APP_HOMEPAGE : 'https://github.com/alex-thrice/open-scp',
     },
     mac: {
       target: [

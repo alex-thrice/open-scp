@@ -23,7 +23,7 @@ test('development metadata is stable and distinct from release signing', () => {
   assert.equal(config.appId, DevelopmentAppId);
   assert.equal(config.productName, 'OpenSCP');
   assert.equal(config.extraMetadata.license, 'MIT');
-  assert.equal(config.extraMetadata.homepage, 'https://github.com/AlextThice/open-csp');
+  assert.equal(config.extraMetadata.homepage, 'https://github.com/alex-thrice/open-scp');
   assert.ok(config.extraResources.some((resource) => resource.to === 'LICENSE'));
   assert.ok(config.extraResources.some((resource) => resource.to === 'licenses'));
   assert.equal(config.mac.identity, '-');

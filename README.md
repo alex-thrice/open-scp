@@ -1,7 +1,7 @@
 # OpenSCP
 
-[Repository](https://github.com/AlextThice/open-csp) ·
-[CI](https://github.com/AlextThice/open-csp/actions/workflows/ci.yml) ·
+[Repository](https://github.com/alex-thrice/open-scp) ·
+[CI](https://github.com/alex-thrice/open-scp/actions/workflows/ci.yml) ·
 [MIT License](LICENSE)
 
 Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict

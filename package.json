@@ -5,12 +5,12 @@
   "private": true,
   "license": "MIT",
   "author": "OpenSCP contributors",
-  "homepage": "https://github.com/AlextThice/open-csp",
+  "homepage": "https://github.com/alex-thrice/open-scp",
   "repository": {
     "type": "git",
-    "url": "https://github.com/AlextThice/open-csp.git"
+    "url": "https://github.com/alex-thrice/open-scp.git"
   },
-  "bugs": "https://github.com/AlextThice/open-csp/issues",
+  "bugs": "https://github.com/alex-thrice/open-scp/issues",
   "description": "Cross-platform desktop file client",
   "main": "./out/main/index.js",
   "packageManager": "pnpm@11.24.0",

@@ -1,6 +1,6 @@
 # OpenSCP: переименование, лицензия и CI
 
-Проверка 2026-09-04. `origin` — `https://github.com/AlextThice/open-csp.git`.
+Проверка 2026-09-04. `origin` — `https://github.com/alex-thrice/open-scp.git`.
 Имя интерфейса/приложения — OpenSCP; технические имена — `openscp`, переменные — `OPENSCP_`.
 
 | Проверка                                                    | Результат                                            |
@@ -46,7 +46,7 @@ Dev-приложение и пакеты сообщают имя OpenSCP. Кон
 ## Ограничения
 
 Здесь приведены результаты локальной проверки. Результаты hosted GitHub Actions доступны
-в [разделе Actions](https://github.com/AlextThice/open-csp/actions).
+в [разделе Actions](https://github.com/alex-thrice/open-scp/actions).
 macOS-сборка и native smoke настроены в CI, но локально не проверены из-за отсутствия Mac.
 Подпись/нотаризация требуют сертификатов владельца; созданные пакеты — development artifacts.
 Старые локальные бинарники не переименовывались, их прежние хеши не относятся к OpenSCP.

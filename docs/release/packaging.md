@@ -8,7 +8,7 @@ T18 **намеренно пропущен по указанию владельц
 `electron-builder.cjs` и `scripts/package-config.cjs` задают единый контракт упаковки.
 Development identity: `com.electron.openscp`, product name `OpenSCP`.
 Имя выбрано владельцем; независимый код распространяется под MIT, сайт проекта —
-`https://github.com/AlextThice/open-csp`. Финальный signing bundle ID, издатель и канал
+`https://github.com/alex-thrice/open-scp`. Финальный signing bundle ID, издатель и канал
 публичных релизов остаются отдельными решениями. `example.invalid` в dev maintainer email —
 заведомо несуществующий контакт. Настройки нового имени хранятся отдельно от ранних dev builds.
 
