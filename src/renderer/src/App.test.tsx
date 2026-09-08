@@ -1148,17 +1148,65 @@ describe('App', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
     expect(screen.getByText('Current version: 0.3.0')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Automatically check for updates',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Automatically download available updates',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: /^Automatically install downloaded updates on exit/u,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Automatically download available updates' }),
     );
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'set-update-settings',
-        settings: { ...defaultUpdateSettings, automaticDownload: false },
+        settings: { ...defaultUpdateSettings, automaticDownload: true },
       }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
     await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'check-for-updates' }));
+  });
+
+  it('opens update settings from the available-update toolbar icon', async () => {
+    const workspace = statefulApi({
+      updateSettings: defaultUpdateSettings,
+      updateState: {
+        supported: true,
+        currentVersion: '0.3.0',
+        availableVersion: '0.4.0',
+        status: 'available',
+        progress: null,
+        errorKey: null,
+      },
+    });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'OpenSCP 0.4.0 is available. Open update settings.',
+      }),
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Updates' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(workspace).toHaveBeenCalled();
   });
 
   it('stores an optional external editor executable path in advanced settings', async () => {

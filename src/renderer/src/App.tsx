@@ -11,7 +11,7 @@ import { defaultAppearance, type WorkspaceSnapshot } from '@shared/ipc/workspace
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
 import { ProfileLibrary } from './components/ProfileLibrary';
-import { SettingsDialog } from './components/SettingsDialog';
+import { SettingsDialog, type SettingsPage } from './components/SettingsDialog';
 import { Dialog } from './components/Dialog';
 import { Icon } from './components/Icon';
 import { useWorkspaceService } from './components/useWorkspaceService';
@@ -70,6 +70,7 @@ export const App = () => {
   const [activeSides, setActiveSides] = useState<Record<string, PaneSide>>({});
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>('appearance');
   const [pendingClose, setPendingClose] = useState<{
     readonly id: string;
     readonly hasActiveTransfers: boolean;
@@ -84,7 +85,17 @@ export const App = () => {
   const service = useWorkspaceService(true);
   const appearance = service.snapshot.appearance ?? defaultAppearance;
   const shortcuts = service.snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
+  const updateState = service.snapshot.updateState;
+  const hasAvailableUpdate =
+    updateState?.availableVersion !== null &&
+    (updateState?.status === 'available' ||
+      updateState?.status === 'downloading' ||
+      updateState?.status === 'downloaded');
   const isMac = /Mac/iu.test(navigator.platform);
+  const openSettings = (page: SettingsPage): void => {
+    setSettingsPage(page);
+    setSettingsOpen(true);
+  };
   useEffect(() => {
     document.documentElement.lang = i18n.resolvedLanguage ?? i18n.language;
   }, [i18n.language, i18n.resolvedLanguage]);
@@ -346,11 +357,23 @@ export const App = () => {
             <Icon name="Plug" />
             {t('ui.connections')}
           </button>
+          {hasAvailableUpdate ? (
+            <button
+              className="icon-button update-available-button"
+              aria-label={t('updates.availableHint', {
+                version: updateState.availableVersion,
+              })}
+              title={t('updates.availableHint', { version: updateState.availableVersion })}
+              onClick={() => openSettings('updates')}
+            >
+              <Icon name="RefreshCw" />
+            </button>
+          ) : null}
           <button
             className="icon-button settings-button"
             aria-label={t('ui.settings')}
             title={t('ui.settings')}
-            onClick={() => setSettingsOpen(true)}
+            onClick={() => openSettings('appearance')}
           >
             <Icon name="Settings" />
           </button>
@@ -360,7 +383,7 @@ export const App = () => {
         <div className="app-error inline-error" role="alert">
           {t(error)}
           {error === 'errors.external.unavailable' ? (
-            <button type="button" onClick={() => setSettingsOpen(true)}>
+            <button type="button" onClick={() => openSettings('advanced')}>
               {t('terminal.configure')}
             </button>
           ) : null}
@@ -404,7 +427,7 @@ export const App = () => {
           appearance={appearance}
           confirmTabClose={service.snapshot.confirmTabClose !== false}
           editorPath={service.snapshot.editorPath ?? null}
-          initialPage={error === 'errors.external.unavailable' ? 'advanced' : 'appearance'}
+          initialPage={settingsPage}
           keyboardShortcuts={shortcuts}
           puttyPath={service.snapshot.puttyPath ?? null}
           rememberPaths={service.snapshot.rememberPaths !== false}

@@ -28,6 +28,27 @@ describe('update service', () => {
       updater.emit('update-downloaded', { version: '0.4.0' });
       return [];
     });
+    const service = new UpdateService(updater as unknown as AppUpdater, '0.3.0', true, {
+      ...defaultUpdateSettings,
+      automaticDownload: true,
+      automaticInstall: true,
+    });
+
+    await service.check();
+    expect(service.snapshot().status).toBe('downloaded');
+    expect(updater.autoDownload).toBe(false);
+    expect(updater.autoInstallOnAppQuit).toBe(true);
+    expect(updater.downloadUpdate).toHaveBeenCalledOnce();
+    service.install();
+    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+  });
+
+  it('checks without downloading or installing by default', async () => {
+    const updater = updaterFixture();
+    updater.checkForUpdates.mockImplementation(async () => {
+      updater.emit('update-available', { version: '0.4.0' });
+      return null;
+    });
     const service = new UpdateService(
       updater as unknown as AppUpdater,
       '0.3.0',
@@ -36,11 +57,9 @@ describe('update service', () => {
     );
 
     await service.check();
-    expect(service.snapshot().status).toBe('downloaded');
-    expect(updater.autoDownload).toBe(false);
-    expect(updater.downloadUpdate).toHaveBeenCalledOnce();
-    service.install();
-    expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true);
+    expect(service.snapshot().status).toBe('available');
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+    expect(updater.autoInstallOnAppQuit).toBe(false);
   });
 
   it('does not contact the update server from an unpackaged build', async () => {

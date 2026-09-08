@@ -14,7 +14,7 @@ import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
-type SettingsPage = 'appearance' | 'shortcuts' | 'updates' | 'advanced';
+export type SettingsPage = 'appearance' | 'shortcuts' | 'updates' | 'advanced';
 
 const shortcutLabels: readonly (readonly [ShortcutAction, string])[] = [
   ['newWorkspace', 'tabs.add'],

@@ -150,6 +150,7 @@ export const resources = {
         check: 'Check for updates',
         download: 'Download update',
         install: 'Install and restart',
+        availableHint: 'OpenSCP {{version}} is available. Open update settings.',
         error: 'Could not update OpenSCP. Check the connection and try again.',
         metadataUnavailable:
           'The latest GitHub release does not contain update metadata. Publish latest.yml and try again.',
@@ -481,6 +482,7 @@ export const resources = {
         check: 'Проверить обновления',
         download: 'Скачать обновление',
         install: 'Установить и перезапустить',
+        availableHint: 'Доступна версия OpenSCP {{version}}. Открыть настройки обновления.',
         error: 'Не удалось обновить OpenSCP. Проверьте соединение и повторите попытку.',
         metadataUnavailable:
           'В последнем релизе GitHub отсутствуют метаданные обновления. Опубликуйте latest.yml и повторите попытку.',

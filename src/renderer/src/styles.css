@@ -257,6 +257,22 @@ small {
   border-color: var(--border);
   background: var(--surface);
 }
+.update-available-button {
+  position: relative;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.update-available-button::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
+}
 .workspace-tabs-shell {
   display: flex;
   align-items: center;

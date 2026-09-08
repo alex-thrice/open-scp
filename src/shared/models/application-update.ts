@@ -9,8 +9,8 @@ export type UpdateSettings = z.infer<typeof updateSettingsSchema>;
 
 export const defaultUpdateSettings: UpdateSettings = {
   automaticCheck: true,
-  automaticDownload: true,
-  automaticInstall: true,
+  automaticDownload: false,
+  automaticInstall: false,
 };
 
 export const updateStateSchema = z.strictObject({
