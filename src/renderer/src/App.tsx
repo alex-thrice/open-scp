@@ -1,6 +1,12 @@
 import type { KeyboardEvent } from 'react';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { WorkspaceTab } from '@shared/models/workspace-tab';
+import {
+  defaultKeyboardShortcuts,
+  formatShortcut,
+  matchesShortcut,
+} from '@shared/models/keyboard-shortcuts';
+import { defaultUpdateSettings } from '@shared/models/application-update';
 import { defaultAppearance, type WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
@@ -64,7 +70,10 @@ export const App = () => {
   const [activeSides, setActiveSides] = useState<Record<string, PaneSide>>({});
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [pendingClose, setPendingClose] = useState<string | null>(null);
+  const [pendingClose, setPendingClose] = useState<{
+    readonly id: string;
+    readonly hasActiveTransfers: boolean;
+  } | null>(null);
   const [localError, setLocalError] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const closingRef = useRef(false);
@@ -74,6 +83,8 @@ export const App = () => {
   const restoredWorkspaceLayout = useRef(false);
   const service = useWorkspaceService(true);
   const appearance = service.snapshot.appearance ?? defaultAppearance;
+  const shortcuts = service.snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
+  const isMac = /Mac/iu.test(navigator.platform);
   useEffect(() => {
     document.documentElement.lang = i18n.resolvedLanguage ?? i18n.language;
   }, [i18n.language, i18n.resolvedLanguage]);
@@ -158,7 +169,7 @@ export const App = () => {
       setConnectingIds(new Set(connecting.current));
     });
   };
-  const closeWorkspace = async (id: string, cancelActive = false) => {
+  const closeWorkspace = async (id: string, confirmed = false) => {
     const ids = workspaceIds(id);
     if (
       closingRef.current ||
@@ -175,21 +186,19 @@ export const App = () => {
         setLocalError(state.error.messageKey);
         return;
       }
-      if (
-        !cancelActive &&
-        state.data.snapshot.transfers.some(
-          (item) =>
-            (ids.includes(item.workspaceId) ||
-              (!!item.destinationWorkspaceId && ids.includes(item.destinationWorkspaceId))) &&
-            ['running', 'queued', 'requiring-review'].includes(item.state),
-        )
-      ) {
-        setPendingClose(id);
+      const hasActiveTransfers = state.data.snapshot.transfers.some(
+        (item) =>
+          (ids.includes(item.workspaceId) ||
+            (!!item.destinationWorkspaceId && ids.includes(item.destinationWorkspaceId))) &&
+          ['running', 'queued', 'requiring-review'].includes(item.state),
+      );
+      if (!confirmed && service.snapshot.confirmTabClose !== false) {
+        setPendingClose({ id, hasActiveTransfers });
         return;
       }
       for (const workspaceId of ids) {
         const result = await service.run(
-          cancelActive
+          hasActiveTransfers
             ? { action: 'close-session', workspaceId, cancelActive: true }
             : { action: 'disconnect', workspaceId },
         );
@@ -238,15 +247,12 @@ export const App = () => {
     }
   };
   const onAppKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (
-      (event.target as HTMLElement).closest('dialog, [role="dialog"]') ||
-      (!event.ctrlKey && !event.metaKey)
-    )
+    if ((event.target as HTMLElement).closest('input, select, textarea, dialog, [role="dialog"]'))
       return;
-    if (event.key.toLowerCase() === 't') {
+    if (matchesShortcut(event, shortcuts.newWorkspace)) {
       event.preventDefault();
       if (!closing) addWorkspace();
-    } else if (event.key.toLowerCase() === 'w') {
+    } else if (matchesShortcut(event, shortcuts.closeWorkspace)) {
       event.preventDefault();
       void closeWorkspace(activeWorkspaceId);
     }
@@ -325,7 +331,7 @@ export const App = () => {
             className="workspace-tab__add icon-button"
             disabled={closing || !workspaceLayoutReady}
             onClick={addWorkspace}
-            title={t('tabs.addHint')}
+            title={`${t('tabs.add')} (${formatShortcut(shortcuts.newWorkspace, isMac)})`}
           >
             <Icon name="Plus" />
           </button>
@@ -396,10 +402,14 @@ export const App = () => {
       {settingsOpen ? (
         <SettingsDialog
           appearance={appearance}
+          confirmTabClose={service.snapshot.confirmTabClose !== false}
           editorPath={service.snapshot.editorPath ?? null}
           initialPage={error === 'errors.external.unavailable' ? 'advanced' : 'appearance'}
+          keyboardShortcuts={shortcuts}
           puttyPath={service.snapshot.puttyPath ?? null}
           rememberPaths={service.snapshot.rememberPaths !== false}
+          updateSettings={service.snapshot.updateSettings ?? defaultUpdateSettings}
+          updateState={service.snapshot.updateState}
           run={service.run}
           errorKey={error}
           onClose={() => setSettingsOpen(false)}
@@ -407,12 +417,14 @@ export const App = () => {
       ) : null}
       {pendingClose ? (
         <Dialog
-          title={t('library.closeTitle')}
+          title={t('tabs.closeTitle')}
           onClose={() => {
             if (!closing) setPendingClose(null);
           }}
         >
-          <p>{t('library.closeWarning')}</p>
+          <p>
+            {t(pendingClose.hasActiveTransfers ? 'tabs.closeActiveWarning' : 'tabs.closeWarning')}
+          </p>
           {error ? (
             <p role="alert" className="inline-error">
               {t(error)}
@@ -420,14 +432,14 @@ export const App = () => {
           ) : null}
           <div className="dialog-actions">
             <button disabled={closing} onClick={() => setPendingClose(null)}>
-              {t('library.keepOpen')}
+              {t('tabs.keepOpen')}
             </button>
             <button
               className="destructive"
               disabled={closing}
-              onClick={() => void closeWorkspace(pendingClose, true)}
+              onClick={() => void closeWorkspace(pendingClose.id, true)}
             >
-              {t('library.cancelClose')}
+              {t(pendingClose.hasActiveTransfers ? 'tabs.interruptAndClose' : 'tabs.confirmClose')}
             </button>
           </div>
         </Dialog>

@@ -18,10 +18,17 @@ import { configureWebContentsSecurity } from './security/web-contents-security';
 import { createWindowOptions } from './window-options';
 import { setApplicationLanguage } from './application-menu';
 import { openSshTerminal } from './external/ssh-terminal';
-import { openEditor } from './external/editor';
+import { normalizeMacApplicationPath, openEditor } from './external/editor';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
+import electronUpdater from 'electron-updater';
+import { UpdateService } from './updates/update-service';
+import {
+  defaultUpdateSettings,
+  updateSettingsSchema,
+  type UpdateSettings,
+} from '@shared/models/application-update';
 
 if (!app.isPackaged) app.setName('OpenSCP');
 
@@ -30,6 +37,45 @@ if (process.env.OPENSCP_DISABLE_HARDWARE_ACCELERATION === '1') {
 }
 
 const mainWindows = new Set<BrowserWindow>();
+const { autoUpdater } = electronUpdater;
+
+interface ApplicationCloseGuard {
+  approve(): void;
+  hasActiveTransfers(): boolean;
+  isApproved(): boolean;
+}
+
+const readUpdateSettings = (value: string | undefined): UpdateSettings => {
+  try {
+    const parsed = updateSettingsSchema.safeParse(JSON.parse(value ?? 'null'));
+    return parsed.success ? parsed.data : defaultUpdateSettings;
+  } catch {
+    return defaultUpdateSettings;
+  }
+};
+
+const confirmActiveTransfersClose = async (
+  window: BrowserWindow | undefined,
+  language: 'en' | 'ru',
+): Promise<boolean> => {
+  const russian = language === 'ru';
+  const options = {
+    type: 'warning' as const,
+    title: russian ? 'Завершение OpenSCP' : 'Quit OpenSCP',
+    message: russian ? 'Прервать активные передачи?' : 'Interrupt active transfers?',
+    detail: russian
+      ? 'В очереди есть активные задачи. При закрытии приложения они будут прерваны.'
+      : 'The queue contains active tasks. Closing the application will interrupt them.',
+    buttons: russian ? ['Остаться', 'Прервать и выйти'] : ['Keep Open', 'Interrupt and Quit'],
+    cancelId: 0,
+    defaultId: 0,
+    noLink: true,
+  };
+  const result = window
+    ? await dialog.showMessageBox(window, options)
+    : await dialog.showMessageBox(options);
+  return result.response === 1;
+};
 
 const createAppReadyEvent = (): IpcEventEnvelope<AppReadyEvent> => ({
   correlationId: randomUUID(),
@@ -38,7 +84,10 @@ const createAppReadyEvent = (): IpcEventEnvelope<AppReadyEvent> => ({
   },
 });
 
-const createMainWindow = (profileStore: ProfileStore): BrowserWindow => {
+const createMainWindow = (
+  profileStore: ProfileStore,
+  closeGuard: ApplicationCloseGuard,
+): BrowserWindow => {
   const persistedState = readWindowState(profileStore.getSetting('main-window-state-v1'));
   const restoredBounds = persistedState
     ? fitWindowBounds(
@@ -54,6 +103,7 @@ const createMainWindow = (profileStore: ProfileStore): BrowserWindow => {
   });
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let hasWindowShown = false;
+  let closePrompting = false;
   const saveWindowState = (): void => {
     if (mainWindow.isDestroyed()) return;
     const state: PersistedWindowState = {
@@ -74,9 +124,27 @@ const createMainWindow = (profileStore: ProfileStore): BrowserWindow => {
   mainWindow.on('move', scheduleWindowStateSave);
   mainWindow.on('resize', scheduleWindowStateSave);
   mainWindow.on('unmaximize', scheduleWindowStateSave);
-  mainWindow.once('close', () => {
+  mainWindow.on('close', () => {
     if (saveTimer) clearTimeout(saveTimer);
     if (hasWindowShown) saveWindowState();
+  });
+  mainWindow.on('close', (event) => {
+    if (
+      process.platform === 'darwin' ||
+      closeGuard.isApproved() ||
+      !closeGuard.hasActiveTransfers()
+    )
+      return;
+    event.preventDefault();
+    if (closePrompting) return;
+    closePrompting = true;
+    const language = profileStore.getSetting('language') === 'ru' ? 'ru' : 'en';
+    void confirmActiveTransfersClose(mainWindow, language).then((confirmed) => {
+      closePrompting = false;
+      if (!confirmed || mainWindow.isDestroyed()) return;
+      closeGuard.approve();
+      mainWindow.close();
+    });
   });
   mainWindows.add(mainWindow);
 
@@ -148,6 +216,22 @@ app.whenReady().then(async () => {
     localRootPath: localBrowsePaths.rootPath,
   });
   const profileStore = new ProfileStore(database, credentials);
+  let applicationCloseApproved = false;
+  let readActiveTransfers = (): boolean => false;
+  const closeGuard: ApplicationCloseGuard = {
+    approve: () => {
+      applicationCloseApproved = true;
+    },
+    hasActiveTransfers: () => readActiveTransfers(),
+    isApproved: () => applicationCloseApproved,
+  };
+  const updateSettings = readUpdateSettings(profileStore.getSetting('update-settings-v1'));
+  const updateService = new UpdateService(
+    autoUpdater,
+    app.getVersion(),
+    app.isPackaged,
+    updateSettings,
+  );
   setApplicationLanguage(profileStore.getSetting('language') === 'ru' ? 'ru' : 'en');
   const workspaceService = new WorkspaceService(
     profileStore,
@@ -167,17 +251,61 @@ app.whenReady().then(async () => {
     },
     setApplicationLanguage,
     {
+      checkForUpdates: () => updateService.check(),
+      downloadUpdate: () => updateService.download(),
+      installUpdate: async () => {
+        if (!closeGuard.isApproved() && closeGuard.hasActiveTransfers()) {
+          const language = profileStore.getSetting('language') === 'ru' ? 'ru' : 'en';
+          const window = BrowserWindow.getFocusedWindow() ?? [...mainWindows][0];
+          if (!(await confirmActiveTransfersClose(window, language))) return;
+          closeGuard.approve();
+        }
+        updateService.install();
+      },
       openEditor,
       openLocalFile: async (path) => {
         const error = await shell.openPath(path);
         if (error) throw new ApplicationError(applicationErrorCodes.externalApplicationFailed);
       },
       openSshTerminal,
+      pickEditor: async () => {
+        const result = await dialog.showOpenDialog({
+          ...(process.platform === 'darwin' ? { defaultPath: '/Applications' } : {}),
+          properties: ['openFile'],
+        });
+        const path = result.canceled ? undefined : result.filePaths[0];
+        return path && process.platform === 'darwin'
+          ? normalizeMacApplicationPath(path)
+          : (path ?? null);
+      },
+      setUpdateSettings: (settings) => updateService.configure(settings),
+      updateState: () => updateService.snapshot(),
     },
   );
+  readActiveTransfers = () => workspaceService.transfers.hasAnyActive();
   app.once('will-quit', () => {
     workspaceService.dispose();
     database.close();
+  });
+  let applicationQuitPrompting = false;
+  app.on('before-quit', (event) => {
+    if (
+      process.platform !== 'darwin' ||
+      closeGuard.isApproved() ||
+      !closeGuard.hasActiveTransfers()
+    )
+      return;
+    event.preventDefault();
+    if (applicationQuitPrompting) return;
+    applicationQuitPrompting = true;
+    const language = profileStore.getSetting('language') === 'ru' ? 'ru' : 'en';
+    const window = BrowserWindow.getFocusedWindow() ?? [...mainWindows][0];
+    void confirmActiveTransfersClose(window, language).then((confirmed) => {
+      applicationQuitPrompting = false;
+      if (!confirmed) return;
+      closeGuard.approve();
+      app.quit();
+    });
   });
   registerIpcHandlers(
     {
@@ -201,11 +329,12 @@ app.whenReady().then(async () => {
     });
   }
 
-  createMainWindow(profileStore);
+  createMainWindow(profileStore, closeGuard);
+  if (app.isPackaged && updateSettings.automaticCheck) void updateService.check();
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createMainWindow(profileStore);
+      createMainWindow(profileStore, closeGuard);
     }
   });
 });

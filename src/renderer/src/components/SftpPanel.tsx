@@ -16,6 +16,7 @@ import type { WorkspaceRunner } from './useWorkspaceService';
 import { CommanderSurface, CommandButtons, type FileCommand } from './CommanderSurface';
 import { Dialog } from './Dialog';
 import { readFileDrop } from './file-drop';
+import { defaultKeyboardShortcuts, formatShortcut } from '@shared/models/keyboard-shortcuts';
 
 export const SftpPanel = ({
   workspaceId,
@@ -35,6 +36,7 @@ export const SftpPanel = ({
   readonly errorKey: string | null;
 }) => {
   const { t } = useTranslation();
+  const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const [profileId, setProfileId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isNew, setIsNew] = useState(false);
@@ -164,7 +166,7 @@ export const SftpPanel = ({
                 {
                   id: 'mkdir',
                   label: t('operations.mkdir'),
-                  key: 'F7',
+                  shortcut: shortcuts.createDirectory,
                   disabled: !!isBucketList,
                   run: () => beginOperation('mkdir'),
                 },
@@ -175,7 +177,7 @@ export const SftpPanel = ({
                 {
                   id: 'rename',
                   label: t('operations.rename'),
-                  key: 'F2',
+                  shortcut: shortcuts.rename,
                   disabled: !!invalidSelection || selectedPaths.length !== 1,
                   run: () => beginOperation('rename'),
                 },
@@ -196,7 +198,7 @@ export const SftpPanel = ({
                 {
                   id: 'delete',
                   label: t('operations.delete'),
-                  key: 'Delete',
+                  shortcut: shortcuts.delete,
                   disabled: !!invalidSelection,
                   run: () => beginOperation('delete'),
                 },
@@ -207,7 +209,7 @@ export const SftpPanel = ({
                 {
                   id: 'download',
                   label: t('transfers.download'),
-                  key: 'F5',
+                  shortcut: shortcuts.copy,
                   disabled: !!invalidSelection || !localPath,
                   run: () => transfer('download'),
                 },
@@ -216,14 +218,13 @@ export const SftpPanel = ({
           {
             id: 'refresh',
             label: t('commander.refresh'),
-            key: 'F5',
-            ctrlKey: true,
+            shortcut: shortcuts.refresh,
             run: () => void load(listing.currentPath),
           },
           {
             id: 'up',
             label: t('commander.up'),
-            key: 'Backspace',
+            shortcut: shortcuts.parentDirectory,
             disabled: !listing.parentPath,
             run: () => void load(listing.parentPath),
           },
@@ -456,7 +457,16 @@ export const SftpPanel = ({
                 </option>
               ))}
             </select>
-            <span className="selection-summary" role="status" title={t('commander.shortcuts')}>
+            <span
+              className="selection-summary"
+              role="status"
+              title={t('commander.shortcuts', {
+                switchPanel: formatShortcut(
+                  shortcuts.switchPanel,
+                  /Mac/iu.test(navigator.platform),
+                ),
+              })}
+            >
               {t('commander.selected', { count: selectedPaths.length })}
             </span>
           </div>

@@ -27,6 +27,23 @@ describe('external editor launcher', () => {
     ]);
   });
 
+  it('opens a selected macOS application bundle instead of executing its directory', async () => {
+    const startProcess = vi.fn(async () => undefined);
+    await openEditor(
+      '/tmp/notes.txt',
+      '/Applications/Visual Studio Code.app/Contents/MacOS/Electron',
+      {
+        platform: 'darwin',
+        startProcess,
+      },
+    );
+    expect(startProcess).toHaveBeenCalledWith('/usr/bin/open', [
+      '-a',
+      '/Applications/Visual Studio Code.app',
+      '/tmp/notes.txt',
+    ]);
+  });
+
   it('rejects a relative configured executable and maps missing defaults', async () => {
     await expect(
       openEditor('/tmp/file.txt', 'editor', {

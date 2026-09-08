@@ -6,13 +6,23 @@ import { fileURLToPath, URL } from 'node:url';
 import process from 'node:process';
 
 const projectRoot = fileURLToPath(new URL('../', import.meta.url));
-const allowedLicenses = new Set(['MIT', 'Apache-2.0', 'BSD-3-Clause', '0BSD', 'Unlicense']);
+const allowedLicenses = new Set([
+  'MIT',
+  'Apache-2.0',
+  'BSD-3-Clause',
+  'BlueOak-1.0.0',
+  'ISC',
+  'Python-2.0',
+  '0BSD',
+  'Unlicense',
+]);
 // These AWS SDK tarballs omit LICENSE; use the same repository's Apache-2.0 text.
 const awsLicenseFallbacks = new Set([
   '@aws-sdk/credential-provider-http@3.972.72',
   '@aws-sdk/credential-provider-login@3.972.77',
   '@aws-sdk/nested-clients@3.997.44',
 ]);
+const mitLicenseFallbacks = new Set(['lazy-val@1.0.5']);
 
 const findPackage = (name, directory) => {
   const require = createRequire(join(directory, 'package.json'));
@@ -69,10 +79,20 @@ export async function generateLicenseNotices() {
     inventory.push({ name: metadata.name, version: metadata.version, license });
     notices.push(`\n${'='.repeat(72)}\n${identifier} (${license})`);
     if (!files.length) {
-      if (!awsLicenseFallbacks.has(identifier))
+      if (mitLicenseFallbacks.has(identifier)) {
+        const license = await readFile(join(projectRoot, 'LICENSE'), 'utf8');
+        notices.push(
+          license.replace(
+            /^Copyright \(c\).*$/mu,
+            `Copyright (c) ${metadata.author ?? metadata.name}`,
+          ),
+        );
+      } else if (awsLicenseFallbacks.has(identifier)) {
+        const awsManifest = findPackage('@aws-sdk/client-s3', projectRoot);
+        notices.push(await readFile(join(dirname(awsManifest), 'LICENSE'), 'utf8'));
+      } else {
         throw new Error(`Missing license text for ${identifier}; review before packaging.`);
-      const awsManifest = findPackage('@aws-sdk/client-s3', projectRoot);
-      notices.push(await readFile(join(dirname(awsManifest), 'LICENSE'), 'utf8'));
+      }
     }
     for (const file of files)
       notices.push(`--- ${file} ---\n${await readFile(join(directory, file), 'utf8')}`);

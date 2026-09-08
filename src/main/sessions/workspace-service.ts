@@ -42,14 +42,31 @@ import { importKnownHosts } from '../security/known-hosts';
 import { Diagnostics } from '../security/diagnostics';
 import { appearanceSchema, defaultAppearance, workspaceLayoutSchema } from '@shared/ipc/workspace';
 import { ExternalEditService } from '../external/external-edit-service';
+import {
+  defaultKeyboardShortcuts,
+  keyboardShortcutsSchema,
+  type KeyboardShortcuts,
+} from '@shared/models/keyboard-shortcuts';
+import {
+  defaultUpdateSettings,
+  updateSettingsSchema,
+  type UpdateSettings,
+  type UpdateState,
+} from '@shared/models/application-update';
 
 export interface WorkspaceExternalActions {
+  readonly checkForUpdates?: () => Promise<void>;
+  readonly downloadUpdate?: () => Promise<void>;
+  readonly installUpdate?: () => Promise<void>;
   readonly openEditor?: (path: string, configuredPath: string | null) => Promise<void>;
   readonly openLocalFile?: (path: string) => Promise<void>;
   readonly openSshTerminal?: (
     profile: SftpConnectionProfile,
     puttyPath: string | null,
   ) => Promise<void>;
+  readonly pickEditor?: () => Promise<string | null>;
+  readonly setUpdateSettings?: (settings: UpdateSettings) => Promise<void>;
+  readonly updateState?: () => UpdateState;
 }
 
 type RemoteProvider = FtpProvider | S3Provider | SftpProvider;
@@ -60,6 +77,24 @@ const readAppearance = (value: string | undefined) => {
     return parsed.success ? parsed.data : defaultAppearance;
   } catch {
     return defaultAppearance;
+  }
+};
+
+const readKeyboardShortcuts = (value: string | undefined): KeyboardShortcuts => {
+  try {
+    const parsed = keyboardShortcutsSchema.safeParse(JSON.parse(value ?? 'null'));
+    return parsed.success ? parsed.data : defaultKeyboardShortcuts;
+  } catch {
+    return defaultKeyboardShortcuts;
+  }
+};
+
+const readUpdateSettings = (value: string | undefined): UpdateSettings => {
+  try {
+    const parsed = updateSettingsSchema.safeParse(JSON.parse(value ?? 'null'));
+    return parsed.success ? parsed.data : defaultUpdateSettings;
+  } catch {
+    return defaultUpdateSettings;
   }
 };
 
@@ -140,7 +175,7 @@ export class WorkspaceService {
   ) {
     const journal = new QueueJournal(store);
     this.transfers = new TransferEngine({
-      load: () => journal.load(),
+      load: () => [],
       save: (records) => journal.save(records),
       resolve: (intent, snapshot) => this.restoreTransfer(intent, snapshot),
     });
@@ -223,6 +258,12 @@ export class WorkspaceService {
       : {};
     return {
       appearance: readAppearance(this.store.getSetting('appearance')),
+      confirmTabClose: this.store.getSetting('confirm-tab-close') !== 'false',
+      keyboardShortcuts: readKeyboardShortcuts(this.store.getSetting('keyboard-shortcuts-v1')),
+      updateSettings: readUpdateSettings(this.store.getSetting('update-settings-v1')),
+      ...(this.externalActions.updateState
+        ? { updateState: this.externalActions.updateState() }
+        : {}),
       editorPath: this.store.getSetting('editor-path') || null,
       puttyPath: this.store.getSetting('putty-path') || null,
       rememberPaths,
@@ -590,12 +631,32 @@ export class WorkspaceService {
     let listing: RemoteDirectoryListing | null = null;
     let deletion: WorkspaceResult['deletion'];
     let privateKeyPath: string | null = null;
+    let selectedPath: string | null | undefined;
     let document: string | undefined;
     let importSummary: WorkspaceResult['importSummary'];
     let savedProfileId: string | undefined;
     switch (request.action) {
       case 'clear-transfer-history':
         this.transfers.clearHistory();
+        break;
+      case 'set-confirm-tab-close':
+        this.store.setSetting('confirm-tab-close', request.enabled ? 'true' : 'false');
+        break;
+      case 'set-keyboard-shortcuts':
+        this.store.setSetting('keyboard-shortcuts-v1', JSON.stringify(request.shortcuts));
+        break;
+      case 'set-update-settings':
+        this.store.setSetting('update-settings-v1', JSON.stringify(request.settings));
+        await this.externalActions.setUpdateSettings?.(request.settings);
+        break;
+      case 'check-for-updates':
+        await this.externalActions.checkForUpdates?.();
+        break;
+      case 'download-update':
+        await this.externalActions.downloadUpdate?.();
+        break;
+      case 'install-update':
+        await this.externalActions.installUpdate?.();
         break;
       case 'set-putty-path':
         this.store.setSetting('putty-path', request.path ?? '');
@@ -1200,6 +1261,9 @@ export class WorkspaceService {
       case 'pick-private-key':
         privateKeyPath = await this.pickPrivateKey();
         break;
+      case 'pick-editor':
+        selectedPath = (await this.externalActions.pickEditor?.()) ?? null;
+        break;
       case 'set-language':
         this.store.setSetting('language', request.language);
         this.changeLanguage?.(request.language);
@@ -1215,6 +1279,7 @@ export class WorkspaceService {
       snapshot: this.snapshot(),
       listing,
       privateKeyPath,
+      ...(selectedPath !== undefined ? { selectedPath } : {}),
       ...(deletion ? { deletion } : {}),
       ...(document !== undefined ? { document } : {}),
       ...(importSummary ? { importSummary } : {}),

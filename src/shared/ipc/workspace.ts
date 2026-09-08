@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
+import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
+import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
 
 const id = z.string().min(1).max(200);
 const workspaceId = z.string().regex(/^workspace-[1-9]\d{0,3}$/u);
@@ -42,6 +44,15 @@ export const profileDraftSchema = z.strictObject({
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('set-appearance'), appearance: appearanceSchema }),
+  z.strictObject({ action: z.literal('set-confirm-tab-close'), enabled: z.boolean() }),
+  z.strictObject({
+    action: z.literal('set-keyboard-shortcuts'),
+    shortcuts: keyboardShortcutsSchema,
+  }),
+  z.strictObject({ action: z.literal('set-update-settings'), settings: updateSettingsSchema }),
+  z.strictObject({ action: z.literal('check-for-updates') }),
+  z.strictObject({ action: z.literal('download-update') }),
+  z.strictObject({ action: z.literal('install-update') }),
   z.strictObject({
     action: z.literal('create-profile-folder'),
     name: z
@@ -170,6 +181,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
     resolution: z.enum(['upload', 'overwrite', 'discard']),
   }),
   z.strictObject({ action: z.literal('pick-private-key') }),
+  z.strictObject({ action: z.literal('pick-editor') }),
   z.strictObject({ action: z.literal('set-language'), language: z.enum(['en', 'ru']) }),
 ]);
 export type WorkspaceRequest = z.infer<typeof workspaceRequestSchema>;
@@ -191,6 +203,10 @@ export const remoteListingSchema = z.strictObject({
 export type RemoteDirectoryListing = z.infer<typeof remoteListingSchema>;
 export const workspaceSnapshotSchema = z.strictObject({
   appearance: appearanceSchema.optional(),
+  confirmTabClose: z.boolean().optional(),
+  keyboardShortcuts: keyboardShortcutsSchema.optional(),
+  updateSettings: updateSettingsSchema.optional(),
+  updateState: updateStateSchema.optional(),
   editorPath: path.nullable().optional(),
   puttyPath: path.nullable().optional(),
   rememberPaths: z.boolean().optional(),
@@ -310,5 +326,6 @@ export const workspaceResultSchema = z.strictObject({
   snapshot: workspaceSnapshotSchema,
   listing: remoteListingSchema.nullable(),
   privateKeyPath: path.nullable(),
+  selectedPath: path.nullable().optional(),
 });
 export type WorkspaceResult = z.infer<typeof workspaceResultSchema>;

@@ -30,6 +30,9 @@ const isMissingExecutableError = (error: unknown): boolean =>
   'code' in error &&
   (error as { readonly code?: unknown }).code === 'ENOENT';
 
+export const normalizeMacApplicationPath = (path: string): string =>
+  /^(.+?\.app)(?:\/.*)?$/iu.exec(path)?.[1] ?? path;
+
 const startFirstAvailable = async (
   candidates: readonly { readonly executable: string; readonly arguments_: readonly string[] }[],
   startProcess: StartProcess,
@@ -60,8 +63,17 @@ export const openEditor = async (
     const isAbsolutePath = platform === 'win32' ? win32.isAbsolute : posix.isAbsolute;
     if (!isAbsolutePath(configuredPath))
       throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+    const macApplicationPath =
+      platform === 'darwin' ? normalizeMacApplicationPath(configuredPath) : undefined;
     await startFirstAvailable(
-      [{ executable: configuredPath, arguments_: [filePath] }],
+      [
+        macApplicationPath?.toLowerCase().endsWith('.app')
+          ? {
+              executable: '/usr/bin/open',
+              arguments_: ['-a', macApplicationPath, filePath],
+            }
+          : { executable: configuredPath, arguments_: [filePath] },
+      ],
       startProcess,
     );
     return;

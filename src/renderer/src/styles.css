@@ -1146,6 +1146,10 @@ summary {
 .shortcut-list dd {
   margin: 0;
 }
+.shortcut-capture {
+  min-width: 112px;
+  padding: 4px 8px;
+}
 kbd {
   color: var(--muted);
   font-size: 11px;

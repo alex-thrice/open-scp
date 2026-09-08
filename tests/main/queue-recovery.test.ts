@@ -14,6 +14,7 @@ import { applicationErrorCodes } from '../../src/shared/errors/application-error
 import { openDatabase } from '../../src/main/persistence/database';
 import { ProfileStore } from '../../src/main/persistence/profile-store';
 import { CredentialService } from '../../src/main/security/credential-service';
+import { WorkspaceService } from '../../src/main/sessions/workspace-service';
 
 describe('durable queue and finite reconnect', () => {
   const roots: string[] = [];
@@ -198,6 +199,54 @@ describe('durable queue and finite reconnect', () => {
     expect(await readFile(join(root, 'target.txt'), 'utf8')).toBe('queue fixture content');
 
     engine.dispose();
+    database.close();
+  });
+  it('starts a workspace with an empty queue and clears the previous session journal', async () => {
+    const { request, root } = await setup();
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, {
+      isEncryptionAvailable: () => false,
+      encryptString: () => {
+        throw new Error();
+      },
+      decryptString: () => {
+        throw new Error();
+      },
+    });
+    const store = new ProfileStore(database, credentials);
+    const journal = new QueueJournal(store);
+    journal.save([
+      {
+        intent: { sourcePath: request.sourcePath, destinationPath: request.destinationPath },
+        snapshot: {
+          id: randomUUID(),
+          workspaceId: request.workspaceId,
+          sourcePath: join(root, 'source.txt'),
+          destinationPath: join(root, 'target.txt'),
+          direction: request.direction,
+          state: 'completed',
+          conflictPolicy: 'ask',
+          transferredBytes: 21n,
+          totalBytes: 21n,
+          speed: 0,
+          elapsed: 1,
+          remaining: 0,
+          errorKey: null,
+          conflictPath: null,
+        },
+      },
+    ]);
+
+    const service = new WorkspaceService(
+      store,
+      credentials,
+      async () => [{ label: root, path: root }],
+      async () => null,
+    );
+
+    expect(service.snapshot().transfers).toEqual([]);
+    expect(journal.load()).toEqual([]);
+    service.dispose();
     database.close();
   });
   it('bounds transient retries, classifies authentication and conflict failures, and adds jitter', async () => {
