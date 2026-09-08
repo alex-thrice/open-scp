@@ -12,10 +12,10 @@ const actions = (): ApplicationMenuActions => ({
 });
 
 describe('application menu', () => {
-  it('provides the conventional Windows sections and an About command', () => {
+  it('provides the Windows sections and an About command', () => {
     const template = createApplicationMenuTemplate('en', 'win32', actions());
 
-    expect(template.map((item) => item.label)).toEqual(['File', 'Edit', 'View', 'Window', 'Help']);
+    expect(template.map((item) => item.label)).toEqual(['File', 'View', 'Window', 'Help']);
     const help = template.find((item) => item.label === 'Help');
     expect(Array.isArray(help?.submenu) ? help.submenu.map((item) => item.label) : []).toContain(
       'About OpenSCP',

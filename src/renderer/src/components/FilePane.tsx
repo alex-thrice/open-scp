@@ -550,7 +550,8 @@ export const FilePane = ({
               </button>
             </div>
           ))}
-        {loading || (isConnecting && !session) ? (
+        {(loading && (!listing || attemptedPath.current !== listing.currentPath)) ||
+        (isConnecting && !session) ? (
           <div className="panel-state" role="status">
             <span className="spinner" />
             {t('fileList.loading')}

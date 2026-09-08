@@ -51,7 +51,7 @@ test('opens the desktop shell and changes the local directory', async () => {
     await electronApplication.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items.map((item) => item.label),
     ),
-  ).toEqual(expect.arrayContaining(['File', 'Edit', 'View', 'Window', 'Help']));
+  ).toEqual(['File', 'View', 'Window', 'Help']);
   const localPanel = window.getByTestId('left-panel');
 
   await expect(window.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();
@@ -71,6 +71,11 @@ test('opens the desktop shell and changes the local directory', async () => {
   await createFileDialog.getByRole('button', { name: 'Confirm' }).click();
   await expect(localPanel.getByRole('row', { name: 'created.txt', exact: true })).toBeVisible();
   await expect.poll(() => readFile(join(childPath, 'created.txt'), 'utf8')).toBe('');
+  const sizeHeader = localPanel.locator('.file-list__header .file-list__cell--size');
+  await sizeHeader.getByRole('button').click();
+  await expect(sizeHeader).toHaveAttribute('aria-sort', 'ascending');
+  await localPanel.locator('.pathbar').getByRole('button', { name: 'Refresh' }).click();
+  await expect(sizeHeader).toHaveAttribute('aria-sort', 'ascending');
   await localPanel.getByRole('row', { name: 'child-file.txt' }).click({ button: 'right' });
   await expect(window.getByRole('menuitem', { name: 'New file' })).toBeVisible();
   await window.keyboard.press('Escape');
