@@ -4,6 +4,8 @@ import type { WorkspaceSnapshot } from '@shared/ipc/workspace';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import { createS3ProviderPath } from '@shared/models/provider-path';
 import { formatS3Path } from '@shared/models/s3-path';
+import { defaultKeyboardShortcuts } from '@shared/models/keyboard-shortcuts';
+import { defaultUpdateSettings } from '@shared/models/application-update';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { i18n } from './i18n';
@@ -132,6 +134,8 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
     sessions: [],
     transfers: [],
     language: null,
+    confirmTabClose: true,
+    keyboardShortcuts: defaultKeyboardShortcuts,
     profileFolders: ['Work', 'Storage'],
     profileGroups: { 'sftp-one': 'Work', 's3-one': 'Storage' },
     ...initial,
@@ -142,6 +146,12 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
     if (request.action === 'set-language') snapshot = { ...snapshot, language: request.language };
     if (request.action === 'set-putty-path') snapshot = { ...snapshot, puttyPath: request.path };
     if (request.action === 'set-editor-path') snapshot = { ...snapshot, editorPath: request.path };
+    if (request.action === 'set-confirm-tab-close')
+      snapshot = { ...snapshot, confirmTabClose: request.enabled };
+    if (request.action === 'set-keyboard-shortcuts')
+      snapshot = { ...snapshot, keyboardShortcuts: request.shortcuts };
+    if (request.action === 'set-update-settings')
+      snapshot = { ...snapshot, updateSettings: request.settings };
     if (request.action === 'set-remember-paths')
       snapshot = {
         ...snapshot,
@@ -246,6 +256,9 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
               }
             : null,
         privateKeyPath: null,
+        ...(request.action === 'pick-editor'
+          ? { selectedPath: 'C:\\Program Files (x86)\\Notepad++\\notepad++.exe' }
+          : {}),
         ...(request.action === 'clone-profile' ? { savedProfileId: 'duplicate' } : {}),
       },
     };
@@ -332,12 +345,12 @@ describe('App', () => {
     render(<App />);
     await screen.findByRole('tab', { name: 'test - Development' });
     fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
-    await screen.findByRole('dialog', { name: 'Close active session?' });
+    await screen.findByRole('dialog', { name: 'Close tab?' });
     expect(workspace.mock.calls.some(([request]) => request.action === 'disconnect')).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Keep session open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep tab open' }));
     expect(screen.getByRole('tab', { name: 'test - Development' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Cancel transfers and close' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Interrupt and close' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'close-session',
@@ -623,6 +636,7 @@ describe('App', () => {
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 't' });
     await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'w' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Close tab' }));
     await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1));
     expect(workspace).toHaveBeenCalledWith({
       action: 'disconnect',
@@ -630,6 +644,40 @@ describe('App', () => {
     });
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'w' });
     expect(screen.queryByRole('button', { name: /^Close /u })).toBeNull();
+  });
+
+  it('reassigns a keyboard shortcut and can disable tab close confirmation', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keyboard shortcuts' }));
+    const shortcutRow = screen.getByText('New workspace').closest('div');
+    if (!shortcutRow) throw new Error('Missing shortcut row.');
+    const shortcutButton = within(shortcutRow).getByRole('button');
+    fireEvent.click(shortcutButton);
+    fireEvent.keyDown(shortcutButton, { ctrlKey: true, key: 'n' });
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'set-keyboard-shortcuts',
+        shortcuts: {
+          ...defaultKeyboardShortcuts,
+          newWorkspace: { key: 'N', primary: true, alt: false, shift: false },
+        },
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Confirm before closing tabs/u }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({ action: 'set-confirm-tab-close', enabled: false }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+    fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'n' });
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
+    fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'w' });
+    await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(1));
+    expect(screen.queryByRole('dialog', { name: 'Close tab?' })).toBeNull();
   });
 
   it('queues local copies immediately and defers conflict decisions', async () => {
@@ -872,6 +920,7 @@ describe('App', () => {
     ).toBe(false);
     expect(screen.queryByRole('button', { name: 'Disconnect' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Close test - Development' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close tab' }));
     await screen.findByRole('tab', { name: 'test - test' });
     expect(workspace).toHaveBeenCalledWith({
       action: 'disconnect',
@@ -1082,25 +1131,99 @@ describe('App', () => {
     );
   });
 
+  it('configures GitHub update automation and starts a manual check', async () => {
+    const workspace = statefulApi({
+      updateSettings: defaultUpdateSettings,
+      updateState: {
+        supported: true,
+        currentVersion: '0.3.0',
+        availableVersion: null,
+        status: 'idle',
+        progress: null,
+        errorKey: null,
+      },
+    });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+    expect(screen.getByText('Current version: 0.3.0')).toBeTruthy();
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Automatically check for updates',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: 'Automatically download available updates',
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: /^Automatically install downloaded updates on exit/u,
+        }) as HTMLInputElement
+      ).checked,
+    ).toBe(false);
+    fireEvent.click(
+      screen.getByRole('checkbox', { name: 'Automatically download available updates' }),
+    );
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'set-update-settings',
+        settings: { ...defaultUpdateSettings, automaticDownload: true },
+      }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+    await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'check-for-updates' }));
+  });
+
+  it('opens update settings from the available-update toolbar icon', async () => {
+    const workspace = statefulApi({
+      updateSettings: defaultUpdateSettings,
+      updateState: {
+        supported: true,
+        currentVersion: '0.3.0',
+        availableVersion: '0.4.0',
+        status: 'available',
+        progress: null,
+        errorKey: null,
+      },
+    });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: 'OpenSCP 0.4.0 is available. Open update settings.',
+      }),
+    );
+
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Updates' }).getAttribute('aria-current')).toBe(
+      'page',
+    );
+    expect(workspace).toHaveBeenCalled();
+  });
+
   it('stores an optional external editor executable path in advanced settings', async () => {
     await i18n.changeLanguage('en');
     const workspace = statefulApi();
     const selectedEditorPath = 'C:\\Program Files (x86)\\Notepad++\\notepad++.exe';
-    const getPathForFile = vi.fn(() => selectedEditorPath);
-    setDesktopApi({ ...window.desktop, getPathForFile });
     render(<App />);
     await pane('left').findByRole('row', { name: 'notes.txt' });
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
-    const input = screen.getByLabelText('Editor executable path');
+    const input = screen.getByLabelText('Editor application or executable path');
     fireEvent.change(input, { target: { value: 'C:\\Tools\\Editor\\editor.exe' } });
     await act(() => new Promise((resolve) => setTimeout(resolve, 1100)));
     expect((input as HTMLInputElement).value).toBe('C:\\Tools\\Editor\\editor.exe');
-    fireEvent.change(screen.getByLabelText('Choose editor'), {
-      target: { files: [new File([''], 'notepad++.exe')] },
-    });
-    expect(getPathForFile).toHaveBeenCalledOnce();
-    expect((input as HTMLInputElement).value).toBe(selectedEditorPath);
+    fireEvent.click(screen.getByRole('button', { name: 'Choose editor' }));
+    await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'pick-editor' }));
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe(selectedEditorPath));
     fireEvent.click(screen.getByRole('button', { name: 'Save editor setting' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({

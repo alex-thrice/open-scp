@@ -24,6 +24,11 @@ test('development metadata is stable and distinct from release signing', () => {
   assert.equal(config.productName, 'OpenSCP');
   assert.equal(config.extraMetadata.license, 'MIT');
   assert.equal(config.extraMetadata.homepage, 'https://github.com/alex-thrice/open-scp');
+  assert.deepEqual(config.publish, {
+    provider: 'github',
+    owner: 'alex-thrice',
+    repo: 'open-scp',
+  });
   assert.ok(config.extraResources.some((resource) => resource.to === 'LICENSE'));
   assert.ok(config.extraResources.some((resource) => resource.to === 'licenses'));
   assert.equal(config.mac.identity, '-');
@@ -80,6 +85,13 @@ test('entitlements grant only JIT; Linux installer does not introduce sandbox by
   );
   const install = await readFile('build-resources/linux-after-install.sh', 'utf8');
   assert.doesNotMatch(install, /--no-sandbox|chmod 4755|sysctl/);
+});
+test('tag pushes run only the release workflow and publish updater metadata', async () => {
+  const ci = await readFile('.github/workflows/ci.yml', 'utf8');
+  assert.match(ci, /push:\r?\n\s+branches:\r?\n\s+- '\*\*'/u);
+  const packages = await readFile('.github/workflows/packages.yml', 'utf8');
+  assert.match(packages, /release\/latest\*\.yml/u);
+  assert.match(packages, /release\/\*\.blockmap/u);
 });
 test('original icon generator produces deterministic PNG, ICO and ICNS assets', async () => {
   await generateIcons();

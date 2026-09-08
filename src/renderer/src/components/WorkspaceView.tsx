@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Appearance, WorkspaceSnapshot } from '@shared/ipc/workspace';
+import { defaultKeyboardShortcuts, matchesShortcut } from '@shared/models/keyboard-shortcuts';
 import { FilePane } from './FilePane';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { sessionPaneId, type PaneLocation, type PaneSide } from './workspace-layout';
@@ -71,7 +72,13 @@ export const WorkspaceView = ({
         ref={panels}
         aria-label={t('panels.label')}
         onKeyDown={(event) => {
-          if (event.key !== 'F6' || (event.target as HTMLElement).closest('dialog')) return;
+          const shortcut =
+            snapshot.keyboardShortcuts?.switchPanel ?? defaultKeyboardShortcuts.switchPanel;
+          if (
+            !matchesShortcut(event, shortcut) ||
+            (event.target as HTMLElement).closest('dialog, [role="dialog"]')
+          )
+            return;
           event.preventDefault();
           const next = panels.current?.querySelector<HTMLElement>(
             `[data-testid="${activeSide === 'left' ? 'right' : 'left'}-panel"]`,

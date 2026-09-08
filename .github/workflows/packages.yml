@@ -71,6 +71,8 @@ jobs:
             release/*.AppImage
             release/*.dmg
             release/*.zip
+            release/latest*.yml
+            release/*.blockmap
           retention-days: 7
 
   release:

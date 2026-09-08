@@ -199,6 +199,9 @@ for (const side of ['left', 'right'] as const) {
         await page.screenshot({ path: test.info().outputPath('sftp-pane.png') });
         expect(errors).toEqual([]);
         await page.getByRole('button', { name: /^Close /u }).click();
+        const closeDialog = page.getByRole('dialog', { name: 'Close tab?' });
+        await expect(closeDialog).toBeVisible();
+        await closeDialog.getByRole('button', { name: 'Close tab', exact: true }).click();
         await expect(page.getByRole('tabpanel')).toHaveAttribute(
           'data-workspace-id',
           'workspace-2',

@@ -7,8 +7,8 @@
 Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict
 TypeScript. The application includes local drive browsing, independent workspaces, encrypted
 connection profiles, SFTP and S3 browsing/file operations, and a shared streaming transfer queue
-for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. T14–T17 add durable queue review, Commander
-keyboard/multi-select/drag-and-drop, profile management and live English/Russian localization.
+for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. It also includes customizable Commander
+shortcuts, profile management, GitHub updates and live English/Russian localization.
 
 ## Requirements
 
@@ -114,7 +114,8 @@ selecting another drive or returning to the previous listing.
 Use **+** or Ctrl/Command+T to add a tab. Its title combines the left folder name with the
 right folder name (local) or connection name (remote). A remote source picker is locked:
 close the tab to disconnect. Closing the last connected tab creates a fresh local workspace.
-The gear opens Settings: light/dark/system theme, density, hidden dotfiles and language.
+Tab closing asks for confirmation by default and can be disabled in Settings. The gear opens
+Settings: appearance, shortcuts, update automation, external applications and language.
 
 Drive discovery and filesystem access run in the main process through fixed, validated IPC
 channels. Each discovered root uses its own bounded `LocalProvider`; tabs do not change a shared
@@ -135,9 +136,8 @@ Select entries and use the panel's **Copy** icon or F5, then confirm the destina
 are copied recursively. The queue shows progress, speed and ETA with cancel, resume and restart.
 Completed transfers refresh the destination panel. Temporary `.openscp-part-…` files are published
 only after success; interrupted parts remain available for verified resume during this run.
-Queue intents survive restarts without credentials. Unfinished transfers require review and
-never reconnect or resume automatically. An explicit restart copies from zero with conflict
-prompts; old partial files remain untouched. Ambiguous commit failures also require review.
+The transfer queue is session-only and starts empty on every application launch. Closing the
+application with queued or running tasks asks before interrupting them.
 
 ## S3 and multipart
 
@@ -161,8 +161,9 @@ See [S3 semantics and limitations](docs/architecture/s3.md),
 
 Use F6 to switch panels, arrows/Home/End/PageUp/PageDown to navigate, Shift/Ctrl to select,
 Ctrl+A to select all, F5 to copy to the opposite panel, F2 to rename, F7 to create a directory,
-Delete to confirm deletion, F4 to refresh and Backspace to go up. Context menus expose only
-provider-supported commands. Internal drops and operating-system file drops use the same queue.
+Delete to confirm deletion, F4 to edit, Ctrl+F5 to refresh and Backspace to go up. These command
+and tab shortcuts can be reassigned in Settings. Context menus expose only provider-supported
+commands. Internal drops and operating-system file drops use the same queue.
 Connect both panels to stream directly between SFTP/S3 sources using the same Copy action.
 
 **Connections** provides search, folders, duplication, deletion and secret-free JSON import/export,

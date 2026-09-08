@@ -1,6 +1,11 @@
 import { useState, type ReactNode, type DragEvent, type KeyboardEvent } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Icon, type IconName } from './Icon';
+import {
+  formatShortcut,
+  matchesShortcut,
+  type KeyboardShortcut,
+} from '@shared/models/keyboard-shortcuts';
 
 const commandIcons: Record<string, IconName> = {
   mkdir: 'FolderPlus',
@@ -15,14 +20,13 @@ const commandIcons: Record<string, IconName> = {
 export interface FileCommand {
   readonly id: string;
   readonly label: string;
-  readonly key?: string;
-  readonly ctrlKey?: boolean;
+  readonly shortcut?: KeyboardShortcut;
   readonly disabled?: boolean;
   readonly run: () => void;
 }
 
 export const fileCommandShortcut = (command: FileCommand): string | undefined =>
-  command.key ? `${command.ctrlKey ? 'Ctrl+' : ''}${command.key}` : undefined;
+  command.shortcut ? formatShortcut(command.shortcut, /Mac/iu.test(navigator.platform)) : undefined;
 
 export const CommandButtons = ({ commands }: { readonly commands: readonly FileCommand[] }) => (
   <div className="remote-controls command-bar">
@@ -61,14 +65,7 @@ export const CommanderSurface = ({
   const keyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if ((event.target as HTMLElement).closest('input, select, textarea, dialog, [role="dialog"]'))
       return;
-    const command = commands.find(
-      (item) =>
-        item.key?.toLowerCase() === event.key.toLowerCase() &&
-        Boolean(item.ctrlKey) === event.ctrlKey &&
-        !event.altKey &&
-        !event.metaKey &&
-        !event.shiftKey,
-    );
+    const command = commands.find((item) => item.shortcut && matchesShortcut(event, item.shortcut));
     if (command) {
       event.preventDefault();
       event.stopPropagation();

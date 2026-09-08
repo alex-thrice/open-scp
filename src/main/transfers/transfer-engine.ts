@@ -199,6 +199,11 @@ export class TransferEngine {
           ['running', 'queued', 'requiring-review'].includes(item.state),
       );
   }
+  public hasAnyActive(): boolean {
+    return [...this.jobs.values()].some((job) =>
+      ['running', 'queued', 'requiring-review'].includes(job.snapshot.state),
+    );
+  }
   public enqueue(request: TransferRequest, id: string = randomUUID()): string {
     if (this.jobs.size + this.restored.size >= 10000)
       throw new ApplicationError(applicationErrorCodes.providerConflict);

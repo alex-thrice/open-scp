@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import type { Appearance, WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
+import { defaultKeyboardShortcuts } from '@shared/models/keyboard-shortcuts';
 import {
   CommanderSurface,
   CommandButtons,
@@ -79,6 +80,7 @@ export const FilePane = ({
   readonly onLocation: (side: PaneSide, location: PaneLocation) => void;
 }) => {
   const { t } = useTranslation();
+  const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
   const ready = kind === 'local' || session?.state === 'connected';
@@ -246,7 +248,7 @@ export const FilePane = ({
     {
       id: 'mkdir',
       label: t('operations.mkdir'),
-      key: 'F7',
+      shortcut: shortcuts.createDirectory,
       disabled:
         !listing ||
         !ready ||
@@ -258,7 +260,7 @@ export const FilePane = ({
     {
       id: 'copy',
       label: t('ui.copyTo', { path: destination?.path || t('ui.sourceNotReady') }),
-      key: 'F5',
+      shortcut: shortcuts.copy,
       disabled:
         invalidSelection ||
         !ready ||
@@ -277,7 +279,7 @@ export const FilePane = ({
     {
       id: 'rename',
       label: t('operations.rename'),
-      key: 'F2',
+      shortcut: shortcuts.rename,
       disabled:
         invalidSelection ||
         selected.length !== 1 ||
@@ -290,7 +292,7 @@ export const FilePane = ({
     {
       id: 'edit',
       label: t('operations.edit'),
-      key: 'F4',
+      shortcut: shortcuts.edit,
       disabled:
         selected.length !== 1 ||
         selectedEntry?.kind !== 'file' ||
@@ -307,7 +309,7 @@ export const FilePane = ({
     {
       id: 'delete',
       label: t('operations.delete'),
-      key: 'Delete',
+      shortcut: shortcuts.delete,
       disabled:
         invalidSelection ||
         !ready ||
@@ -319,15 +321,14 @@ export const FilePane = ({
     {
       id: 'refresh',
       label: t('commander.refresh'),
-      key: 'F5',
-      ctrlKey: true,
+      shortcut: shortcuts.refresh,
       disabled: !ready || loading,
       run: () => void load(listing?.currentPath ?? null),
     },
     {
       id: 'up',
       label: t('commander.up'),
-      key: 'Backspace',
+      shortcut: shortcuts.parentDirectory,
       disabled: !listing?.parentPath || loading,
       run: () => {
         if (listing?.parentPath) void load(listing.parentPath);

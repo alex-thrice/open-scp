@@ -108,6 +108,31 @@ input[type='checkbox'] {
   height: 16px;
   margin: 0;
 }
+.file-picker {
+  padding: 4px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.file-picker::file-selector-button {
+  min-height: 30px;
+  margin-right: 10px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  color: var(--text);
+  background: var(--surface);
+  cursor: pointer;
+}
+.file-picker:hover::file-selector-button {
+  background: var(--hover);
+}
+.file-picker:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+.file-picker:disabled::file-selector-button {
+  cursor: default;
+}
 svg {
   flex-shrink: 0;
 }
@@ -231,6 +256,22 @@ small {
 .settings-button {
   border-color: var(--border);
   background: var(--surface);
+}
+.update-available-button {
+  position: relative;
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+.update-available-button::after {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--accent);
+  content: '';
 }
 .workspace-tabs-shell {
   display: flex;
@@ -1145,6 +1186,10 @@ summary {
 }
 .shortcut-list dd {
   margin: 0;
+}
+.shortcut-capture {
+  min-width: 112px;
+  padding: 4px 8px;
 }
 kbd {
   color: var(--muted);

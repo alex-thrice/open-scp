@@ -31,6 +31,7 @@ function createPackageConfig(environment, platform) {
     asarUnpack: ['**/*.node', '**/ssh2/util/pagent.exe'],
     forceCodeSigning: signed,
     directories: { output: 'release', buildResources: 'build-resources' },
+    publish: { provider: 'github', owner: 'alex-thrice', repo: 'open-scp' },
     files: ['out/**/*', 'package.json'],
     extraResources: [
       { from: 'build-resources/generated/icon.png', to: 'icon.png' },

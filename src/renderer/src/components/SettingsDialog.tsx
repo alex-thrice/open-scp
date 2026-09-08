@@ -1,36 +1,70 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Appearance } from '@shared/ipc/workspace';
+import {
+  defaultKeyboardShortcuts,
+  formatShortcut,
+  sameShortcut,
+  shortcutFromKeyboardEvent,
+  type KeyboardShortcuts,
+  type ShortcutAction,
+} from '@shared/models/keyboard-shortcuts';
+import type { UpdateSettings, UpdateState } from '@shared/models/application-update';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
+export type SettingsPage = 'appearance' | 'shortcuts' | 'updates' | 'advanced';
+
+const shortcutLabels: readonly (readonly [ShortcutAction, string])[] = [
+  ['newWorkspace', 'tabs.add'],
+  ['closeWorkspace', 'ui.closeConnection'],
+  ['switchPanel', 'commander.switchPanel'],
+  ['createDirectory', 'operations.mkdir'],
+  ['copy', 'operations.copy'],
+  ['refresh', 'commander.refresh'],
+  ['rename', 'operations.rename'],
+  ['delete', 'operations.delete'],
+  ['edit', 'operations.edit'],
+  ['parentDirectory', 'commander.up'],
+];
+
 export const SettingsDialog = ({
   appearance,
+  confirmTabClose,
   editorPath,
   initialPage,
+  keyboardShortcuts,
   puttyPath,
   rememberPaths,
+  updateSettings,
+  updateState,
   run,
   errorKey,
   onClose,
 }: {
   readonly appearance: Appearance;
+  readonly confirmTabClose: boolean;
   readonly editorPath: string | null;
-  readonly initialPage: 'appearance' | 'shortcuts' | 'advanced';
+  readonly initialPage: SettingsPage;
+  readonly keyboardShortcuts: KeyboardShortcuts;
   readonly puttyPath: string | null;
   readonly rememberPaths: boolean;
+  readonly updateSettings: UpdateSettings;
+  readonly updateState: UpdateState | undefined;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
   readonly onClose: () => void;
 }) => {
   const { t, i18n } = useTranslation();
-  const [page, setPage] = useState<'appearance' | 'shortcuts' | 'advanced'>(initialPage);
+  const [page, setPage] = useState<SettingsPage>(initialPage);
   const [busy, setBusy] = useState(false);
+  const [editingShortcut, setEditingShortcut] = useState<ShortcutAction | null>(null);
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [draft, setDraft] = useState(appearance);
   const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
   const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
-  const editorFileInput = useRef<HTMLInputElement>(null);
+  const isMac = /Mac/iu.test(navigator.platform);
   useEffect(() => {
     setDraft(appearance);
   }, [appearance]);
@@ -54,6 +88,24 @@ export const SettingsDialog = ({
       setBusy(false);
     }
   };
+  const saveShortcuts = async (shortcuts: KeyboardShortcuts) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await run({ action: 'set-keyboard-shortcuts', shortcuts });
+    } finally {
+      setBusy(false);
+    }
+  };
+  const saveUpdateSettings = async (value: Partial<UpdateSettings>) => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await run({ action: 'set-update-settings', settings: { ...updateSettings, ...value } });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <Dialog
       title={t('ui.settings')}
@@ -63,7 +115,7 @@ export const SettingsDialog = ({
     >
       <div className="settings-layout">
         <nav className="settings-nav" aria-label={t('ui.settings')}>
-          {(['appearance', 'shortcuts', 'advanced'] as const).map((name) => (
+          {(['appearance', 'shortcuts', 'updates', 'advanced'] as const).map((name) => (
             <button
               key={name}
               aria-current={page === name ? 'page' : undefined}
@@ -75,7 +127,9 @@ export const SettingsDialog = ({
                     ? 'SlidersHorizontal'
                     : name === 'shortcuts'
                       ? 'Keyboard'
-                      : 'Settings'
+                      : name === 'updates'
+                        ? 'RefreshCw'
+                        : 'Settings'
                 }
               />
               {t(`ui.${name}`)}
@@ -153,6 +207,24 @@ export const SettingsDialog = ({
                   <small>{t('path.rememberHint')}</small>
                 </span>
               </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={confirmTabClose}
+                  disabled={busy}
+                  onChange={(event) => {
+                    setBusy(true);
+                    void run({
+                      action: 'set-confirm-tab-close',
+                      enabled: event.currentTarget.checked,
+                    }).finally(() => setBusy(false));
+                  }}
+                />
+                <span>
+                  {t('tabs.confirmSetting')}
+                  <small>{t('tabs.confirmSettingHint')}</small>
+                </span>
+              </label>
               <label>
                 {t('language.label')}
                 <select
@@ -175,27 +247,163 @@ export const SettingsDialog = ({
               </label>
             </>
           ) : page === 'shortcuts' ? (
-            <dl className="shortcut-list">
-              {[
-                ['Ctrl / ⌘ + T', 'tabs.add'],
-                ['Ctrl / ⌘ + W', 'ui.closeConnection'],
-                ['F6', 'commander.switchPanel'],
-                ['F7', 'operations.mkdir'],
-                ['F5', 'operations.copy'],
-                ['Ctrl+F5', 'commander.refresh'],
-                ['F2', 'operations.rename'],
-                ['Delete', 'operations.delete'],
-                ['F4', 'operations.edit'],
-                ['Backspace', 'commander.up'],
-              ].map(([key, label]) => (
-                <div key={key}>
-                  <dt>{t(label ?? '')}</dt>
-                  <dd>
-                    <kbd>{key}</kbd>
-                  </dd>
-                </div>
-              ))}
-            </dl>
+            <>
+              <p className="muted">{t('shortcuts.hint')}</p>
+              <dl className="shortcut-list">
+                {shortcutLabels.map(([action, label]) => (
+                  <div key={action}>
+                    <dt>{t(label)}</dt>
+                    <dd>
+                      <button
+                        className="shortcut-capture"
+                        disabled={busy}
+                        type="button"
+                        onClick={() => {
+                          setShortcutError(null);
+                          setEditingShortcut(action);
+                        }}
+                        onKeyDown={(event) => {
+                          if (editingShortcut !== action) return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (event.key === 'Escape') {
+                            setEditingShortcut(null);
+                            return;
+                          }
+                          const shortcut = shortcutFromKeyboardEvent(event);
+                          if (!shortcut) {
+                            setShortcutError('shortcuts.invalid');
+                            return;
+                          }
+                          const duplicate = shortcutLabels.find(
+                            ([candidate]) =>
+                              candidate !== action &&
+                              sameShortcut(keyboardShortcuts[candidate], shortcut),
+                          );
+                          if (duplicate) {
+                            setShortcutError('shortcuts.duplicate');
+                            return;
+                          }
+                          setEditingShortcut(null);
+                          setShortcutError(null);
+                          void saveShortcuts({ ...keyboardShortcuts, [action]: shortcut });
+                        }}
+                      >
+                        <kbd>
+                          {editingShortcut === action
+                            ? t('shortcuts.press')
+                            : formatShortcut(keyboardShortcuts[action], isMac)}
+                        </kbd>
+                      </button>
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+              <button
+                disabled={busy}
+                type="button"
+                onClick={() => void saveShortcuts(defaultKeyboardShortcuts)}
+              >
+                {t('shortcuts.reset')}
+              </button>
+              {shortcutError ? (
+                <p role="alert" className="inline-error">
+                  {t(shortcutError)}
+                </p>
+              ) : null}
+            </>
+          ) : page === 'updates' ? (
+            <>
+              <p className="muted">{t('updates.hint')}</p>
+              <p>{t('updates.currentVersion', { version: updateState?.currentVersion ?? '—' })}</p>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={updateSettings.automaticCheck}
+                  disabled={busy}
+                  onChange={(event) =>
+                    void saveUpdateSettings({ automaticCheck: event.currentTarget.checked })
+                  }
+                />
+                <span>{t('updates.automaticCheck')}</span>
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={updateSettings.automaticDownload}
+                  disabled={busy}
+                  onChange={(event) =>
+                    void saveUpdateSettings({ automaticDownload: event.currentTarget.checked })
+                  }
+                />
+                <span>{t('updates.automaticDownload')}</span>
+              </label>
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={updateSettings.automaticInstall}
+                  disabled={busy}
+                  onChange={(event) =>
+                    void saveUpdateSettings({ automaticInstall: event.currentTarget.checked })
+                  }
+                />
+                <span>
+                  {t('updates.automaticInstall')}
+                  <small>{t('updates.automaticInstallHint')}</small>
+                </span>
+              </label>
+              {updateState ? (
+                <p role="status">
+                  {t(`updates.status.${updateState.status}`, {
+                    version: updateState.availableVersion ?? '',
+                    progress: Math.round(updateState.progress ?? 0),
+                  })}
+                </p>
+              ) : null}
+              <div className="button-group">
+                <button
+                  disabled={
+                    busy ||
+                    updateState?.supported !== true ||
+                    ['checking', 'downloading'].includes(updateState.status)
+                  }
+                  type="button"
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'check-for-updates' }).finally(() => setBusy(false));
+                  }}
+                >
+                  <Icon name="RefreshCw" />
+                  {t('updates.check')}
+                </button>
+                {updateState?.status === 'available' ? (
+                  <button
+                    disabled={busy}
+                    type="button"
+                    onClick={() => {
+                      setBusy(true);
+                      void run({ action: 'download-update' }).finally(() => setBusy(false));
+                    }}
+                  >
+                    {t('updates.download')}
+                  </button>
+                ) : null}
+                {updateState?.status === 'downloaded' ? (
+                  <button
+                    disabled={busy}
+                    type="button"
+                    onClick={() => void run({ action: 'install-update' })}
+                  >
+                    {t('updates.install')}
+                  </button>
+                ) : null}
+              </div>
+              {updateState?.errorKey ? (
+                <p role="alert" className="inline-error">
+                  {t(updateState.errorKey)}
+                </p>
+              ) : null}
+            </>
           ) : (
             <>
               <h4>{t('library.diagnostics')}</h4>
@@ -251,24 +459,18 @@ export const SettingsDialog = ({
                   onChange={(event) => setEditorPathDraft(event.currentTarget.value)}
                 />
               </label>
-              <input
-                ref={editorFileInput}
-                aria-label={t('editor.chooseFile')}
-                disabled={busy}
-                hidden
-                type="file"
-                onChange={(event) => {
-                  const file = event.currentTarget.files?.[0];
-                  const path = file ? window.desktop.getPathForFile?.(file) : undefined;
-                  if (path) setEditorPathDraft(path);
-                  event.currentTarget.value = '';
-                }}
-              />
               <div className="button-group">
                 <button
                   disabled={busy}
                   type="button"
-                  onClick={() => editorFileInput.current?.click()}
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'pick-editor' })
+                      .then((result) => {
+                        if (result?.selectedPath) setEditorPathDraft(result.selectedPath);
+                      })
+                      .finally(() => setBusy(false));
+                  }}
                 >
                   <Icon name="FileInput" />
                   {t('editor.chooseFile')}
@@ -293,6 +495,7 @@ export const SettingsDialog = ({
               <label>
                 {t('library.chooseFile')}
                 <input
+                  className="file-picker"
                   type="file"
                   disabled={busy}
                   onChange={(event) => {

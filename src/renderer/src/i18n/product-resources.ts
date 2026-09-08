@@ -24,7 +24,8 @@ export const productResources = {
       switchPanel: 'Switch panel',
       up: 'Parent directory',
       copy: 'Copy to opposite panel',
-      shortcuts: 'F6: switch panel · ↑↓: navigate · Shift/Ctrl: select · Ctrl+A: select all',
+      shortcuts:
+        '{{switchPanel}}: switch panel · ↑↓: navigate · Shift/Ctrl: select · Ctrl+A: select all',
       overwrite: 'Existing files may be overwritten. Continue?',
       deleteSelection: 'Delete selected items permanently? This cannot be undone.',
     },
@@ -96,7 +97,8 @@ export const productResources = {
       switchPanel: 'Переключить панель',
       up: 'Родительский каталог',
       copy: 'Копировать в соседнюю панель',
-      shortcuts: 'F6: сменить панель · ↑↓: навигация · Shift/Ctrl: выделение · Ctrl+A: выбрать всё',
+      shortcuts:
+        '{{switchPanel}}: сменить панель · ↑↓: навигация · Shift/Ctrl: выделение · Ctrl+A: выбрать всё',
       overwrite: 'Существующие файлы могут быть перезаписаны. Продолжить?',
       deleteSelection: 'Удалить выделенные элементы безвозвратно? Отменить это действие нельзя.',
     },
