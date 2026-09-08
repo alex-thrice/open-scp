@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import { join, parse, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
@@ -47,6 +47,16 @@ test('opens the desktop shell and changes the local directory', async () => {
   });
   const window = await electronApplication.firstWindow();
   expect(await electronApplication.evaluate(({ app }) => app.getName())).toBe('OpenSCP');
+  const menuLabels = await electronApplication.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu()?.items.map((item) => item.label),
+  );
+  expect(menuLabels).toEqual([
+    ...(process.platform === 'darwin' ? ['OpenSCP'] : []),
+    'File',
+    'View',
+    'Window',
+    'Help',
+  ]);
   const localPanel = window.getByTestId('left-panel');
 
   await expect(window.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();
@@ -58,6 +68,22 @@ test('opens the desktop shell and changes the local directory', async () => {
 
   await expect(localPanel.getByRole('row', { name: 'child-file.txt' })).toBeVisible();
   await expect(localPanel.getByLabel('Current path')).toHaveValue(childPath);
+  for (const button of await localPanel.getByRole('columnheader').getByRole('button').all())
+    await expect(button).toHaveAttribute('tabindex', '-1');
+  await localPanel.getByRole('button', { name: 'New file', exact: true }).click();
+  const createFileDialog = window.getByRole('dialog', { name: 'New file' });
+  await createFileDialog.getByLabel('Name').fill('created.txt');
+  await createFileDialog.getByRole('button', { name: 'Confirm' }).click();
+  await expect(localPanel.getByRole('row', { name: 'created.txt', exact: true })).toBeVisible();
+  await expect.poll(() => readFile(join(childPath, 'created.txt'), 'utf8')).toBe('');
+  const sizeHeader = localPanel.locator('.file-list__header .file-list__cell--size');
+  await sizeHeader.getByRole('button').click();
+  await expect(sizeHeader).toHaveAttribute('aria-sort', 'ascending');
+  await localPanel.locator('.pathbar').getByRole('button', { name: 'Refresh' }).click();
+  await expect(sizeHeader).toHaveAttribute('aria-sort', 'ascending');
+  await localPanel.getByRole('row', { name: 'child-file.txt' }).click({ button: 'right' });
+  await expect(window.getByRole('menuitem', { name: 'New file' })).toBeVisible();
+  await window.keyboard.press('Escape');
 
   await window.getByRole('button', { name: 'New workspace' }).click();
   await expect(window.getByRole('tab')).toHaveCount(2);

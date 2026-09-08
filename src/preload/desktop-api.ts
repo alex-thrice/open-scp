@@ -12,6 +12,8 @@ import {
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
 import type {
   AppReadyEvent,
+  ApplicationMenuCommand,
+  ApplicationMenuCommandEvent,
   IpcEventEnvelope,
   IpcResponseEnvelope,
   LocalDirectoryEntry,
@@ -42,6 +44,12 @@ const runtimePlatforms = new Set<RuntimePlatform>([
 
 const applicationErrorCodeSet = new Set<ApplicationErrorCode>(Object.values(applicationErrorCodes));
 const fileSystemEntryKinds = new Set(['directory', 'file', 'special', 'symbolic-link']);
+const applicationMenuCommands = new Set<ApplicationMenuCommand>([
+  'new-workspace',
+  'close-workspace',
+  'connections',
+  'settings',
+]);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
@@ -130,6 +138,15 @@ const isAppReadyEvent = (value: unknown): value is IpcEventEnvelope<AppReadyEven
   isRecord(value.payload) &&
   typeof value.payload.occurredAt === 'string' &&
   !Number.isNaN(Date.parse(value.payload.occurredAt));
+
+const isApplicationMenuCommandEvent = (
+  value: unknown,
+): value is IpcEventEnvelope<ApplicationMenuCommandEvent> =>
+  isRecord(value) &&
+  isCorrelationId(value.correlationId) &&
+  isRecord(value.payload) &&
+  typeof value.payload.command === 'string' &&
+  applicationMenuCommands.has(value.payload.command as ApplicationMenuCommand);
 
 const parseResponse = <Data>(
   value: unknown,
@@ -233,6 +250,12 @@ export const createDesktopApi = (
         if (isAppReadyEvent(payload)) {
           listener(payload);
         }
+      }),
+    onApplicationMenuCommand: (
+      listener: (event: IpcEventEnvelope<ApplicationMenuCommandEvent>) => void,
+    ): (() => void) =>
+      bridge.subscribe(ipcEventChannels.applicationMenuCommand, (payload: unknown) => {
+        if (isApplicationMenuCommandEvent(payload)) listener(payload);
       }),
     runtime: 'electron',
   });

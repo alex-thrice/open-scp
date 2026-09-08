@@ -2,7 +2,7 @@
 import { EventEmitter } from 'node:events';
 import type { AppUpdater } from 'electron-updater';
 import { describe, expect, it, vi } from 'vitest';
-import { UpdateService } from '../../src/main/updates/update-service';
+import { resolveAutoUpdater, UpdateService } from '../../src/main/updates/update-service';
 import { defaultUpdateSettings } from '../../src/shared/models/application-update';
 
 const updaterFixture = () => {
@@ -17,6 +17,13 @@ const updaterFixture = () => {
 };
 
 describe('update service', () => {
+  it('resolves the CommonJS default export used in packaged builds', () => {
+    const updater = updaterFixture();
+
+    expect(resolveAutoUpdater({ default: { autoUpdater: updater } })).toBe(updater);
+    expect(resolveAutoUpdater({ autoUpdater: updater })).toBe(updater);
+  });
+
   it('checks, downloads an available version and installs it on request', async () => {
     const updater = updaterFixture();
     updater.checkForUpdates.mockImplementation(async () => {

@@ -9,6 +9,7 @@ import {
 
 const commandIcons: Record<string, IconName> = {
   mkdir: 'FolderPlus',
+  createFile: 'FileText',
   copy: 'Copy',
   download: 'Copy',
   edit: 'TextCursorInput',

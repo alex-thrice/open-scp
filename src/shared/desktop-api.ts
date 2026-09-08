@@ -1,5 +1,6 @@
 import type {
   AppReadyEvent,
+  ApplicationMenuCommandEvent,
   IpcEventEnvelope,
   IpcResponseEnvelope,
   LocalDirectoryListing,
@@ -17,5 +18,8 @@ export interface DesktopApi {
   ) => Promise<IpcResponseEnvelope<LocalDirectoryListing>>;
   readonly listLocalDrives: () => Promise<IpcResponseEnvelope<readonly LocalDrive[]>>;
   readonly onAppReady: (listener: (event: IpcEventEnvelope<AppReadyEvent>) => void) => () => void;
+  readonly onApplicationMenuCommand: (
+    listener: (event: IpcEventEnvelope<ApplicationMenuCommandEvent>) => void,
+  ) => () => void;
   readonly runtime: 'electron';
 }

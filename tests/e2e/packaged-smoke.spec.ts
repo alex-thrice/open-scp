@@ -105,6 +105,7 @@ test('packaged application starts with secure IPC and encrypted profile persiste
   try {
     application = await launch();
     expect(await application.evaluate(({ app }) => app.isPackaged)).toBe(true);
+    const applicationVersion = await application.evaluate(({ app }) => app.getVersion());
     expect(await application.evaluate(({ app }) => app.getName())).toBe(
       process.env.APP_PRODUCT_NAME ?? 'OpenSCP',
     );
@@ -132,6 +133,10 @@ test('packaged application starts with secure IPC and encrypted profile persiste
     let window = await application.firstWindow();
     await expect(window.getByTestId('left-panel').getByLabel('Current path')).toBeVisible();
     await expect(window.getByTestId('right-panel')).toBeVisible();
+    expect((await request(window, { action: 'snapshot' })).snapshot.updateState).toMatchObject({
+      supported: true,
+      currentVersion: applicationVersion,
+    });
     expect(await window.evaluate(() => 'require' in window || 'process' in window)).toBe(false);
     const form = await newConnection(window, 'sftp');
     await form.getByLabel('Profile name').fill('Disposable packaged profile');

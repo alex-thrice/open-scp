@@ -6,6 +6,33 @@ const errorKey = (error: unknown): string =>
     ? 'updates.metadataUnavailable'
     : 'updates.error';
 
+const isAppUpdater = (value: unknown): value is AppUpdater =>
+  typeof value === 'object' &&
+  value !== null &&
+  typeof Reflect.get(value, 'on') === 'function' &&
+  typeof Reflect.get(value, 'checkForUpdates') === 'function' &&
+  typeof Reflect.get(value, 'downloadUpdate') === 'function' &&
+  typeof Reflect.get(value, 'quitAndInstall') === 'function';
+
+export const resolveAutoUpdater = (module: unknown): AppUpdater | undefined => {
+  if (typeof module !== 'object' || module === null) return undefined;
+  const direct = Reflect.get(module, 'autoUpdater');
+  if (isAppUpdater(direct)) return direct;
+  const fallback = Reflect.get(module, 'default');
+  if (typeof fallback !== 'object' || fallback === null) return undefined;
+  const nested = Reflect.get(fallback, 'autoUpdater');
+  return isAppUpdater(nested) ? nested : undefined;
+};
+
+export const loadAutoUpdater = async (supported: boolean): Promise<AppUpdater | undefined> => {
+  if (!supported) return undefined;
+  try {
+    return resolveAutoUpdater(await import('electron-updater'));
+  } catch {
+    return undefined;
+  }
+};
+
 export class UpdateService {
   private state: UpdateState;
   private settings: UpdateSettings;

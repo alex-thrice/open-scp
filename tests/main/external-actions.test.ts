@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -50,6 +50,20 @@ describe('workspace external actions', () => {
     await service.execute({ action: 'set-editor-path', path: editorPath });
     await service.execute({ action: 'edit-file', workspaceId: 'workspace:left', path: filePath });
     expect(openEditor).toHaveBeenCalledWith(filePath, editorPath);
+    const createdFilePath = join(rootPath, 'created.txt');
+    await service.execute({
+      action: 'create-file',
+      workspaceId: 'workspace:left',
+      path: createdFilePath,
+    });
+    await expect(readFile(createdFilePath, 'utf8')).resolves.toBe('');
+    await expect(
+      service.execute({
+        action: 'create-file',
+        workspaceId: 'workspace:left',
+        path: createdFilePath,
+      }),
+    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
     await expect(
       service.execute({
         action: 'open-local-file',

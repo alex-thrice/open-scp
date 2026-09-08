@@ -7,7 +7,12 @@ import { ProfileStore } from './persistence/profile-store';
 import { WorkspaceService } from './sessions/workspace-service';
 import { join } from 'node:path';
 import { ipcEventChannels } from '@shared/ipc/channels';
-import type { AppReadyEvent, IpcEventEnvelope } from '@shared/ipc/contracts';
+import type {
+  AppReadyEvent,
+  ApplicationMenuCommand,
+  ApplicationMenuCommandEvent,
+  IpcEventEnvelope,
+} from '@shared/ipc/contracts';
 import { createIpcHandlerDependencies, registerIpcHandlers } from './ipc/register-ipc-handlers';
 import {
   createConfiguredLocalBrowsePaths,
@@ -16,14 +21,14 @@ import {
 import { configureProductionContentSecurityPolicy } from './security/content-security-policy';
 import { configureWebContentsSecurity } from './security/web-contents-security';
 import { createWindowOptions } from './window-options';
-import { setApplicationLanguage } from './application-menu';
+import { setApplicationLanguage, type ApplicationMenuActions } from './application-menu';
+import { menuResources } from '@shared/localization/menu-resources';
 import { openSshTerminal } from './external/ssh-terminal';
 import { normalizeMacApplicationPath, openEditor } from './external/editor';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
-import type { AppUpdater } from 'electron-updater';
-import { UpdateService } from './updates/update-service';
+import { loadAutoUpdater, UpdateService } from './updates/update-service';
 import {
   defaultUpdateSettings,
   updateSettingsSchema,
@@ -37,15 +42,7 @@ if (process.env.OPENSCP_DISABLE_HARDWARE_ACCELERATION === '1') {
 }
 
 const mainWindows = new Set<BrowserWindow>();
-
-const loadAutoUpdater = async (): Promise<AppUpdater | undefined> => {
-  if (!app.isPackaged) return undefined;
-  try {
-    return (await import('electron-updater')).autoUpdater;
-  } catch {
-    return undefined;
-  }
-};
+const repositoryUrl = 'https://github.com/alex-thrice/open-scp';
 
 interface ApplicationCloseGuard {
   approve(): void;
@@ -91,6 +88,39 @@ const createAppReadyEvent = (): IpcEventEnvelope<AppReadyEvent> => ({
     occurredAt: new Date().toISOString(),
   },
 });
+
+const createApplicationMenuCommandEvent = (
+  command: ApplicationMenuCommand,
+): IpcEventEnvelope<ApplicationMenuCommandEvent> => ({
+  correlationId: randomUUID(),
+  payload: { command },
+});
+
+const mainWindow = (): BrowserWindow | undefined =>
+  BrowserWindow.getFocusedWindow() ?? [...mainWindows][0];
+
+const openRepository = async (): Promise<void> => {
+  await shell.openExternal(repositoryUrl);
+};
+
+const showApplicationAbout = async (language: 'en' | 'ru'): Promise<void> => {
+  const labels = menuResources[language];
+  const window = mainWindow();
+  const options = {
+    type: 'info' as const,
+    title: labels.about,
+    message: 'OpenSCP',
+    detail: `${labels.version}: ${app.getVersion()}\n${repositoryUrl}`,
+    buttons: [labels.openGitHub, labels.close],
+    cancelId: 1,
+    defaultId: 1,
+    noLink: true,
+  };
+  const result = window
+    ? await dialog.showMessageBox(window, options)
+    : await dialog.showMessageBox(options);
+  if (result.response === 0) await openRepository();
+};
 
 const createMainWindow = (
   profileStore: ProfileStore,
@@ -235,12 +265,26 @@ app.whenReady().then(async () => {
   };
   const updateSettings = readUpdateSettings(profileStore.getSetting('update-settings-v1'));
   const updateService = new UpdateService(
-    await loadAutoUpdater(),
+    await loadAutoUpdater(app.isPackaged),
     app.getVersion(),
     app.isPackaged,
     updateSettings,
   );
-  setApplicationLanguage(profileStore.getSetting('language') === 'ru' ? 'ru' : 'en');
+  const applicationMenuActions: ApplicationMenuActions = {
+    openAbout: (language) => void showApplicationAbout(language),
+    openRepository: () => void openRepository(),
+    sendCommand: (command) => {
+      const window = mainWindow();
+      if (window && !window.isDestroyed())
+        window.webContents.send(
+          ipcEventChannels.applicationMenuCommand,
+          createApplicationMenuCommandEvent(command),
+        );
+    },
+  };
+  const applyApplicationLanguage = (language: 'en' | 'ru'): void =>
+    setApplicationLanguage(language, applicationMenuActions);
+  applyApplicationLanguage(profileStore.getSetting('language') === 'ru' ? 'ru' : 'en');
   const workspaceService = new WorkspaceService(
     profileStore,
     credentials,
@@ -257,7 +301,7 @@ app.whenReady().then(async () => {
       if (!result.canceled && result.filePath)
         await writeFile(result.filePath, content, { encoding: 'utf8', mode: 0o600 });
     },
-    setApplicationLanguage,
+    applyApplicationLanguage,
     {
       checkForUpdates: () => updateService.check(),
       downloadUpdate: () => updateService.download(),
