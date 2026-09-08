@@ -22,7 +22,7 @@ import { normalizeMacApplicationPath, openEditor } from './external/editor';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
-import electronUpdater from 'electron-updater';
+import type { AppUpdater } from 'electron-updater';
 import { UpdateService } from './updates/update-service';
 import {
   defaultUpdateSettings,
@@ -37,7 +37,15 @@ if (process.env.OPENSCP_DISABLE_HARDWARE_ACCELERATION === '1') {
 }
 
 const mainWindows = new Set<BrowserWindow>();
-const { autoUpdater } = electronUpdater;
+
+const loadAutoUpdater = async (): Promise<AppUpdater | undefined> => {
+  if (!app.isPackaged) return undefined;
+  try {
+    return (await import('electron-updater')).autoUpdater;
+  } catch {
+    return undefined;
+  }
+};
 
 interface ApplicationCloseGuard {
   approve(): void;
@@ -227,7 +235,7 @@ app.whenReady().then(async () => {
   };
   const updateSettings = readUpdateSettings(profileStore.getSetting('update-settings-v1'));
   const updateService = new UpdateService(
-    autoUpdater,
+    await loadAutoUpdater(),
     app.getVersion(),
     app.isPackaged,
     updateSettings,

@@ -11,22 +11,25 @@ export class UpdateService {
   private settings: UpdateSettings;
   private checking: Promise<void> | undefined;
   private downloading: Promise<void> | undefined;
+  private readonly supported: boolean;
 
   public constructor(
-    private readonly updater: AppUpdater,
+    private readonly updater: AppUpdater | undefined,
     currentVersion: string,
-    private readonly supported: boolean,
+    supported: boolean,
     settings: UpdateSettings,
   ) {
     this.settings = settings;
+    this.supported = supported && this.updater !== undefined;
     this.state = {
-      supported,
+      supported: this.supported,
       currentVersion,
       availableVersion: null,
       status: 'idle',
       progress: null,
       errorKey: null,
     };
+    if (!this.updater) return;
     this.updater.autoDownload = false;
     this.updater.autoInstallOnAppQuit = settings.automaticInstall;
     this.updater.on('checking-for-update', () => {
@@ -78,7 +81,7 @@ export class UpdateService {
 
   public async configure(settings: UpdateSettings): Promise<void> {
     this.settings = settings;
-    this.updater.autoInstallOnAppQuit = settings.automaticInstall;
+    if (this.updater) this.updater.autoInstallOnAppQuit = settings.automaticInstall;
     if (settings.automaticDownload && this.state.status === 'available') await this.download();
   }
 
@@ -98,9 +101,11 @@ export class UpdateService {
   }
 
   private async performCheck(): Promise<void> {
+    const updater = this.updater;
+    if (!updater) return;
     this.state = { ...this.state, status: 'checking', progress: null, errorKey: null };
     try {
-      await this.updater.checkForUpdates();
+      await updater.checkForUpdates();
       if (this.settings.automaticDownload && this.state.status === 'available') {
         await this.download();
       }
@@ -118,16 +123,18 @@ export class UpdateService {
   }
 
   private async performDownload(): Promise<void> {
+    const updater = this.updater;
+    if (!updater) return;
     this.state = { ...this.state, status: 'downloading', progress: 0, errorKey: null };
     try {
-      await this.updater.downloadUpdate();
+      await updater.downloadUpdate();
     } catch (error) {
       this.state = { ...this.state, status: 'error', progress: null, errorKey: errorKey(error) };
     }
   }
 
   public install(): void {
-    if (!this.supported || this.state.status !== 'downloaded') return;
+    if (!this.supported || !this.updater || this.state.status !== 'downloaded') return;
     this.updater.quitAndInstall(false, true);
   }
 }

@@ -76,6 +76,17 @@ describe('update service', () => {
     expect(service.snapshot()).toMatchObject({ status: 'error', errorKey: 'updates.unsupported' });
   });
 
+  it('remains unavailable when no platform updater can be loaded', async () => {
+    const service = new UpdateService(undefined, '0.3.0', true, defaultUpdateSettings);
+
+    await service.check();
+    expect(service.snapshot()).toMatchObject({
+      supported: false,
+      status: 'error',
+      errorKey: 'updates.unsupported',
+    });
+  });
+
   it('distinguishes missing release metadata from a connection failure', async () => {
     const updater = updaterFixture();
     updater.checkForUpdates.mockRejectedValue(
