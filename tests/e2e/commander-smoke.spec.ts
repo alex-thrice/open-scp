@@ -47,11 +47,16 @@ test('opens the desktop shell and changes the local directory', async () => {
   });
   const window = await electronApplication.firstWindow();
   expect(await electronApplication.evaluate(({ app }) => app.getName())).toBe('OpenSCP');
-  expect(
-    await electronApplication.evaluate(({ Menu }) =>
-      Menu.getApplicationMenu()?.items.map((item) => item.label),
-    ),
-  ).toEqual(['File', 'View', 'Window', 'Help']);
+  const menuLabels = await electronApplication.evaluate(({ Menu }) =>
+    Menu.getApplicationMenu()?.items.map((item) => item.label),
+  );
+  expect(menuLabels).toEqual([
+    ...(process.platform === 'darwin' ? ['OpenSCP'] : []),
+    'File',
+    'View',
+    'Window',
+    'Help',
+  ]);
   const localPanel = window.getByTestId('left-panel');
 
   await expect(window.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeVisible();

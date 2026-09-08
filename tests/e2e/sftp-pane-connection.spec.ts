@@ -1,4 +1,5 @@
 import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { generateKeyPairSync } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { Server, utils, type Connection } from 'ssh2';
@@ -12,6 +13,9 @@ import {
 import { nativeKeyringLaunchOptions } from './electron-launch';
 
 const { sftp } = utils;
+const portableEcdsaPrivateHostKeyForSftpIntegrationFixture = generateKeyPairSync('ec', {
+  namedCurve: 'prime256v1',
+}).privateKey.export({ format: 'pem', type: 'sec1' });
 
 for (const side of ['left', 'right'] as const) {
   for (const authenticate of [true, false]) {
@@ -21,7 +25,7 @@ for (const side of ['left', 'right'] as const) {
       const clients = new Set<Connection>();
       const listedPaths: string[] = [];
       const server = new Server(
-        { hostKeys: [utils.generateKeyPairSync('ed25519').private] },
+        { hostKeys: [portableEcdsaPrivateHostKeyForSftpIntegrationFixture] },
         (client) => {
           clients.add(client);
           // Первый обмен намеренно прерывается до подтверждения ключа в интерфейсе.
