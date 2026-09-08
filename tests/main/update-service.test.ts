@@ -56,4 +56,23 @@ describe('update service', () => {
     expect(updater.checkForUpdates).not.toHaveBeenCalled();
     expect(service.snapshot()).toMatchObject({ status: 'error', errorKey: 'updates.unsupported' });
   });
+
+  it('distinguishes missing release metadata from a connection failure', async () => {
+    const updater = updaterFixture();
+    updater.checkForUpdates.mockRejectedValue(
+      Object.assign(new Error('latest.yml was not found'), { statusCode: 404 }),
+    );
+    const service = new UpdateService(
+      updater as unknown as AppUpdater,
+      '0.3.0',
+      true,
+      defaultUpdateSettings,
+    );
+
+    await service.check();
+    expect(service.snapshot()).toMatchObject({
+      status: 'error',
+      errorKey: 'updates.metadataUnavailable',
+    });
+  });
 });

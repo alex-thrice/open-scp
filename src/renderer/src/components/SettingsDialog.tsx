@@ -495,6 +495,7 @@ export const SettingsDialog = ({
               <label>
                 {t('library.chooseFile')}
                 <input
+                  className="file-picker"
                   type="file"
                   disabled={busy}
                   onChange={(event) => {

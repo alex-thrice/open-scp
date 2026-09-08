@@ -86,6 +86,13 @@ test('entitlements grant only JIT; Linux installer does not introduce sandbox by
   const install = await readFile('build-resources/linux-after-install.sh', 'utf8');
   assert.doesNotMatch(install, /--no-sandbox|chmod 4755|sysctl/);
 });
+test('tag pushes run only the release workflow and publish updater metadata', async () => {
+  const ci = await readFile('.github/workflows/ci.yml', 'utf8');
+  assert.match(ci, /push:\r?\n\s+branches:\r?\n\s+- '\*\*'/u);
+  const packages = await readFile('.github/workflows/packages.yml', 'utf8');
+  assert.match(packages, /release\/latest\*\.yml/u);
+  assert.match(packages, /release\/\*\.blockmap/u);
+});
 test('original icon generator produces deterministic PNG, ICO and ICNS assets', async () => {
   await generateIcons();
   const first = await readFile('build-resources/generated/icon.png');

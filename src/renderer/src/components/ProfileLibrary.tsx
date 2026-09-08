@@ -171,6 +171,7 @@ export const ProfileLibrary = ({
             <label>
               {t('library.chooseFile')}
               <input
+                className="file-picker"
                 type="file"
                 accept=".json,application/json"
                 disabled={busy}

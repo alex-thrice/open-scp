@@ -1175,7 +1175,7 @@ describe('App', () => {
     expect((input as HTMLInputElement).value).toBe('C:\\Tools\\Editor\\editor.exe');
     fireEvent.click(screen.getByRole('button', { name: 'Choose editor' }));
     await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'pick-editor' }));
-    expect((input as HTMLInputElement).value).toBe(selectedEditorPath);
+    await waitFor(() => expect((input as HTMLInputElement).value).toBe(selectedEditorPath));
     fireEvent.click(screen.getByRole('button', { name: 'Save editor setting' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({

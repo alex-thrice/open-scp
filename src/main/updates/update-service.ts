@@ -1,6 +1,11 @@
 import type { AppUpdater } from 'electron-updater';
 import type { UpdateSettings, UpdateState } from '@shared/models/application-update';
 
+const errorKey = (error: unknown): string =>
+  typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404
+    ? 'updates.metadataUnavailable'
+    : 'updates.error';
+
 export class UpdateService {
   private state: UpdateState;
   private settings: UpdateSettings;
@@ -62,8 +67,8 @@ export class UpdateService {
         errorKey: null,
       };
     });
-    this.updater.on('error', () => {
-      this.state = { ...this.state, status: 'error', progress: null, errorKey: 'updates.error' };
+    this.updater.on('error', (error) => {
+      this.state = { ...this.state, status: 'error', progress: null, errorKey: errorKey(error) };
     });
   }
 
@@ -99,8 +104,8 @@ export class UpdateService {
       if (this.settings.automaticDownload && this.state.status === 'available') {
         await this.download();
       }
-    } catch {
-      this.state = { ...this.state, status: 'error', progress: null, errorKey: 'updates.error' };
+    } catch (error) {
+      this.state = { ...this.state, status: 'error', progress: null, errorKey: errorKey(error) };
     }
   }
 
@@ -116,8 +121,8 @@ export class UpdateService {
     this.state = { ...this.state, status: 'downloading', progress: 0, errorKey: null };
     try {
       await this.updater.downloadUpdate();
-    } catch {
-      this.state = { ...this.state, status: 'error', progress: null, errorKey: 'updates.error' };
+    } catch (error) {
+      this.state = { ...this.state, status: 'error', progress: null, errorKey: errorKey(error) };
     }
   }
 
