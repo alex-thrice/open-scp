@@ -83,6 +83,13 @@ export interface AppReadyEvent {
   readonly occurredAt: string;
 }
 
+export type ApplicationMenuCommand =
+  'new-workspace' | 'close-workspace' | 'connections' | 'settings';
+
+export interface ApplicationMenuCommandEvent {
+  readonly command: ApplicationMenuCommand;
+}
+
 export interface IpcRequestMap {
   readonly [ipcRequestChannels.workspace]: WorkspaceRequest;
   readonly [ipcRequestChannels.getRuntimeInfo]: EmptyIpcRequest;
@@ -99,6 +106,7 @@ export interface IpcResponseMap {
 
 export interface IpcEventMap {
   readonly [ipcEventChannels.appReady]: AppReadyEvent;
+  readonly [ipcEventChannels.applicationMenuCommand]: ApplicationMenuCommandEvent;
 }
 
 export type IpcRequestFor<Channel extends keyof IpcRequestMap> = IpcRequestMap[Channel];

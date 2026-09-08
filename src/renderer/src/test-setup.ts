@@ -39,6 +39,7 @@ const desktopApi: DesktopApi = Object.freeze({
     ok: true as const,
   }),
   onAppReady: () => () => undefined,
+  onApplicationMenuCommand: () => () => undefined,
   runtime: 'electron',
 });
 

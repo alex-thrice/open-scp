@@ -151,6 +151,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('list'), workspaceId: id, path: path.nullable() }),
   z.strictObject({ action: z.literal('mkdir'), workspaceId: id, path }),
+  z.strictObject({ action: z.literal('create-file'), workspaceId: id, path }),
   z.strictObject({ action: z.literal('rename'), workspaceId: id, path, destinationPath: path }),
   z.strictObject({
     action: z.literal('delete'),

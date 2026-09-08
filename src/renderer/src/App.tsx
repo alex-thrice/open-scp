@@ -238,6 +238,27 @@ export const App = () => {
       setClosing(false);
     }
   };
+  useEffect(() =>
+    window.desktop.onApplicationMenuCommand((event) => {
+      switch (event.payload.command) {
+        case 'new-workspace':
+          if (!closing && workspaceLayoutReady) addWorkspace();
+          break;
+        case 'close-workspace':
+          void closeWorkspace(activeWorkspaceId);
+          break;
+        case 'connections':
+          setLocalError(null);
+          setSettingsOpen(false);
+          setLibraryOpen(true);
+          break;
+        case 'settings':
+          setLibraryOpen(false);
+          openSettings('appearance');
+          break;
+      }
+    }),
+  );
   const onTabKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string) => {
     const index = workspaces.findIndex((item) => item.id === id);
     const next =

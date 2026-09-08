@@ -9,6 +9,7 @@ export type IpcRequestChannel = (typeof ipcRequestChannels)[keyof typeof ipcRequ
 
 export const ipcEventChannels = {
   appReady: 'app:ready',
+  applicationMenuCommand: 'app:menu-command',
 } as const;
 
 export type IpcEventChannel = (typeof ipcEventChannels)[keyof typeof ipcEventChannels];

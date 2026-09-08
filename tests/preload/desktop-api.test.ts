@@ -1,5 +1,9 @@
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
-import type { IpcEventEnvelope, AppReadyEvent } from '@shared/ipc/contracts';
+import type {
+  AppReadyEvent,
+  ApplicationMenuCommandEvent,
+  IpcEventEnvelope,
+} from '@shared/ipc/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { createDesktopApi, type PreloadIpcBridge } from '../../src/preload/desktop-api';
 
@@ -157,5 +161,26 @@ describe('preload desktop API', () => {
 
     removeListener();
     expect(unsubscribe).toHaveBeenCalledOnce();
+  });
+
+  it('accepts only known application menu commands', () => {
+    let eventListener: ((payload: unknown) => void) | undefined;
+    const bridge: PreloadIpcBridge = {
+      invoke: vi.fn(),
+      subscribe: vi.fn((channel, listener) => {
+        expect(channel).toBe(ipcEventChannels.applicationMenuCommand);
+        eventListener = listener;
+        return () => undefined;
+      }),
+    };
+    const desktopApi = createDesktopApi(bridge, () => correlationId);
+    const listener = vi.fn<(event: IpcEventEnvelope<ApplicationMenuCommandEvent>) => void>();
+    desktopApi.onApplicationMenuCommand(listener);
+
+    eventListener?.({ correlationId, payload: { command: 'execute-arbitrary-command' } });
+    expect(listener).not.toHaveBeenCalled();
+    const event = { correlationId, payload: { command: 'settings' } } as const;
+    eventListener?.(event);
+    expect(listener).toHaveBeenCalledWith(event);
   });
 });

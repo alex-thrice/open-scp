@@ -36,6 +36,13 @@ describe('workspace IPC boundary', () => {
         .success,
     ).toBe(false);
     expect(
+      workspaceRequestSchema.safeParse({
+        action: 'create-file',
+        workspaceId: 'workspace:left',
+        path: '/notes.txt',
+      }).success,
+    ).toBe(true);
+    expect(
       workspaceRequestSchema.safeParse({ action: 'snapshot', password: 'fixture-only' }).success,
     ).toBe(false);
   });

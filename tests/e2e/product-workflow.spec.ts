@@ -116,7 +116,7 @@ test('keyboard selection, local file operations, profile library and live Russia
     const menuLabels = await application.evaluate(({ Menu }) =>
       Menu.getApplicationMenu()?.items.map((item) => item.label),
     );
-    expect(menuLabels).toEqual(['Файл', 'Правка', 'Вид']);
+    expect(menuLabels).toEqual(['Файл', 'Правка', 'Вид', 'Окно', 'Справка']);
     await window.screenshot({ path: test.info().outputPath('commander-ru.png') });
     expect(
       await local.locator('.file-list__viewport').evaluate((element) => element.clientHeight),

@@ -68,6 +68,7 @@ const createDesktopApi = (listLocalDirectory: DesktopApi['listLocalDirectory']):
       ok: true,
     }),
     onAppReady: () => () => undefined,
+    onApplicationMenuCommand: () => () => undefined,
     runtime: 'electron',
   };
 
@@ -414,11 +415,13 @@ describe('App', () => {
     expect(screen.getByRole('heading', { level: 1, name: 'OpenSCP' })).toBeTruthy();
     for (const side of ['left', 'right'] as const) {
       expect(pane(side).getByRole('row', { name: 'notes.txt' })).toBeTruthy();
-      for (const name of ['New directory', 'Rename', 'Delete']) {
+      for (const name of ['New directory', 'New file', 'Rename', 'Delete']) {
         const button = pane(side).getByRole('button', { name });
         expect(button.textContent).toBe('');
         expect(button.title).toContain(name);
       }
+      for (const header of pane(side).getAllByRole('columnheader'))
+        expect(header.querySelector('button')?.tabIndex).toBe(-1);
     }
     expect(screen.queryByRole('heading', { name: 'Local' })).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Remote' })).toBeNull();
@@ -433,6 +436,7 @@ describe('App', () => {
       'listLocalDirectory',
       'listLocalDrives',
       'onAppReady',
+      'onApplicationMenuCommand',
       'runtime',
       'workspace',
     ]);

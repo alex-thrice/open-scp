@@ -269,6 +269,7 @@ export const VirtualFileList = ({
                 <button
                   aria-label={createSortLabel(key, column)}
                   onClick={() => updateSort(key)}
+                  tabIndex={-1}
                   type="button"
                 >
                   {column}

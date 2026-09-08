@@ -595,9 +595,14 @@ export class WorkspaceService {
   }
   public async execute(request: WorkspaceRequest): Promise<WorkspaceResult> {
     const workspaceId = 'workspaceId' in request ? request.workspaceId : undefined;
-    const changesFiles = ['mkdir', 'rename', 'copy', 'delete', 'local-operation'].includes(
-      request.action,
-    );
+    const changesFiles = [
+      'mkdir',
+      'create-file',
+      'rename',
+      'copy',
+      'delete',
+      'local-operation',
+    ].includes(request.action);
     if (request.action === 'remote-transfer' && this.mutating.has(request.destinationWorkspaceId))
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
@@ -1113,6 +1118,24 @@ export class WorkspaceService {
       case 'mkdir': {
         const provider = this.session(request.workspaceId);
         await provider.createDirectory(this.remotePath(provider, request.path));
+        break;
+      }
+      case 'create-file': {
+        const remote = this.sessions.get(request.workspaceId);
+        const provider = remote ?? (await this.localProvider(request.path));
+        const path = remote
+          ? this.remotePath(remote, request.path)
+          : createLocalProviderPath(request.path);
+        if (!provider.capabilities.write)
+          throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+        const writer = (
+          await provider.openWrite(path, { overwrite: false, expectedSize: 0n })
+        ).getWriter();
+        try {
+          await writer.close();
+        } finally {
+          writer.releaseLock();
+        }
         break;
       }
       case 'copy':

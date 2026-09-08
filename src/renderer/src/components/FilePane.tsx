@@ -90,7 +90,9 @@ export const FilePane = ({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pathFallback, setPathFallback] = useState(false);
   const [selection, setSelection] = useState<string[]>([]);
-  const [operation, setOperation] = useState<'mkdir' | 'rename' | 'delete' | null>(null);
+  const [operation, setOperation] = useState<'mkdir' | 'createFile' | 'rename' | 'delete' | null>(
+    null,
+  );
   const [busy, setBusy] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [deletions, setDeletions] = useState<Record<
@@ -224,7 +226,7 @@ export const FilePane = ({
       setOperation(null);
     }
   };
-  const begin = (next: 'mkdir' | 'rename' | 'delete') => {
+  const begin = (next: 'mkdir' | 'createFile' | 'rename' | 'delete') => {
     const request = ++operationVersion.current;
     setOperation(next);
     setDeletions(null);
@@ -256,6 +258,12 @@ export const FilePane = ({
         loading ||
         (kind !== 'local' && (!session?.capabilities?.createDirectory || isBucketList)),
       run: () => begin('mkdir'),
+    },
+    {
+      id: 'createFile',
+      label: t('operations.createFile'),
+      disabled: !listing || !ready || !writable || busy || loading,
+      run: () => begin('createFile'),
     },
     {
       id: 'copy',
@@ -666,35 +674,40 @@ export const FilePane = ({
                         operation === 'mkdir' || selectedEntry?.s3Kind === 'prefix',
                       )
                     : `${listing.currentPath.replace(/[\\/]$/u, '')}${separator}${name}`;
-                  const paths = operation === 'mkdir' ? [destinationPath] : selected;
+                  const paths =
+                    operation === 'mkdir' || operation === 'createFile'
+                      ? [destinationPath]
+                      : selected;
                   for (const path of paths) {
                     const result =
-                      kind === 'local'
-                        ? await run({
-                            action: 'local-operation',
-                            workspaceId: paneId,
-                            operation,
-                            path,
-                            ...(operation === 'rename' ? { destinationPath } : {}),
-                          })
-                        : operation === 'mkdir'
-                          ? await run({ action: 'mkdir', workspaceId: paneId, path })
-                          : operation === 'rename'
-                            ? await run({
-                                action: 'rename',
-                                workspaceId: paneId,
-                                path,
-                                destinationPath,
-                              })
-                            : await run({
-                                action: 'delete',
-                                workspaceId: paneId,
-                                path,
-                                recursive: true,
-                                ...(deletions?.[path]
-                                  ? { confirmationId: deletions[path].confirmationId }
-                                  : {}),
-                              });
+                      operation === 'createFile'
+                        ? await run({ action: 'create-file', workspaceId: paneId, path })
+                        : kind === 'local'
+                          ? await run({
+                              action: 'local-operation',
+                              workspaceId: paneId,
+                              operation,
+                              path,
+                              ...(operation === 'rename' ? { destinationPath } : {}),
+                            })
+                          : operation === 'mkdir'
+                            ? await run({ action: 'mkdir', workspaceId: paneId, path })
+                            : operation === 'rename'
+                              ? await run({
+                                  action: 'rename',
+                                  workspaceId: paneId,
+                                  path,
+                                  destinationPath,
+                                })
+                              : await run({
+                                  action: 'delete',
+                                  workspaceId: paneId,
+                                  path,
+                                  recursive: true,
+                                  ...(deletions?.[path]
+                                    ? { confirmationId: deletions[path].confirmationId }
+                                    : {}),
+                                });
                     if (!result) return;
                   }
                   await load(listing.currentPath);
@@ -736,7 +749,13 @@ export const FilePane = ({
                   required
                   autoFocus
                   pattern={'[^\\x2f\\x5c]+'}
-                  defaultValue={operation === 'rename' ? selectedEntry?.name : ''}
+                  defaultValue={
+                    operation === 'rename'
+                      ? selectedEntry?.name
+                      : operation === 'createFile'
+                        ? t('operations.defaultFileName')
+                        : ''
+                  }
                 />
               </label>
             )}
