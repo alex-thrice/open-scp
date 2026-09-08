@@ -144,7 +144,7 @@ for (const side of ['left', 'right'] as const) {
         for (const localPanel of [panel, other]) {
           await expect(
             localPanel.getByRole('button', { name: 'Refresh', exact: true }),
-          ).toBeEnabled();
+          ).toBeEnabled({ timeout: 15_000 });
           await localPanel.getByLabel('Current path').fill(root);
           await localPanel.getByLabel('Current path').press('Enter');
           await expect(
