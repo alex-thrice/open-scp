@@ -12,7 +12,7 @@ const commandIcons: Record<string, IconName> = {
   createFile: 'FileText',
   copy: 'Copy',
   download: 'Copy',
-  edit: 'TextCursorInput',
+  edit: 'Pencil',
   rename: 'TextCursorInput',
   delete: 'Trash2',
   terminal: 'SquareTerminal',
