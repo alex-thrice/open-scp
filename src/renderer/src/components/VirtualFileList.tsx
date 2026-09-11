@@ -448,6 +448,30 @@ export const VirtualFileList = ({
                 })
               : t('fileList.noSearchResults')}
           </span>
+          <button
+            aria-label={t('fileList.previousSearchMatch')}
+            title={`${t('fileList.previousSearchMatch')} (↑)`}
+            disabled={searchMatches.length === 0}
+            onClick={() => {
+              selectSearchMatch(searchMatches, searchMatchPosition - 1);
+              searchInputReference.current?.focus();
+            }}
+            type="button"
+          >
+            <Icon name="ChevronUp" />
+          </button>
+          <button
+            aria-label={t('fileList.nextSearchMatch')}
+            title={`${t('fileList.nextSearchMatch')} (↓)`}
+            disabled={searchMatches.length === 0}
+            onClick={() => {
+              selectSearchMatch(searchMatches, searchMatchPosition + 1);
+              searchInputReference.current?.focus();
+            }}
+            type="button"
+          >
+            <Icon name="ChevronDown" />
+          </button>
           <button aria-label={t('fileList.closeSearch')} onClick={closeSearch} type="button">
             ×
           </button>
