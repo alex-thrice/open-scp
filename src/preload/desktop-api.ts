@@ -4,6 +4,7 @@ import {
   type ApplicationErrorCode,
 } from '@shared/errors/application-error';
 import type { DesktopApi } from '@shared/desktop-api';
+import type { FileDragRequest } from '@shared/ipc/file-drag';
 import {
   workspaceResultSchema,
   type WorkspaceRequest,
@@ -169,6 +170,22 @@ export const createDesktopApi = (
   createCorrelationId: () => string = () => crypto.randomUUID(),
 ): DesktopApi =>
   Object.freeze({
+    startFileDrag: async (request: FileDragRequest): Promise<IpcResponseEnvelope<null>> => {
+      const correlationId = createCorrelationId();
+      try {
+        const response = await bridge.invoke(ipcRequestChannels.startFileDrag, {
+          correlationId,
+          payload: request,
+        });
+        return parseResponse(response, correlationId, (value): value is null => value === null);
+      } catch {
+        return {
+          correlationId,
+          error: getSafeApplicationError(applicationErrorCodes.ipcUnavailable),
+          ok: false,
+        };
+      }
+    },
     workspace: async (request: WorkspaceRequest): Promise<IpcResponseEnvelope<WorkspaceResult>> => {
       const correlationId = createCorrelationId();
       try {

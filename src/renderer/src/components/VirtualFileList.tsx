@@ -5,6 +5,7 @@ import type { LocalDirectoryEntry } from '@shared/ipc/contracts';
 import { useTranslation } from 'react-i18next';
 import { formatSize, formatDate } from '../i18n/format';
 import { Icon } from './Icon';
+import { startFileDrag } from './start-file-drag';
 
 type SortDirection = 'ascending' | 'descending';
 type SortKey = 'modifiedAt' | 'name' | 'size';
@@ -18,6 +19,7 @@ export interface VirtualFileListProps {
   readonly selectedPath?: string | null;
   readonly selectedPaths?: readonly string[];
   readonly onSelectionChange?: (paths: string[]) => void;
+  readonly onDragError?: (messageKey: string) => void;
   readonly dragSource?: {
     readonly workspaceId: string;
     readonly side: 'local' | 'remote';
@@ -45,6 +47,7 @@ export const VirtualFileList = ({
   selectedPath,
   selectedPaths,
   onSelectionChange,
+  onDragError,
   dragSource,
 }: VirtualFileListProps) => {
   const { i18n, t } = useTranslation();
@@ -317,6 +320,27 @@ export const VirtualFileList = ({
                   onDragStart={(event) => {
                     if (!dragSource) return;
                     const paths = selection.includes(entry.path) ? selection : [entry.path];
+                    if (dragSource.kind === 'local' && window.desktop.startFileDrag) {
+                      const filePaths = new Set(
+                        entries.filter((item) => item.kind === 'file').map((item) => item.path),
+                      );
+                      if (paths.every((path) => filePaths.has(path))) {
+                        if (paths.length > 100) {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onDragError?.('fileDrag.tooMany');
+                          return;
+                        }
+                        if (
+                          startFileDrag(
+                            event,
+                            { source: 'local', paths: [...paths] },
+                            (messageKey) => onDragError?.(messageKey),
+                          )
+                        )
+                          return;
+                      }
+                    }
                     event.dataTransfer.setData(
                       'application/x-openscp',
                       JSON.stringify({ ...dragSource, paths }),

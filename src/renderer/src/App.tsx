@@ -197,12 +197,16 @@ export const App = () => {
         setLocalError(state.error.messageKey);
         return;
       }
-      const hasActiveTransfers = state.data.snapshot.transfers.some(
-        (item) =>
-          (ids.includes(item.workspaceId) ||
-            (!!item.destinationWorkspaceId && ids.includes(item.destinationWorkspaceId))) &&
-          ['running', 'queued', 'requiring-review'].includes(item.state),
-      );
+      const hasActiveTransfers =
+        state.data.snapshot.transfers.some(
+          (item) =>
+            (ids.includes(item.workspaceId) ||
+              (!!item.destinationWorkspaceId && ids.includes(item.destinationWorkspaceId))) &&
+            ['running', 'queued', 'requiring-review'].includes(item.state),
+        ) ||
+        (state.data.snapshot.externalDrags ?? []).some(
+          (item) => ids.includes(item.workspaceId) && item.state === 'preparing',
+        );
       if (!confirmed && service.snapshot.confirmTabClose !== false) {
         setPendingClose({ id, hasActiveTransfers });
         return;

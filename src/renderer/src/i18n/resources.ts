@@ -265,6 +265,19 @@ export const resources = {
         },
         unexpected: 'An unexpected error occurred.',
       },
+      fileDrag: {
+        prepare: 'Prepare files for another app',
+        starting: 'Preparing selected files…',
+        preparing: 'Downloading files for dragging…',
+        ready: 'Files ready: {{count}}',
+        failed: 'Unable to prepare files',
+        cancelled: 'Preparation cancelled',
+        progress: 'Download progress',
+        drag: 'Drag into another app',
+        dragHint: 'Drag this button into Telegram, a folder, or another app that accepts files.',
+        dismiss: 'Dismiss',
+        tooMany: 'Select up to 100 files to drag into another app.',
+      },
       fileList: {
         kinds: {
           file: 'File',
@@ -606,6 +619,20 @@ export const resources = {
             'Требуемое внешнее приложение недоступно. Проверьте путь к нему в настройках.',
         },
         unexpected: 'Произошла непредвиденная ошибка.',
+      },
+      fileDrag: {
+        prepare: 'Подготовить файлы для другого приложения',
+        starting: 'Подготовка выбранных файлов…',
+        preparing: 'Скачивание файлов для перетаскивания…',
+        ready: 'Файлы готовы: {{count}}',
+        failed: 'Не удалось подготовить файлы',
+        cancelled: 'Подготовка отменена',
+        progress: 'Прогресс скачивания',
+        drag: 'Перетащите в другое приложение',
+        dragHint:
+          'Перетащите эту кнопку в Telegram, папку или другое приложение, принимающее файлы.',
+        dismiss: 'Скрыть',
+        tooMany: 'Для перетаскивания в другое приложение выберите не больше 100 файлов.',
       },
       fileList: {
         kinds: {

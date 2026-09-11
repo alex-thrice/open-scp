@@ -10,6 +10,33 @@ import { createDesktopApi, type PreloadIpcBridge } from '../../src/preload/deskt
 const correlationId = '00000000-0000-4000-8000-000000000001';
 
 describe('preload desktop API', () => {
+  it('starts native drags through a fixed channel and validates the acknowledgement', async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => ({ correlationId, ok: true, data: null }));
+    const desktopApi = createDesktopApi(
+      { invoke, subscribe: vi.fn(() => () => undefined) },
+      () => correlationId,
+    );
+    const request = { source: 'local' as const, paths: ['C:\\fixture\\one.txt'] };
+    expect(await desktopApi.startFileDrag?.(request)).toEqual({
+      correlationId,
+      ok: true,
+      data: null,
+    });
+    expect(invoke).toHaveBeenCalledWith(ipcRequestChannels.startFileDrag, {
+      correlationId,
+      payload: request,
+    });
+    invoke.mockResolvedValue({ correlationId, ok: true, data: { path: 'unexpected' } });
+    expect(await desktopApi.startFileDrag?.(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_IPC_RESPONSE' },
+    });
+    invoke.mockRejectedValue(new Error('Disconnected'));
+    expect(await desktopApi.startFileDrag?.(request)).toMatchObject({
+      ok: false,
+      error: { code: 'IPC_UNAVAILABLE' },
+    });
+  });
   it('lists drives only through the fixed channel', async () => {
     const drives = [{ label: 'D:\\', path: 'D:\\' }];
     const invoke = vi.fn(async () => ({ correlationId, data: drives, ok: true }));

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { dragPathsSchema, externalDragSnapshotSchema } from './file-drag';
 import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
@@ -66,6 +67,12 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('clear-transfer-history') }),
   z.strictObject({ action: z.literal('open-local-file'), workspaceId: id, path }),
   z.strictObject({ action: z.literal('edit-file'), workspaceId: id, path }),
+  z.strictObject({
+    action: z.literal('prepare-file-drag'),
+    workspaceId: id,
+    paths: dragPathsSchema,
+  }),
+  z.strictObject({ action: z.literal('dismiss-file-drag'), id: z.string().uuid() }),
   z.strictObject({ action: z.literal('open-ssh-terminal'), workspaceId: id }),
   z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
@@ -293,6 +300,7 @@ export const workspaceSnapshotSchema = z.strictObject({
       conflictSourcePath: path.nullable().optional(),
     }),
   ),
+  externalDrags: z.array(externalDragSnapshotSchema).optional(),
   externalEdits: z
     .array(
       z.strictObject({

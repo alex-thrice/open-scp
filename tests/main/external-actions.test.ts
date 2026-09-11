@@ -46,6 +46,11 @@ describe('workspace external actions', () => {
       path: filePath,
     });
     expect(openLocalFile).toHaveBeenCalledWith(filePath);
+    await expect(
+      service.filesForDrag({ source: 'local', paths: [filePath, filePath] }),
+    ).resolves.toEqual([filePath]);
+    for (const path of [rootPath, join(rootPath, '..', 'outside.txt'), 'relative.txt'])
+      await expect(service.filesForDrag({ source: 'local', paths: [path] })).rejects.toBeDefined();
     const editorPath = join(rootPath, 'editor.exe');
     await service.execute({ action: 'set-editor-path', path: editorPath });
     await service.execute({ action: 'edit-file', workspaceId: 'workspace:left', path: filePath });

@@ -16,6 +16,7 @@ const commandIcons: Record<string, IconName> = {
   rename: 'TextCursorInput',
   delete: 'Trash2',
   terminal: 'SquareTerminal',
+  externalDrag: 'FileOutput',
 };
 
 export interface FileCommand {
