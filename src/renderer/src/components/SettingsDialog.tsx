@@ -331,25 +331,36 @@ export const SettingsDialog = ({
                 <input
                   type="checkbox"
                   checked={updateSettings.automaticDownload}
-                  disabled={busy}
+                  disabled={busy || updateState?.automaticUpdateSupported === false}
                   onChange={(event) =>
                     void saveUpdateSettings({ automaticDownload: event.currentTarget.checked })
                   }
                 />
-                <span>{t('updates.automaticDownload')}</span>
+                <span>
+                  {t('updates.automaticDownload')}
+                  {updateState?.automaticUpdateSupported === false ? (
+                    <small>{t('updates.automaticDownloadUnavailableHint')}</small>
+                  ) : null}
+                </span>
               </label>
               <label className="checkbox-label">
                 <input
                   type="checkbox"
                   checked={updateSettings.automaticInstall}
-                  disabled={busy}
+                  disabled={busy || updateState?.automaticUpdateSupported === false}
                   onChange={(event) =>
                     void saveUpdateSettings({ automaticInstall: event.currentTarget.checked })
                   }
                 />
                 <span>
                   {t('updates.automaticInstall')}
-                  <small>{t('updates.automaticInstallHint')}</small>
+                  <small>
+                    {t(
+                      updateState?.automaticUpdateSupported === false
+                        ? 'updates.automaticInstallUnavailableHint'
+                        : 'updates.automaticInstallHint',
+                    )}
+                  </small>
                 </span>
               </label>
               {updateState ? (
@@ -385,7 +396,11 @@ export const SettingsDialog = ({
                       void run({ action: 'download-update' }).finally(() => setBusy(false));
                     }}
                   >
-                    {t('updates.download')}
+                    {t(
+                      updateState.automaticUpdateSupported
+                        ? 'updates.download'
+                        : 'updates.openRelease',
+                    )}
                   </button>
                 ) : null}
                 {updateState?.status === 'downloaded' ? (

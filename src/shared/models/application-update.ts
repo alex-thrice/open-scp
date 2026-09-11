@@ -13,8 +13,17 @@ export const defaultUpdateSettings: UpdateSettings = {
   automaticInstall: false,
 };
 
+export const effectiveUpdateSettings = (
+  settings: UpdateSettings,
+  automaticUpdateSupported: boolean,
+): UpdateSettings =>
+  automaticUpdateSupported || (!settings.automaticDownload && !settings.automaticInstall)
+    ? settings
+    : { ...settings, automaticDownload: false, automaticInstall: false };
+
 export const updateStateSchema = z.strictObject({
   supported: z.boolean(),
+  automaticUpdateSupported: z.boolean(),
   currentVersion: z.string().min(1).max(100),
   availableVersion: z.string().min(1).max(100).nullable(),
   status: z.enum([

@@ -145,10 +145,15 @@ export const resources = {
         currentVersion: 'Current version: {{version}}',
         automaticCheck: 'Automatically check for updates',
         automaticDownload: 'Automatically download available updates',
+        automaticDownloadUnavailableHint:
+          'Unavailable because this macOS build has no Developer ID signature. Use the release page to download the update.',
         automaticInstall: 'Automatically install downloaded updates on exit',
         automaticInstallHint: 'The next application exit installs the downloaded version.',
+        automaticInstallUnavailableHint:
+          'Unavailable because this macOS build has no Developer ID signature. Install the downloaded release manually.',
         check: 'Check for updates',
         download: 'Download update',
+        openRelease: 'Open release page',
         install: 'Install and restart',
         availableHint: 'OpenSCP {{version}} is available. Open update settings.',
         error: 'Could not update OpenSCP. Check the connection and try again.',
@@ -479,10 +484,15 @@ export const resources = {
         currentVersion: 'Текущая версия: {{version}}',
         automaticCheck: 'Автоматически проверять обновления',
         automaticDownload: 'Автоматически скачивать доступные обновления',
+        automaticDownloadUnavailableHint:
+          'Недоступно: эта сборка macOS не подписана Developer ID. Скачайте обновление со страницы релиза.',
         automaticInstall: 'Автоматически устанавливать скачанные обновления при выходе',
         automaticInstallHint: 'Скачанная версия установится при следующем выходе из приложения.',
+        automaticInstallUnavailableHint:
+          'Недоступно: эта сборка macOS не подписана Developer ID. Установите скачанный релиз вручную.',
         check: 'Проверить обновления',
         download: 'Скачать обновление',
+        openRelease: 'Открыть страницу релиза',
         install: 'Установить и перезапустить',
         availableHint: 'Доступна версия OpenSCP {{version}}. Открыть настройки обновления.',
         error: 'Не удалось обновить OpenSCP. Проверьте соединение и повторите попытку.',

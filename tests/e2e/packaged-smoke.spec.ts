@@ -133,10 +133,13 @@ test('packaged application starts with secure IPC and encrypted profile persiste
     let window = await application.firstWindow();
     await expect(window.getByTestId('left-panel').getByLabel('Current path')).toBeVisible();
     await expect(window.getByTestId('right-panel')).toBeVisible();
-    expect((await request(window, { action: 'snapshot' })).snapshot.updateState).toMatchObject({
+    const updateState = (await request(window, { action: 'snapshot' })).snapshot.updateState;
+    expect(updateState).toMatchObject({
       supported: true,
       currentVersion: applicationVersion,
     });
+    if (process.platform === 'darwin')
+      expect(updateState?.automaticUpdateSupported).toBe(process.env.OPENSCP_SIGNED_BUILD === '1');
     expect(await window.evaluate(() => 'require' in window || 'process' in window)).toBe(false);
     const form = await newConnection(window, 'sftp');
     await form.getByLabel('Profile name').fill('Disposable packaged profile');

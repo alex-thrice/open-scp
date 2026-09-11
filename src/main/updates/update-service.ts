@@ -1,5 +1,14 @@
 import type { AppUpdater } from 'electron-updater';
-import type { UpdateSettings, UpdateState } from '@shared/models/application-update';
+import {
+  effectiveUpdateSettings,
+  type UpdateSettings,
+  type UpdateState,
+} from '@shared/models/application-update';
+
+interface UpdateServiceOptions {
+  readonly automaticUpdateSupported?: boolean;
+  readonly openRelease?: (version: string) => Promise<void>;
+}
 
 const errorKey = (error: unknown): string =>
   typeof error === 'object' && error !== null && 'statusCode' in error && error.statusCode === 404
@@ -39,17 +48,23 @@ export class UpdateService {
   private checking: Promise<void> | undefined;
   private downloading: Promise<void> | undefined;
   private readonly supported: boolean;
+  private readonly automaticUpdateSupported: boolean;
+  private readonly openRelease: ((version: string) => Promise<void>) | undefined;
 
   public constructor(
     private readonly updater: AppUpdater | undefined,
     currentVersion: string,
     supported: boolean,
     settings: UpdateSettings,
+    options: UpdateServiceOptions = {},
   ) {
-    this.settings = settings;
+    this.automaticUpdateSupported = options.automaticUpdateSupported ?? true;
+    this.openRelease = options.openRelease;
+    this.settings = effectiveUpdateSettings(settings, this.automaticUpdateSupported);
     this.supported = supported && this.updater !== undefined;
     this.state = {
       supported: this.supported,
+      automaticUpdateSupported: this.automaticUpdateSupported,
       currentVersion,
       availableVersion: null,
       status: 'idle',
@@ -58,7 +73,7 @@ export class UpdateService {
     };
     if (!this.updater) return;
     this.updater.autoDownload = false;
-    this.updater.autoInstallOnAppQuit = settings.automaticInstall;
+    this.updater.autoInstallOnAppQuit = this.settings.automaticInstall;
     this.updater.on('checking-for-update', () => {
       this.state = { ...this.state, status: 'checking', progress: null, errorKey: null };
     });
@@ -81,6 +96,7 @@ export class UpdateService {
       };
     });
     this.updater.on('download-progress', (info) => {
+      if (!this.automaticUpdateSupported) return;
       this.state = {
         ...this.state,
         status: 'downloading',
@@ -89,6 +105,7 @@ export class UpdateService {
       };
     });
     this.updater.on('update-downloaded', (info) => {
+      if (!this.automaticUpdateSupported) return;
       this.state = {
         ...this.state,
         availableVersion: info.version,
@@ -107,9 +124,9 @@ export class UpdateService {
   }
 
   public async configure(settings: UpdateSettings): Promise<void> {
-    this.settings = settings;
-    if (this.updater) this.updater.autoInstallOnAppQuit = settings.automaticInstall;
-    if (settings.automaticDownload && this.state.status === 'available') await this.download();
+    this.settings = effectiveUpdateSettings(settings, this.automaticUpdateSupported);
+    if (this.updater) this.updater.autoInstallOnAppQuit = this.settings.automaticInstall;
+    if (this.settings.automaticDownload && this.state.status === 'available') await this.download();
   }
 
   public check(): Promise<void> {
@@ -143,10 +160,21 @@ export class UpdateService {
 
   public download(): Promise<void> {
     if (!this.supported || this.state.status !== 'available') return Promise.resolve();
+    if (!this.automaticUpdateSupported) return this.openReleasePage();
     this.downloading ??= this.performDownload().finally(() => {
       this.downloading = undefined;
     });
     return this.downloading;
+  }
+
+  private async openReleasePage(): Promise<void> {
+    const version = this.state.availableVersion;
+    if (!version || !this.openRelease) return;
+    try {
+      await this.openRelease(version);
+    } catch (error) {
+      this.state = { ...this.state, status: 'error', progress: null, errorKey: errorKey(error) };
+    }
   }
 
   private async performDownload(): Promise<void> {
@@ -161,7 +189,13 @@ export class UpdateService {
   }
 
   public install(): void {
-    if (!this.supported || !this.updater || this.state.status !== 'downloaded') return;
+    if (
+      !this.supported ||
+      !this.automaticUpdateSupported ||
+      !this.updater ||
+      this.state.status !== 'downloaded'
+    )
+      return;
     this.updater.quitAndInstall(false, true);
   }
 }

@@ -5,7 +5,7 @@ import { openDatabase } from './persistence/database';
 import { CredentialService } from './security/credential-service';
 import { ProfileStore } from './persistence/profile-store';
 import { WorkspaceService } from './sessions/workspace-service';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { ipcEventChannels } from '@shared/ipc/channels';
 import type {
   AppReadyEvent,
@@ -29,8 +29,10 @@ import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
 import { loadAutoUpdater, UpdateService } from './updates/update-service';
+import { hasRequiredMacUpdateSignature } from './updates/mac-update-signature';
 import {
   defaultUpdateSettings,
+  effectiveUpdateSettings,
   updateSettingsSchema,
   type UpdateSettings,
 } from '@shared/models/application-update';
@@ -263,12 +265,24 @@ app.whenReady().then(async () => {
     hasActiveTransfers: () => readActiveTransfers(),
     isApproved: () => applicationCloseApproved,
   };
-  const updateSettings = readUpdateSettings(profileStore.getSetting('update-settings-v1'));
+  const automaticUpdateSupported =
+    process.platform !== 'darwin' ||
+    !app.isPackaged ||
+    (await hasRequiredMacUpdateSignature(resolve(dirname(app.getPath('exe')), '../..')));
+  const storedUpdateSettings = readUpdateSettings(profileStore.getSetting('update-settings-v1'));
+  const updateSettings = effectiveUpdateSettings(storedUpdateSettings, automaticUpdateSupported);
+  if (updateSettings !== storedUpdateSettings)
+    profileStore.setSetting('update-settings-v1', JSON.stringify(updateSettings));
   const updateService = new UpdateService(
     await loadAutoUpdater(app.isPackaged),
     app.getVersion(),
     app.isPackaged,
     updateSettings,
+    {
+      automaticUpdateSupported,
+      openRelease: (version) =>
+        shell.openExternal(`${repositoryUrl}/releases/tag/v${encodeURIComponent(version)}`),
+    },
   );
   const applicationMenuActions: ApplicationMenuActions = {
     openAbout: (language) => void showApplicationAbout(language),
