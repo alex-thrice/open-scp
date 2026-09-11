@@ -69,6 +69,39 @@ describe('update service', () => {
     expect(updater.autoInstallOnAppQuit).toBe(false);
   });
 
+  it('checks for updates but opens the release page when automatic updates are unavailable', async () => {
+    const updater = updaterFixture();
+    const openRelease = vi.fn(async () => undefined);
+    updater.checkForUpdates.mockImplementation(async () => {
+      updater.emit('update-available', { version: '0.4.0' });
+      return null;
+    });
+    const service = new UpdateService(
+      updater as unknown as AppUpdater,
+      '0.3.0',
+      true,
+      {
+        ...defaultUpdateSettings,
+        automaticDownload: true,
+        automaticInstall: true,
+      },
+      { automaticUpdateSupported: false, openRelease },
+    );
+
+    await service.check();
+    expect(service.snapshot()).toMatchObject({
+      automaticUpdateSupported: false,
+      availableVersion: '0.4.0',
+      status: 'available',
+    });
+    expect(updater.autoInstallOnAppQuit).toBe(false);
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+
+    await service.download();
+    expect(openRelease).toHaveBeenCalledWith('0.4.0');
+    expect(updater.downloadUpdate).not.toHaveBeenCalled();
+  });
+
   it('does not contact the update server from an unpackaged build', async () => {
     const updater = updaterFixture();
     const service = new UpdateService(

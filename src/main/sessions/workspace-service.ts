@@ -49,6 +49,7 @@ import {
 } from '@shared/models/keyboard-shortcuts';
 import {
   defaultUpdateSettings,
+  effectiveUpdateSettings,
   updateSettingsSchema,
   type UpdateSettings,
   type UpdateState,
@@ -651,8 +652,14 @@ export class WorkspaceService {
         this.store.setSetting('keyboard-shortcuts-v1', JSON.stringify(request.shortcuts));
         break;
       case 'set-update-settings':
-        this.store.setSetting('update-settings-v1', JSON.stringify(request.settings));
-        await this.externalActions.setUpdateSettings?.(request.settings);
+        {
+          const settings = effectiveUpdateSettings(
+            request.settings,
+            this.externalActions.updateState?.().automaticUpdateSupported ?? true,
+          );
+          this.store.setSetting('update-settings-v1', JSON.stringify(settings));
+          await this.externalActions.setUpdateSettings?.(settings);
+        }
         break;
       case 'check-for-updates':
         await this.externalActions.checkForUpdates?.();

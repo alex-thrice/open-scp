@@ -1140,6 +1140,7 @@ describe('App', () => {
       updateSettings: defaultUpdateSettings,
       updateState: {
         supported: true,
+        automaticUpdateSupported: true,
         currentVersion: '0.3.0',
         availableVersion: null,
         status: 'idle',
@@ -1162,7 +1163,7 @@ describe('App', () => {
     expect(
       (
         screen.getByRole('checkbox', {
-          name: 'Automatically download available updates',
+          name: /^Automatically download available updates/u,
         }) as HTMLInputElement
       ).checked,
     ).toBe(false);
@@ -1191,6 +1192,7 @@ describe('App', () => {
       updateSettings: defaultUpdateSettings,
       updateState: {
         supported: true,
+        automaticUpdateSupported: true,
         currentVersion: '0.3.0',
         availableVersion: '0.4.0',
         status: 'available',
@@ -1211,6 +1213,44 @@ describe('App', () => {
       'page',
     );
     expect(workspace).toHaveBeenCalled();
+  });
+
+  it('uses the release page and disables automatic options without a macOS update signature', async () => {
+    const workspace = statefulApi({
+      updateSettings: defaultUpdateSettings,
+      updateState: {
+        supported: true,
+        automaticUpdateSupported: false,
+        currentVersion: '0.3.0',
+        availableVersion: '0.4.0',
+        status: 'available',
+        progress: null,
+        errorKey: null,
+      },
+    });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Updates' }));
+
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: /^Automatically download available updates/u,
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(
+      (
+        screen.getByRole('checkbox', {
+          name: /^Automatically install downloaded updates on exit/u,
+        }) as HTMLInputElement
+      ).disabled,
+    ).toBe(true);
+    expect(screen.getAllByText(/no Developer ID signature/u)).toHaveLength(2);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open release page' }));
+    await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'download-update' }));
   });
 
   it('stores an optional external editor executable path in advanced settings', async () => {
