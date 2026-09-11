@@ -1,4 +1,7 @@
 import { open } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { fileDragRequestSchema, type FileDragRequest } from '@shared/ipc/file-drag';
+import { ExternalDragService } from '../external/external-drag-service';
 import { randomUUID } from 'node:crypto';
 import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } from 'node:path';
 import type {
@@ -56,6 +59,7 @@ import {
 } from '@shared/models/application-update';
 
 export interface WorkspaceExternalActions {
+  readonly dragDirectory?: string;
   readonly checkForUpdates?: () => Promise<void>;
   readonly downloadUpdate?: () => Promise<void>;
   readonly installUpdate?: () => Promise<void>;
@@ -155,6 +159,7 @@ const readRecentPaths = (value: string | undefined): string[] => {
 
 export class WorkspaceService {
   public readonly transfers: TransferEngine;
+  public readonly externalDrags: ExternalDragService;
   private readonly externalEdits: ExternalEditService;
   private readonly sessions = new Map<string, RemoteProvider>();
   private readonly mutating = new Set<string>();
@@ -174,6 +179,9 @@ export class WorkspaceService {
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
     private readonly externalActions: WorkspaceExternalActions = {},
   ) {
+    this.externalDrags = new ExternalDragService(
+      externalActions.dragDirectory ?? join(tmpdir(), 'openscp-drag-files'),
+    );
     const journal = new QueueJournal(store);
     this.transfers = new TransferEngine({
       load: () => [],
@@ -298,7 +306,7 @@ export class WorkspaceService {
             ![...this.sessions].some(
               ([workspaceId, provider]) =>
                 this.profile(provider).id === item.profileId &&
-                (this.transfers.hasActive(workspaceId) || this.mutating.has(workspaceId)),
+                (this.hasActiveTransfers(workspaceId) || this.mutating.has(workspaceId)),
             ),
         ),
       profiles: [...this.store.list()],
@@ -338,6 +346,7 @@ export class WorkspaceService {
       })),
       transfers: [...this.transfers.snapshots()],
       externalEdits: [...this.externalEdits.snapshots()],
+      externalDrags: this.externalDrags.snapshots(),
     };
   }
   private recentPaths(profileId: string): string[] {
@@ -351,6 +360,7 @@ export class WorkspaceService {
   public dispose(): void {
     this.pendingPasswords.clear();
     this.externalEdits.dispose();
+    this.externalDrags.dispose();
     this.transfers.dispose();
     for (const provider of this.sessions.values()) void provider.disconnect();
     this.sessions.clear();
@@ -594,6 +604,23 @@ export class WorkspaceService {
     await provider.connect();
     return provider;
   }
+  public async filesForDrag(request: FileDragRequest): Promise<string[]> {
+    const parsed = fileDragRequestSchema.parse(request);
+    if (parsed.source === 'prepared') return this.externalDrags.files(parsed.id);
+    const paths = [...new Set(parsed.paths)];
+    for (const path of paths) {
+      const provider = await this.localProvider(path);
+      const entry = await provider.stat(createLocalProviderPath(path));
+      if (entry.kind !== 'file')
+        throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+    }
+    return paths.map((path) => resolve(path));
+  }
+
+  private hasActiveTransfers(workspaceId: string): boolean {
+    return this.transfers.hasActive(workspaceId) || this.externalDrags.hasActive(workspaceId);
+  }
+
   public async execute(request: WorkspaceRequest): Promise<WorkspaceResult> {
     const workspaceId = 'workspaceId' in request ? request.workspaceId : undefined;
     const changesFiles = [
@@ -614,13 +641,13 @@ export class WorkspaceService {
       [...this.sessions].some(
         ([id, provider]) =>
           this.profile(provider).id === request.profile.id &&
-          (this.transfers.hasActive(id) || this.mutating.has(id)),
+          (this.hasActiveTransfers(id) || this.mutating.has(id)),
       )
     )
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       workspaceId &&
-      (this.mutating.has(workspaceId) || (changesFiles && this.transfers.hasActive(workspaceId)))
+      (this.mutating.has(workspaceId) || (changesFiles && this.hasActiveTransfers(workspaceId)))
     )
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (workspaceId && changesFiles) this.mutating.add(workspaceId);
@@ -642,6 +669,20 @@ export class WorkspaceService {
     let importSummary: WorkspaceResult['importSummary'];
     let savedProfileId: string | undefined;
     switch (request.action) {
+      case 'prepare-file-drag': {
+        const provider = this.session(request.workspaceId);
+        await this.externalDrags.prepare(
+          request.workspaceId,
+          [...new Set(request.paths)].map((path) => ({
+            provider,
+            path: this.remotePath(provider, path),
+          })),
+        );
+        break;
+      }
+      case 'dismiss-file-drag':
+        this.externalDrags.dismiss(request.id);
+        break;
       case 'clear-transfer-history':
         this.transfers.clearHistory();
         break;
@@ -838,6 +879,7 @@ export class WorkspaceService {
         break;
       }
       case 'close-session': {
+        this.externalDrags.cancelWorkspace(request.workspaceId);
         for (const item of this.transfers.snapshots())
           if (
             item.workspaceId === request.workspaceId ||
@@ -846,7 +888,7 @@ export class WorkspaceService {
             this.transfers.cancel(item.id);
         // Дождаться завершения отмены перед отключением обоих концов потока.
         const deadline = Date.now() + 30000;
-        while (this.transfers.hasActive(request.workspaceId) && Date.now() < deadline) {
+        while (this.hasActiveTransfers(request.workspaceId) && Date.now() < deadline) {
           for (const item of this.transfers.snapshots())
             if (
               (item.workspaceId === request.workspaceId ||
@@ -856,7 +898,7 @@ export class WorkspaceService {
               this.transfers.cancel(item.id);
           await new Promise((resolve) => setTimeout(resolve, 50));
         }
-        if (this.transfers.hasActive(request.workspaceId))
+        if (this.hasActiveTransfers(request.workspaceId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         await this.sessions.get(request.workspaceId)?.disconnect();
         this.pendingPasswords.delete(request.workspaceId);
@@ -974,7 +1016,7 @@ export class WorkspaceService {
         for (const [workspaceId, provider] of this.sessions)
           if (
             this.profile(provider).id === profile.id &&
-            (this.transfers.hasActive(workspaceId) || this.mutating.has(workspaceId))
+            (this.hasActiveTransfers(workspaceId) || this.mutating.has(workspaceId))
           )
             throw new ApplicationError(applicationErrorCodes.providerConflict);
         const provider = this.s3Provider(profile);
@@ -1028,7 +1070,7 @@ export class WorkspaceService {
           throw new ApplicationError(applicationErrorCodes.s3Cleanup);
         for (const [workspaceId, provider] of this.sessions)
           if (this.profile(provider).id === request.profileId) {
-            if (this.transfers.hasActive(workspaceId))
+            if (this.hasActiveTransfers(workspaceId))
               throw new ApplicationError(applicationErrorCodes.providerConflict);
             await provider.disconnect();
             this.sessions.delete(workspaceId);
@@ -1037,7 +1079,7 @@ export class WorkspaceService {
         break;
       }
       case 'connect': {
-        if (this.transfers.hasActive(request.workspaceId))
+        if (this.hasActiveTransfers(request.workspaceId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         const profile = this.store.list().find((entry) => entry.id === request.profileId);
         if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
@@ -1099,8 +1141,9 @@ export class WorkspaceService {
         break;
       }
       case 'disconnect':
-        if (this.transfers.hasActive(request.workspaceId))
+        if (this.hasActiveTransfers(request.workspaceId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
+        this.externalDrags.cancelWorkspace(request.workspaceId);
         this.pendingPasswords.delete(request.workspaceId);
         await this.sessions.get(request.workspaceId)?.disconnect();
         this.sessions.delete(request.workspaceId);

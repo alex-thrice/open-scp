@@ -14,6 +14,7 @@ import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import { SourcePicker } from './SourcePicker';
 import { VirtualFileList } from './VirtualFileList';
+import { ExternalDragStatus } from './ExternalDragStatus';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { readFileDrop } from './file-drop';
 import {
@@ -94,6 +95,7 @@ export const FilePane = ({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [preparingDrag, setPreparingDrag] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [deletions, setDeletions] = useState<Record<
     string,
@@ -217,6 +219,7 @@ export const FilePane = ({
   }, [currentPath, entries.length, loading]);
   const selected = selection.filter((path) => entries.some((entry) => entry.path === path));
   const selectedEntry = entries.find((entry) => entry.path === selected[0]);
+  const externalDrag = snapshot.externalDrags?.find((item) => item.workspaceId === paneId);
   const invalidSelection =
     !selected.length ||
     entries.some((entry) => selected.includes(entry.path) && entry.s3Kind === 'bucket');
@@ -343,6 +346,26 @@ export const FilePane = ({
       },
     },
   ];
+  if (kind !== 'local')
+    commands.push({
+      id: 'externalDrag',
+      label: t('fileDrag.prepare'),
+      disabled:
+        invalidSelection ||
+        selected.length > 100 ||
+        entries.some((entry) => selected.includes(entry.path) && entry.kind !== 'file') ||
+        !ready ||
+        !session?.capabilities?.read ||
+        loading ||
+        preparingDrag ||
+        externalDrag?.state === 'preparing',
+      run: () => {
+        setPreparingDrag(true);
+        void run({ action: 'prepare-file-drag', workspaceId: paneId, paths: selected }).finally(
+          () => setPreparingDrag(false),
+        );
+      },
+    });
   if (kind === 'sftp' && session?.state === 'connected')
     commands.push({
       id: 'terminal',
@@ -456,6 +479,18 @@ export const FilePane = ({
           <CommandButtons commands={commands} />
           <span className="selection-summary">{t('ui.selection', { count: selected.length })}</span>
         </div>
+        {preparingDrag ? (
+          <div className="inline-notice" role="status">
+            {t('fileDrag.starting')}
+          </div>
+        ) : null}
+        {externalDrag ? (
+          <ExternalDragStatus
+            key={externalDrag.id}
+            snapshot={externalDrag}
+            onDismiss={() => void run({ action: 'dismiss-file-drag', id: externalDrag.id })}
+          />
+        ) : null}
         {loadError ? (
           <div className="inline-error" role="alert">
             {t(loadError)}
@@ -563,6 +598,7 @@ export const FilePane = ({
               entries={entries}
               selectedPaths={selected}
               onSelectionChange={setSelection}
+              onDragError={setLoadError}
               onOpenDirectory={(path) => void load(path)}
               {...(kind === 'local'
                 ? {

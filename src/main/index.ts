@@ -1,12 +1,23 @@
 import { randomUUID } from 'node:crypto';
-import { app, BrowserWindow, ipcMain, session, safeStorage, dialog, shell, screen } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  session,
+  safeStorage,
+  dialog,
+  shell,
+  screen,
+  nativeImage,
+} from 'electron';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { openDatabase } from './persistence/database';
 import { CredentialService } from './security/credential-service';
 import { ProfileStore } from './persistence/profile-store';
 import { WorkspaceService } from './sessions/workspace-service';
 import { dirname, join, resolve } from 'node:path';
-import { ipcEventChannels } from '@shared/ipc/channels';
+import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
+import { createFileDragHandler } from './ipc/file-drag-handler';
 import type {
   AppReadyEvent,
   ApplicationMenuCommand,
@@ -317,6 +328,7 @@ app.whenReady().then(async () => {
     },
     applyApplicationLanguage,
     {
+      dragDirectory: join(app.getPath('userData'), 'drag-files'),
       checkForUpdates: () => updateService.check(),
       downloadUpdate: () => updateService.download(),
       installUpdate: async () => {
@@ -348,7 +360,8 @@ app.whenReady().then(async () => {
       updateState: () => updateService.snapshot(),
     },
   );
-  readActiveTransfers = () => workspaceService.transfers.hasAnyActive();
+  readActiveTransfers = () =>
+    workspaceService.transfers.hasAnyActive() || workspaceService.externalDrags.hasActive();
   app.once('will-quit', () => {
     workspaceService.dispose();
     database.close();
@@ -384,6 +397,29 @@ app.whenReady().then(async () => {
     },
     { ...dependencies, workspace: (request) => workspaceService.execute(request) },
   );
+  ipcMain.handle(ipcRequestChannels.startFileDrag, (event, request: unknown) => {
+    const isAllowed = () =>
+      !event.sender.isDestroyed() &&
+      event.senderFrame === event.sender.mainFrame &&
+      [...mainWindows].some((window) => window.webContents === event.sender);
+    return createFileDragHandler({
+      isAllowed,
+      filesForDrag: (request) => workspaceService.filesForDrag(request),
+      startDrag: async (files) => {
+        const file = files[0];
+        if (!file) throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        let icon = await app
+          .getFileIcon(file, { size: 'normal' })
+          .catch(() => nativeImage.createEmpty());
+        if (icon.isEmpty())
+          icon = nativeImage
+            .createFromBitmap(Buffer.from([0xe1, 0x73, 0x25, 0xff]), { width: 1, height: 1 })
+            .resize({ width: 24, height: 24 });
+        if (!isAllowed()) throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        event.sender.startDrag({ file, files, icon });
+      },
+    })(request);
+  });
 
   if (app.isPackaged) {
     configureProductionContentSecurityPolicy({

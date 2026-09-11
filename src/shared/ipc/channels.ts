@@ -1,4 +1,5 @@
 export const ipcRequestChannels = {
+  startFileDrag: 'files:start-drag',
   workspace: 'workspace:request',
   getRuntimeInfo: 'app:get-runtime-info',
   listLocalDirectory: 'local:list-directory',

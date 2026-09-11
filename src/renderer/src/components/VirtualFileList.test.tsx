@@ -4,6 +4,74 @@ import { describe, expect, it, vi } from 'vitest';
 import { VirtualFileList } from './VirtualFileList';
 
 describe('VirtualFileList', () => {
+  it('starts a native drag for selected local files and preserves internal drags for folders and remote files', () => {
+    const desktop = window.desktop;
+    const startFileDrag = vi.fn(async () => ({
+      correlationId: 'drag',
+      ok: true as const,
+      data: null,
+    }));
+    Object.defineProperty(window, 'desktop', {
+      configurable: true,
+      value: { ...desktop, startFileDrag },
+    });
+    try {
+      const entries: LocalDirectoryEntry[] = [
+        { name: 'one.txt', path: '/one.txt', kind: 'file', modifiedAt: null, size: 1n },
+        { name: 'two.txt', path: '/two.txt', kind: 'file', modifiedAt: null, size: 1n },
+        { name: 'folder', path: '/folder', kind: 'directory', modifiedAt: null, size: 0n },
+      ];
+      const localSource = {
+        workspaceId: 'workspace-1:left',
+        side: 'local' as const,
+        kind: 'local' as const,
+      };
+      const { rerender } = render(
+        <VirtualFileList
+          entries={entries}
+          onOpenDirectory={vi.fn()}
+          selectedPaths={['/one.txt', '/two.txt']}
+          dragSource={localSource}
+        />,
+      );
+      const setData = vi.fn();
+      expect(
+        fireEvent.dragStart(screen.getByRole('row', { name: 'one.txt' }), {
+          dataTransfer: { setData },
+        }),
+      ).toBe(false);
+      expect(startFileDrag).toHaveBeenCalledWith({
+        source: 'local',
+        paths: ['/one.txt', '/two.txt'],
+      });
+      expect(setData).not.toHaveBeenCalled();
+      fireEvent.dragStart(screen.getByRole('row', { name: 'Open folder' }), {
+        dataTransfer: { setData },
+      });
+      expect(setData).toHaveBeenLastCalledWith(
+        'application/x-openscp',
+        JSON.stringify({ ...localSource, paths: ['/folder'] }),
+      );
+      const remoteSource = {
+        workspaceId: 'workspace-1:right',
+        side: 'remote' as const,
+        kind: 'sftp' as const,
+      };
+      rerender(
+        <VirtualFileList entries={entries} onOpenDirectory={vi.fn()} dragSource={remoteSource} />,
+      );
+      fireEvent.dragStart(screen.getByRole('row', { name: 'two.txt' }), {
+        dataTransfer: { setData },
+      });
+      expect(setData).toHaveBeenLastCalledWith(
+        'application/x-openscp',
+        JSON.stringify({ ...remoteSource, paths: ['/two.txt'] }),
+      );
+      expect(startFileDrag).toHaveBeenCalledTimes(1);
+    } finally {
+      Object.defineProperty(window, 'desktop', { configurable: true, value: desktop });
+    }
+  });
   it('keeps a 100,000-entry directory virtualized and interactive', () => {
     const entries: LocalDirectoryEntry[] = Array.from({ length: 100_000 }, (_, index) => ({
       kind: 'file',

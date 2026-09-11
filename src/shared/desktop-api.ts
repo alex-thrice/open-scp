@@ -8,8 +8,10 @@ import type {
   RuntimeInfo,
 } from '@shared/ipc/contracts';
 import type { WorkspaceRequest, WorkspaceResult } from '@shared/ipc/workspace';
+import type { FileDragRequest } from '@shared/ipc/file-drag';
 
 export interface DesktopApi {
+  readonly startFileDrag?: (request: FileDragRequest) => Promise<IpcResponseEnvelope<null>>;
   readonly getPathForFile?: (file: File) => string;
   readonly workspace: (request: WorkspaceRequest) => Promise<IpcResponseEnvelope<WorkspaceResult>>;
   readonly getRuntimeInfo: () => Promise<IpcResponseEnvelope<RuntimeInfo>>;

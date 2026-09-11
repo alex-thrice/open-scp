@@ -501,6 +501,34 @@ small {
   min-height: 0;
   position: relative;
 }
+.external-drag-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--raised);
+  font-size: 12px;
+}
+.external-drag-status > [role='status'] {
+  display: flex;
+  flex: 1 1 160px;
+  flex-direction: column;
+  gap: 4px;
+}
+.external-drag-status progress {
+  width: 100%;
+}
+.external-drag-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: grab;
+}
+.external-drag-handle:active {
+  cursor: grabbing;
+}
 .file-list {
   display: flex;
   width: 100%;

@@ -1,4 +1,4 @@
-import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { generateKeyPairSync } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -54,6 +54,34 @@ for (const side of ['left', 'right'] as const) {
                   atime: 1788264000,
                   mtime: 1788264000,
                 };
+                const fileContents = Buffer.from('Remote data\n');
+                const isFile = (path: string) =>
+                  ['/fixture/remote.txt', '/fixture/nested/nested.txt'].includes(path);
+                for (const operation of ['STAT', 'LSTAT'] as const)
+                  stream.on(operation, (id: number, path: string) => {
+                    if (isFile(path)) stream.attrs(id, attributes);
+                    else if (path === '/fixture' || path === '/fixture/nested')
+                      stream.attrs(id, { ...attributes, mode: 0o40755, size: 0 });
+                    else stream.status(id, sftp.STATUS_CODE.NO_SUCH_FILE);
+                  });
+                stream.on('OPEN', (id, path) => {
+                  if (!isFile(path)) {
+                    stream.status(id, sftp.STATUS_CODE.NO_SUCH_FILE);
+                    return;
+                  }
+                  const handle = String(++sequence);
+                  handles.set(handle, { path, read: false });
+                  stream.handle(id, Buffer.from(handle));
+                });
+                stream.on('FSTAT', (id, handle) => {
+                  if (handles.has(handle.toString())) stream.attrs(id, attributes);
+                  else stream.status(id, sftp.STATUS_CODE.FAILURE);
+                });
+                stream.on('READ', (id, handle, offset, length) => {
+                  if (!handles.has(handle.toString())) stream.status(id, sftp.STATUS_CODE.FAILURE);
+                  else if (offset >= fileContents.length) stream.status(id, sftp.STATUS_CODE.EOF);
+                  else stream.data(id, fileContents.subarray(offset, offset + length));
+                });
                 stream.on('REALPATH', (id, path) => {
                   stream.name(id, [
                     {
@@ -184,6 +212,29 @@ for (const side of ['left', 'right'] as const) {
         }
         await expect(panel.getByRole('row', { name: 'remote.txt', exact: true })).toBeVisible();
         await expect(panel.getByLabel('Current path')).toHaveValue('/fixture');
+        await panel.getByRole('row', { name: 'remote.txt', exact: true }).click();
+        await panel.getByRole('button', { name: 'Prepare files for another app' }).click();
+        const dragHandle = panel.getByRole('button', { name: 'Drag into another app' });
+        await expect(dragHandle).toBeVisible();
+        await application.evaluate(({ BrowserWindow }) => {
+          const contents = BrowserWindow.getAllWindows()[0]?.webContents;
+          if (!contents) throw new Error('Missing main window');
+          contents.startDrag = (item) => {
+            Reflect.set(globalThis, 'preparedDragFiles', item.files);
+          };
+        });
+        await dragHandle.dispatchEvent('dragstart');
+        await expect
+          .poll(() =>
+            application?.evaluate(() => Reflect.get(globalThis, 'preparedDragFiles')?.length),
+          )
+          .toBe(1);
+        const preparedFiles = await application.evaluate(
+          () => Reflect.get(globalThis, 'preparedDragFiles') as string[],
+        );
+        expect(await readFile(preparedFiles[0] ?? '', 'utf8')).toBe('Remote data\n');
+        await panel.getByRole('button', { name: 'Dismiss', exact: true }).click();
+        expect(await readFile(preparedFiles[0] ?? '', 'utf8')).toBe('Remote data\n');
         await expect(
           panel.getByRole('button', { name: 'New directory', exact: true }),
         ).toBeEnabled();
