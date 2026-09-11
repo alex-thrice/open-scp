@@ -515,7 +515,7 @@ small {
   display: flex;
   align-items: center;
   gap: 6px;
-  width: min(340px, calc(100% - 24px));
+  width: min(408px, calc(100% - 24px));
   padding: 6px 8px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -523,7 +523,7 @@ small {
   box-shadow: var(--shadow);
 }
 .file-list-search input {
-  min-width: 80px;
+  min-width: 0;
   height: 28px;
   flex: 1;
 }
@@ -533,8 +533,12 @@ small {
   white-space: nowrap;
 }
 .file-list-search button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
   min-height: 28px;
-  padding: 2px 7px;
+  padding: 2px 4px;
 }
 .file-list__header,
 .file-list__row {

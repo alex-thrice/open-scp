@@ -342,6 +342,14 @@ const icons = {
       },
     ],
   ],
+  ChevronUp: [
+    [
+      'path',
+      {
+        d: 'm18 15-6-6-6 6',
+      },
+    ],
+  ],
   ChevronDown: [
     [
       'path',
