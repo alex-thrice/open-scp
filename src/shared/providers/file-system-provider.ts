@@ -16,6 +16,7 @@ export interface DeleteOptions extends ProviderOperationOptions {
 export interface WriteOptions extends ProviderOperationOptions {
   readonly overwrite: boolean;
   readonly expectedSize?: bigint;
+  readonly onProgress?: (bytes: number) => void;
 }
 
 export interface RenameOptions extends ProviderOperationOptions {

@@ -44,6 +44,16 @@ test('local file manager, saved themes, grouped profiles and the S3 editor', asy
     await page.getByLabel('List density').selectOption('compact');
     await page.getByRole('checkbox', { name: /Hidden files/u }).uncheck();
     await page.screenshot({ path: test.info().outputPath('settings-dark.png') });
+    await page.getByRole('button', { name: 'Transfers', exact: true }).click();
+    await expect(page.getByLabel('Upload: concurrent blocks')).toHaveValue('64');
+    await expect(page.getByLabel('Download: concurrent blocks')).toHaveValue('32');
+    await page.getByLabel('Upload: concurrent blocks').fill('12');
+    await page.getByLabel('Download: concurrent blocks').fill('8');
+    await page.getByRole('button', { name: 'Save transfer settings', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Save transfer settings', exact: true }),
+    ).toBeEnabled();
+    await page.screenshot({ path: test.info().outputPath('settings-transfers-dark.png') });
     await page.getByRole('button', { name: 'Done', exact: true }).click();
     await expect(left.getByRole('row', { name: '.hidden', exact: true })).toHaveCount(0);
     await page.getByRole('button', { name: 'Connections', exact: true }).click();
@@ -101,6 +111,13 @@ test('local file manager, saved themes, grouped profiles and the S3 editor', asy
     await page.screenshot({ path: test.info().outputPath('source-search-dark.png') });
     await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
+    await page.getByRole('button', { name: 'Transfers', exact: true }).click();
+    await expect(page.getByLabel('Upload: concurrent blocks')).toHaveValue('12');
+    await expect(page.getByLabel('Download: concurrent blocks')).toHaveValue('8');
+    await page.getByRole('button', { name: 'Restore WinSCP defaults', exact: true }).click();
+    await expect(page.getByLabel('Upload: concurrent blocks')).toHaveValue('64');
+    await expect(page.getByLabel('Download: concurrent blocks')).toHaveValue('32');
+    await page.getByRole('button', { name: 'Appearance', exact: true }).click();
     await page.getByRole('button', { name: 'Light', exact: true }).click();
     await page.getByRole('button', { name: 'Done', exact: true }).click();
     await page.getByRole('button', { name: 'Connections', exact: true }).click();
