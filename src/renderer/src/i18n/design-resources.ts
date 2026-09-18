@@ -2,6 +2,15 @@ export const designResources = {
   en: {
     connections: 'Connections',
     settings: 'Settings',
+    transfers: 'Transfers',
+    transferSettingsHint:
+      'Send several blocks of a file at once to improve speed on distant servers. Changes apply when the next file starts transferring.',
+    sftpUploadConcurrency: 'Upload: concurrent blocks',
+    sftpDownloadConcurrency: 'Download: concurrent blocks',
+    transferSettingsDefaults:
+      'WinSCP defaults: 64 for upload and 32 for download. Range: 1–128. Use 1 for servers that require sequential requests.',
+    transferSettingsSave: 'Save transfer settings',
+    transferSettingsReset: 'Restore WinSCP defaults',
     appearance: 'Appearance',
     shortcuts: 'Keyboard shortcuts',
     updates: 'Updates',
@@ -63,6 +72,15 @@ export const designResources = {
   ru: {
     connections: 'Подключения',
     settings: 'Настройки',
+    transfers: 'Передачи',
+    transferSettingsHint:
+      'Отправка нескольких блоков файла одновременно повышает скорость на удалённых серверах. Изменения применяются при передаче следующего файла.',
+    sftpUploadConcurrency: 'Загрузка на сервер: параллельных блоков',
+    sftpDownloadConcurrency: 'Скачивание: параллельных блоков',
+    transferSettingsDefaults:
+      'Как в WinSCP: 64 при загрузке и 32 при скачивании. Диапазон: 1–128. Значение 1 — для серверов, которым нужны последовательные запросы.',
+    transferSettingsSave: 'Сохранить настройки передач',
+    transferSettingsReset: 'Вернуть значения WinSCP',
     appearance: 'Оформление',
     shortcuts: 'Горячие клавиши',
     updates: 'Обновления',

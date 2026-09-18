@@ -9,7 +9,6 @@ import {
   createLocalProviderPath,
   createSftpProviderPath,
 } from '../../src/shared/models/provider-path';
-import { ProviderError, providerErrorCodes } from '../../src/shared/providers/provider-error';
 import { createFixtureProvider, trustFixture } from './sftp-harness';
 
 describe('Local ↔ OpenSSH transfers', () => {
@@ -143,49 +142,45 @@ describe('Local ↔ OpenSSH transfers', () => {
     const reads = vi.spyOn(local, 'openRead');
     const original = fixture.provider.openWrite.bind(fixture.provider);
     let interrupted = false;
-    vi.spyOn(fixture.provider, 'openWrite').mockImplementation(async (path, options) => {
-      const writer = (await original(path, options)).getWriter();
-      return new WritableStream({
-        write: async (chunk: Uint8Array) => {
-          await writer.write(chunk);
+    vi.spyOn(fixture.provider, 'openWrite').mockImplementation((path, options) =>
+      original(path, {
+        ...options,
+        onProgress: (bytes) => {
+          options.onProgress?.(bytes);
           if (!interrupted) {
             interrupted = true;
             fixture.connection.disconnect();
-            throw new ProviderError(providerErrorCodes.ioError, {
-              provider: 'sftp',
-              operation: 'write',
-            });
           }
         },
-        close: () => writer.close(),
-        abort: () => writer.abort().catch(() => undefined),
-      });
-    });
+      }),
+    );
     await wait(upload('resume.bin'));
     expect(reads.mock.calls.some(([, options]) => (options?.offset ?? 0) > 0)).toBe(true);
     expect(
       (await fixture.provider.list(createSftpProviderPath(remoteRoot))).map((entry) => entry.name),
     ).toEqual(['resume.bin']);
+    await wait(download('resume.bin'));
+    expect(await readFile(join(localRoot, 'download-resume.bin'))).toEqual(
+      await readFile(join(localRoot, 'resume.bin')),
+    );
   });
   it('never publishes a cancelled upload and rejects unsafe resume before allowing a restart', async () => {
     await writeFile(join(localRoot, 'cancel.bin'), Buffer.alloc(1048576, 0x11));
     const original = fixture.provider.openWrite.bind(fixture.provider);
     let cancelled = false;
     let id = '';
-    vi.spyOn(fixture.provider, 'openWrite').mockImplementation(async (path, options) => {
-      const writer = (await original(path, options)).getWriter();
-      return new WritableStream({
-        write: async (chunk: Uint8Array) => {
-          await writer.write(chunk);
+    vi.spyOn(fixture.provider, 'openWrite').mockImplementation((path, options) =>
+      original(path, {
+        ...options,
+        onProgress: (bytes) => {
+          options.onProgress?.(bytes);
           if (!cancelled) {
             cancelled = true;
             engine.cancel(id);
           }
         },
-        close: () => writer.close(),
-        abort: () => writer.abort().catch(() => undefined),
-      });
-    });
+      }),
+    );
     id = upload('cancel.bin');
     await wait(id, 'cancelled');
     await expect(

@@ -5,6 +5,7 @@ import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
 import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
+import { transferSettingsSchema } from '@shared/models/transfer-settings';
 
 const id = z.string().min(1).max(200);
 const workspaceId = z.string().regex(/^workspace-[1-9]\d{0,3}$/u);
@@ -51,6 +52,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
     shortcuts: keyboardShortcutsSchema,
   }),
   z.strictObject({ action: z.literal('set-update-settings'), settings: updateSettingsSchema }),
+  z.strictObject({ action: z.literal('set-transfer-settings'), settings: transferSettingsSchema }),
   z.strictObject({ action: z.literal('check-for-updates') }),
   z.strictObject({ action: z.literal('download-update') }),
   z.strictObject({ action: z.literal('install-update') }),
@@ -214,6 +216,7 @@ export const workspaceSnapshotSchema = z.strictObject({
   confirmTabClose: z.boolean().optional(),
   keyboardShortcuts: keyboardShortcutsSchema.optional(),
   updateSettings: updateSettingsSchema.optional(),
+  transferSettings: transferSettingsSchema.optional(),
   updateState: updateStateSchema.optional(),
   editorPath: path.nullable().optional(),
   puttyPath: path.nullable().optional(),

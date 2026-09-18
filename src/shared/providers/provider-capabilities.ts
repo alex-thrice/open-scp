@@ -14,4 +14,5 @@ export interface ProviderCapabilities {
   readonly symbolicLinks: boolean;
   readonly trueDirectories: boolean;
   readonly write: boolean;
+  readonly writeProgress?: boolean;
 }

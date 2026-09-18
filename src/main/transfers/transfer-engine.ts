@@ -673,6 +673,7 @@ export class TransferEngine {
         offset: Number(offset),
         overwrite: previous !== undefined && job.resume,
         signal: job.controller.signal,
+        onProgress: (bytes) => this.progress(job, BigInt(bytes)),
       })
       .then((stream) => stream.getWriter())
       .catch(async (error: unknown) => {
@@ -685,7 +686,8 @@ export class TransferEngine {
         const part = await reader.read();
         if (part.done) break;
         await writer.write(part.value);
-        this.progress(job, BigInt(part.value.byteLength));
+        if (!destination.capabilities.writeProgress)
+          this.progress(job, BigInt(part.value.byteLength));
       }
       await writer.close();
     } catch (error) {

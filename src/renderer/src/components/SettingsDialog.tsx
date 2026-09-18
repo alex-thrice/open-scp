@@ -10,11 +10,16 @@ import {
   type ShortcutAction,
 } from '@shared/models/keyboard-shortcuts';
 import type { UpdateSettings, UpdateState } from '@shared/models/application-update';
+import {
+  defaultTransferSettings,
+  transferSettingsSchema,
+  type TransferSettings,
+} from '@shared/models/transfer-settings';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
-export type SettingsPage = 'appearance' | 'shortcuts' | 'updates' | 'advanced';
+export type SettingsPage = 'appearance' | 'shortcuts' | 'transfers' | 'updates' | 'advanced';
 
 const shortcutLabels: readonly (readonly [ShortcutAction, string])[] = [
   ['newWorkspace', 'tabs.add'],
@@ -38,6 +43,7 @@ export const SettingsDialog = ({
   puttyPath,
   rememberPaths,
   updateSettings,
+  transferSettings,
   updateState,
   run,
   errorKey,
@@ -51,6 +57,7 @@ export const SettingsDialog = ({
   readonly puttyPath: string | null;
   readonly rememberPaths: boolean;
   readonly updateSettings: UpdateSettings;
+  readonly transferSettings: TransferSettings;
   readonly updateState: UpdateState | undefined;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
@@ -62,6 +69,11 @@ export const SettingsDialog = ({
   const [editingShortcut, setEditingShortcut] = useState<ShortcutAction | null>(null);
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [draft, setDraft] = useState(appearance);
+  const [transferDraft, setTransferDraft] = useState(transferSettings);
+  const { sftpUploadConcurrency, sftpDownloadConcurrency } = transferSettings;
+  useEffect(() => {
+    setTransferDraft({ sftpUploadConcurrency, sftpDownloadConcurrency });
+  }, [sftpUploadConcurrency, sftpDownloadConcurrency]);
   const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
   const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
   const isMac = /Mac/iu.test(navigator.platform);
@@ -115,26 +127,28 @@ export const SettingsDialog = ({
     >
       <div className="settings-layout">
         <nav className="settings-nav" aria-label={t('ui.settings')}>
-          {(['appearance', 'shortcuts', 'updates', 'advanced'] as const).map((name) => (
-            <button
-              key={name}
-              aria-current={page === name ? 'page' : undefined}
-              onClick={() => setPage(name)}
-            >
-              <Icon
-                name={
-                  name === 'appearance'
-                    ? 'SlidersHorizontal'
-                    : name === 'shortcuts'
-                      ? 'Keyboard'
-                      : name === 'updates'
-                        ? 'RefreshCw'
-                        : 'Settings'
-                }
-              />
-              {t(`ui.${name}`)}
-            </button>
-          ))}
+          {(['appearance', 'shortcuts', 'transfers', 'updates', 'advanced'] as const).map(
+            (name) => (
+              <button
+                key={name}
+                aria-current={page === name ? 'page' : undefined}
+                onClick={() => setPage(name)}
+              >
+                <Icon
+                  name={
+                    name === 'appearance'
+                      ? 'SlidersHorizontal'
+                      : name === 'shortcuts'
+                        ? 'Keyboard'
+                        : name === 'updates'
+                          ? 'RefreshCw'
+                          : 'Settings'
+                  }
+                />
+                {t(`ui.${name}`)}
+              </button>
+            ),
+          )}
         </nav>
         <section className="settings-content">
           <h3>{t(`ui.${page}`)}</h3>
@@ -311,6 +325,59 @@ export const SettingsDialog = ({
                   {t(shortcutError)}
                 </p>
               ) : null}
+            </>
+          ) : page === 'transfers' ? (
+            <>
+              <h4>SFTP</h4>
+              <p className="muted">{t('ui.transferSettingsHint')}</p>
+              {(['sftpUploadConcurrency', 'sftpDownloadConcurrency'] as const).map((setting) => (
+                <label key={setting}>
+                  {t(`ui.${setting}`)}
+                  <input
+                    type="number"
+                    min={1}
+                    max={128}
+                    step={1}
+                    disabled={busy}
+                    value={Number.isNaN(transferDraft[setting]) ? '' : transferDraft[setting]}
+                    onChange={(event) =>
+                      setTransferDraft({
+                        ...transferDraft,
+                        [setting]: event.currentTarget.valueAsNumber,
+                      })
+                    }
+                  />
+                </label>
+              ))}
+              <p className="muted">{t('ui.transferSettingsDefaults')}</p>
+              <div className="button-group">
+                <button
+                  type="button"
+                  disabled={busy || !transferSettingsSchema.safeParse(transferDraft).success}
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'set-transfer-settings', settings: transferDraft }).finally(
+                      () => setBusy(false),
+                    );
+                  }}
+                >
+                  {t('ui.transferSettingsSave')}
+                </button>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'set-transfer-settings', settings: defaultTransferSettings })
+                      .then((result) => {
+                        if (result) setTransferDraft(defaultTransferSettings);
+                      })
+                      .finally(() => setBusy(false));
+                  }}
+                >
+                  {t('ui.transferSettingsReset')}
+                </button>
+              </div>
             </>
           ) : page === 'updates' ? (
             <>

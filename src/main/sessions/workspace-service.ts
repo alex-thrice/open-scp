@@ -1,4 +1,5 @@
 import { open } from 'node:fs/promises';
+import { readTransferSettings } from '@shared/models/transfer-settings';
 import { tmpdir } from 'node:os';
 import { fileDragRequestSchema, type FileDragRequest } from '@shared/ipc/file-drag';
 import { ExternalDragService } from '../external/external-drag-service';
@@ -270,6 +271,7 @@ export class WorkspaceService {
       confirmTabClose: this.store.getSetting('confirm-tab-close') !== 'false',
       keyboardShortcuts: readKeyboardShortcuts(this.store.getSetting('keyboard-shortcuts-v1')),
       updateSettings: readUpdateSettings(this.store.getSetting('update-settings-v1')),
+      transferSettings: readTransferSettings(this.store.getSetting('transfer-settings-v1')),
       ...(this.externalActions.updateState
         ? { updateState: this.externalActions.updateState() }
         : {}),
@@ -406,6 +408,7 @@ export class WorkspaceService {
     if (profile.kind === 'ftp') return this.ftpProvider(profile, workspaceId);
     return new SftpProvider(
       new SftpConnection(profile, () => this.credentialsFor(profile, workspaceId), this.store),
+      () => readTransferSettings(this.store.getSetting('transfer-settings-v1')),
     );
   }
   private remotePath(provider: RemoteProvider, path: string) {
@@ -701,6 +704,9 @@ export class WorkspaceService {
           this.store.setSetting('update-settings-v1', JSON.stringify(settings));
           await this.externalActions.setUpdateSettings?.(settings);
         }
+        break;
+      case 'set-transfer-settings':
+        this.store.setSetting('transfer-settings-v1', JSON.stringify(request.settings));
         break;
       case 'check-for-updates':
         await this.externalActions.checkForUpdates?.();

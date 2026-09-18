@@ -15,6 +15,12 @@ import {
   type ProviderOperation,
 } from '@shared/providers/provider-error';
 import { SftpConnection } from './sftp-connection';
+import {
+  defaultTransferSettings,
+  transferSettingsSchema,
+  type TransferSettings,
+} from '@shared/models/transfer-settings';
+import { createSftpReadStream, createSftpWriteStream } from './sftp-transfer-streams';
 
 const failure = (
   code: (typeof providerErrorCodes)[keyof typeof providerErrorCodes],
@@ -63,10 +69,14 @@ export class SftpProvider implements FileSystemProvider {
     symbolicLinks: true,
     trueDirectories: true,
     write: true,
+    writeProgress: true,
   });
   private activeRequests = 0;
   private readonly waiting: (() => void)[] = [];
-  public constructor(public readonly connection: SftpConnection) {}
+  public constructor(
+    public readonly connection: SftpConnection,
+    private readonly getTransferSettings: () => TransferSettings = () => defaultTransferSettings,
+  ) {}
   public get connectionState() {
     return this.connection.state;
   }
@@ -99,8 +109,11 @@ export class SftpProvider implements FileSystemProvider {
     channel?: SFTPWrapper,
   ): Promise<T> {
     this.checkAbort(options, operation);
-    if (this.activeRequests >= 8) await new Promise<void>((resolve) => this.waiting.push(resolve));
-    else this.activeRequests += 1;
+    if (!channel) {
+      if (this.activeRequests >= 8)
+        await new Promise<void>((resolve) => this.waiting.push(resolve));
+      else this.activeRequests += 1;
+    }
     try {
       this.checkAbort(options, operation);
       return await new Promise<T>((resolve, reject) => {
@@ -121,9 +134,11 @@ export class SftpProvider implements FileSystemProvider {
         }
       });
     } finally {
-      const next = this.waiting.shift();
-      if (next) next();
-      else this.activeRequests -= 1;
+      if (!channel) {
+        const next = this.waiting.shift();
+        if (next) next();
+        else this.activeRequests -= 1;
+      }
     }
   }
   private entry(path: string, stats: Stats): FileSystemEntry {
@@ -269,9 +284,12 @@ export class SftpProvider implements FileSystemProvider {
     options?: ProviderOperationOptions,
   ): Promise<ReadableStream<Uint8Array>> {
     this.checkAbort(options, 'read');
-    let position = this.offset(options);
-    if ((await this.stat(path, options)).kind !== 'file')
+    const position = this.offset(options);
+    const entry = await this.stat(path, options);
+    if (entry.kind !== 'file') throw failure(providerErrorCodes.unsupported, 'read');
+    if (entry.size < 0n || entry.size > BigInt(Number.MAX_SAFE_INTEGER))
       throw failure(providerErrorCodes.unsupported, 'read');
+    const settings = transferSettingsSchema.parse(this.getTransferSettings());
     const channel = await this.connection.data();
     const handle = await this.call<Buffer>(
       'read',
@@ -279,47 +297,30 @@ export class SftpProvider implements FileSystemProvider {
       options,
       channel,
     );
-    let closed = false;
-    const close = async () => {
-      if (!closed) {
-        closed = true;
-        await this.call<undefined>(
-          'read',
-          (sftp, done) => sftp.close(handle, (error) => done(error, undefined)),
-          undefined,
-          channel,
-        ).catch(() => undefined);
-      }
-    };
-    return new ReadableStream<Uint8Array>(
+    return createSftpReadStream(
       {
-        pull: async (controller) => {
-          try {
-            const buffer = Buffer.alloc(65536);
-            const length = await this.call<number>(
-              'read',
-              (sftp, done) =>
-                sftp.read(handle, buffer, 0, buffer.length, position, (error, bytes) =>
-                  done(error, bytes),
-                ),
-              options,
-              channel,
-            );
-            if (length === 0) {
-              await close();
-              controller.close();
-            } else {
-              position += length;
-              controller.enqueue(buffer.subarray(0, length));
-            }
-          } catch (error) {
-            await close();
-            controller.error(error);
-          }
-        },
-        cancel: close,
+        read: (buffer, offset, length, readPosition) =>
+          this.call<number>(
+            'read',
+            (sftp, done) =>
+              sftp.read(handle, buffer, offset, length, readPosition, (error, bytes) =>
+                done(error, bytes),
+              ),
+            options,
+            channel,
+          ),
+        close: () =>
+          this.call<undefined>(
+            'read',
+            (sftp, done) => sftp.close(handle, (error) => done(error, undefined)),
+            undefined,
+            channel,
+          ),
       },
-      { highWaterMark: 1 },
+      position,
+      Number(entry.size),
+      settings.sftpDownloadConcurrency,
+      options,
     );
   }
   public async openWrite(
@@ -327,8 +328,9 @@ export class SftpProvider implements FileSystemProvider {
     options: WriteOptions,
   ): Promise<WritableStream<Uint8Array>> {
     this.checkAbort(options, 'write');
+    const settings = transferSettingsSchema.parse(this.getTransferSettings());
     const channel = await this.connection.data();
-    let position = this.offset(options);
+    const position = this.offset(options);
     if (position > 0 && !options.overwrite) throw failure(providerErrorCodes.invalidPath, 'write');
     const handle = await this.call<Buffer>(
       'write',
@@ -337,44 +339,29 @@ export class SftpProvider implements FileSystemProvider {
       options,
       channel,
     );
-    let closed = false;
-    const close = async () => {
-      if (!closed) {
-        closed = true;
-        await this.call<undefined>(
-          'write',
-          (sftp, done) => sftp.close(handle, (error) => done(error, undefined)),
-          undefined,
-          channel,
-        );
-      }
-    };
-    return new WritableStream<Uint8Array>(
+    return createSftpWriteStream(
       {
-        write: async (chunk) => {
-          try {
-            for (let offset = 0; offset < chunk.length; offset += 65536) {
-              const buffer = Buffer.from(chunk.subarray(offset, offset + 65536));
-              await this.call<undefined>(
-                'write',
-                (sftp, done) =>
-                  sftp.write(handle, buffer, 0, buffer.length, position, (error) =>
-                    done(error, undefined),
-                  ),
-                options,
-                channel,
-              );
-              position += buffer.length;
-            }
-          } catch (error) {
-            await close().catch(() => undefined);
-            throw error;
-          }
-        },
-        close,
-        abort: () => close().catch(() => undefined),
+        write: (buffer, writePosition) =>
+          this.call<undefined>(
+            'write',
+            (sftp, done) =>
+              sftp.write(handle, buffer, 0, buffer.length, writePosition, (error) =>
+                done(error, undefined),
+              ),
+            options,
+            channel,
+          ),
+        close: () =>
+          this.call<undefined>(
+            'write',
+            (sftp, done) => sftp.close(handle, (error) => done(error, undefined)),
+            undefined,
+            channel,
+          ),
       },
-      { highWaterMark: 1 },
+      position,
+      settings.sftpUploadConcurrency,
+      options,
     );
   }
 }

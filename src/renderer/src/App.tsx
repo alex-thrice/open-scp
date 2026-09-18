@@ -7,6 +7,7 @@ import {
   matchesShortcut,
 } from '@shared/models/keyboard-shortcuts';
 import { defaultUpdateSettings } from '@shared/models/application-update';
+import { defaultTransferSettings } from '@shared/models/transfer-settings';
 import { defaultAppearance, type WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
@@ -457,6 +458,7 @@ export const App = () => {
           puttyPath={service.snapshot.puttyPath ?? null}
           rememberPaths={service.snapshot.rememberPaths !== false}
           updateSettings={service.snapshot.updateSettings ?? defaultUpdateSettings}
+          transferSettings={service.snapshot.transferSettings ?? defaultTransferSettings}
           updateState={service.snapshot.updateState}
           run={service.run}
           errorKey={error}
