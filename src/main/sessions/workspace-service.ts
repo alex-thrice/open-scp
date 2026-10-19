@@ -37,6 +37,11 @@ import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connect
 import { FtpProvider } from '../providers/ftp/ftp-provider';
 import { MailruConnection } from '../providers/mailru/mailru-connection';
 import { MailruProvider } from '../providers/mailru/mailru-provider';
+import { ICloudConnection } from '../providers/icloud/icloud-connection';
+import { ICloudProvider } from '../providers/icloud/icloud-provider';
+import { createRcloneLauncher, type RcloneLauncher } from '../providers/icloud/rclone-process';
+import { discoverICloudAvailability } from '../providers/icloud/icloud-availability';
+import { ICloudConfiguration } from '../providers/icloud/icloud-configuration';
 import { GoogleProvider } from '../providers/google/google-provider';
 import { GoogleConnection } from '../providers/google/google-connection';
 import {
@@ -90,6 +95,10 @@ const sourcePathGoogleName = (path: string) =>
   path.startsWith(googleRootPath) ? googlePathName(path) : posix.basename(path);
 
 export interface WorkspaceExternalActions {
+  readonly rcloneAvailable?: boolean;
+  readonly icloudRemotes?: readonly string[];
+  readonly pickRclone?: () => Promise<string | null>;
+  readonly icloudLaunch?: RcloneLauncher;
   readonly google?: GoogleConfiguration;
   readonly yandex?: YandexConfiguration;
   readonly mailruEndpoint?: string;
@@ -109,7 +118,13 @@ export interface WorkspaceExternalActions {
 }
 
 type RemoteProvider =
-  GoogleProvider | FtpProvider | MailruProvider | S3Provider | SftpProvider | YandexProvider;
+  | GoogleProvider
+  | FtpProvider
+  | ICloudProvider
+  | MailruProvider
+  | S3Provider
+  | SftpProvider
+  | YandexProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -193,6 +208,10 @@ const readRecentPaths = (value: string | undefined): string[] => {
 };
 
 export class WorkspaceService {
+  private rcloneAvailable: boolean;
+  private icloudRemotes: readonly string[];
+  private icloudAvailabilityVersion = 0;
+  private readonly icloudConfiguration: ICloudConfiguration;
   private readonly google: GoogleAuthorization;
   private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
@@ -226,6 +245,12 @@ export class WorkspaceService {
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
     private readonly externalActions: WorkspaceExternalActions = {},
   ) {
+    this.rcloneAvailable = externalActions.rcloneAvailable ?? false;
+    this.icloudRemotes = externalActions.icloudRemotes ?? [];
+    this.icloudConfiguration = new ICloudConfiguration((profile) => {
+      const path = this.store.getSetting('rclone-path');
+      return this.externalActions.icloudLaunch ?? createRcloneLauncher(profile, () => path);
+    });
     this.google = new GoogleAuthorization(
       store,
       credentials,
@@ -343,6 +368,7 @@ export class WorkspaceService {
         : {}),
       editorPath: this.store.getSetting('editor-path') || null,
       puttyPath: this.store.getSetting('putty-path') || null,
+      rclonePath: this.store.getSetting('rclone-path') || null,
       rememberPaths,
       workspaceLayout: readWorkspaceLayout(this.store.getSetting('workspace-layout-v1')),
       localPathHistory: localHistory,
@@ -378,6 +404,8 @@ export class WorkspaceService {
             ),
         ),
       profiles: [...this.store.list()],
+      icloudRemotes: [...this.icloudRemotes],
+      rcloneAvailable: this.rcloneAvailable,
       googleOAuthConfigured: this.google.configured,
       googleAuthorizations: this.google.snapshots(),
       yandexOAuthConfigured: this.yandex.configured,
@@ -392,6 +420,7 @@ export class WorkspaceService {
         ...(provider instanceof SftpProvider ||
         provider instanceof FtpProvider ||
         provider instanceof MailruProvider ||
+        provider instanceof ICloudProvider ||
         provider instanceof YandexProvider ||
         provider instanceof GoogleProvider
           ? {
@@ -400,6 +429,7 @@ export class WorkspaceService {
                 ? getSafeApplicationError(provider.connection.failureCode).messageKey
                 : null,
               passwordRequired:
+                !(provider instanceof ICloudProvider) &&
                 provider.connection.profile.authentication.method === 'password' &&
                 (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
                   provider.connection.failureCode === applicationErrorCodes.authenticationFailed ||
@@ -439,6 +469,7 @@ export class WorkspaceService {
     return this.store.getSetting('remember-paths') !== 'false';
   }
   public dispose(): void {
+    this.icloudConfiguration.dispose();
     this.yandex.dispose();
     this.google.dispose();
     for (const edit of this.profileEdits.values()) edit.rollback();
@@ -490,6 +521,14 @@ export class WorkspaceService {
     );
   }
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
+    if (profile.kind === 'icloud')
+      return new ICloudProvider(
+        new ICloudConnection(
+          profile,
+          this.externalActions.icloudLaunch ??
+            createRcloneLauncher(profile, () => this.store.getSetting('rclone-path')),
+        ),
+      );
     if (profile.kind === 'google')
       return new GoogleProvider(
         new GoogleConnection(profile, this.google.vault, this.externalActions.google?.apiEndpoint),
@@ -865,6 +904,20 @@ export class WorkspaceService {
     return this.transfers.hasActive(workspaceId) || this.externalDrags.hasActive(workspaceId);
   }
 
+  private async refreshICloudAvailability(): Promise<void> {
+    this.rcloneAvailable = false;
+    this.icloudRemotes = [];
+    const version = ++this.icloudAvailabilityVersion;
+    const availability = await discoverICloudAvailability(
+      this.externalActions.icloudLaunch,
+      this.store.getSetting('rclone-path'),
+    );
+    if (version === this.icloudAvailabilityVersion) {
+      this.rcloneAvailable = availability.available;
+      this.icloudRemotes = availability.remotes;
+    }
+  }
+
   public async execute(request: WorkspaceRequest): Promise<WorkspaceResult> {
     const workspaceId = 'workspaceId' in request ? request.workspaceId : undefined;
     const changesFiles = [
@@ -879,6 +932,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-icloud-profile' ||
         request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
@@ -897,6 +951,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-icloud-profile' ||
         request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
@@ -930,6 +985,7 @@ export class WorkspaceService {
     let savedProfileId: string | undefined;
     let profileEditId: string | undefined;
     let connectionTest: WorkspaceResult['connectionTest'];
+    let icloudConfiguration: WorkspaceResult['icloudConfiguration'];
     switch (request.action) {
       case 'begin-profile-edit': {
         if (
@@ -1006,6 +1062,43 @@ export class WorkspaceService {
         break;
       case 'set-putty-path':
         this.store.setSetting('putty-path', request.path ?? '');
+        break;
+      case 'set-rclone-path': {
+        if (request.path && !isAbsolute(request.path))
+          throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+        if (
+          this.icloudConfiguration.active ||
+          [...this.sessions].some(
+            ([workspaceId, provider]) =>
+              provider.kind === 'icloud' &&
+              (this.hasActiveTransfers(workspaceId) || this.mutating.has(workspaceId)),
+          ) ||
+          [...this.profileTests.values()].some((provider) => provider.kind === 'icloud')
+        )
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        this.store.setSetting('rclone-path', request.path ?? '');
+        await this.refreshICloudAvailability();
+        break;
+      }
+      case 'refresh-rclone':
+        await this.refreshICloudAvailability();
+        break;
+      case 'start-icloud-configuration':
+        icloudConfiguration = await this.icloudConfiguration.start(
+          request.id,
+          request.remote,
+          request.appleId,
+          request.password,
+        );
+        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        break;
+      case 'continue-icloud-configuration':
+        icloudConfiguration = await this.icloudConfiguration.continue(request.id, request.answer);
+        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        break;
+      case 'cancel-icloud-configuration':
+        await this.icloudConfiguration.cancel(request.id);
+        await this.refreshICloudAvailability();
         break;
       case 'set-editor-path':
         if (request.path && !isAbsolute(request.path))
@@ -1354,6 +1447,18 @@ export class WorkspaceService {
           profile,
           JSON.stringify({ secretAccessKey, ...(sessionToken ? { sessionToken } : {}) }),
         ).id;
+        break;
+      }
+      case 'save-icloud-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'icloud')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        savedProfileId = this.store.save({
+          ...draft,
+          id: draft.id ?? randomUUID(),
+          kind: 'icloud',
+        }).id;
         break;
       }
       case 'save-mailru-profile': {
@@ -1781,6 +1886,9 @@ export class WorkspaceService {
       case 'pick-editor':
         selectedPath = (await this.externalActions.pickEditor?.()) ?? null;
         break;
+      case 'pick-rclone':
+        selectedPath = (await this.externalActions.pickRclone?.()) ?? null;
+        break;
       case 'set-language':
         this.store.setSetting('language', request.language);
         this.changeLanguage?.(request.language);
@@ -1803,6 +1911,7 @@ export class WorkspaceService {
       ...(savedProfileId ? { savedProfileId } : {}),
       ...(profileEditId ? { profileEditId } : {}),
       ...(connectionTest ? { connectionTest } : {}),
+      ...(icloudConfiguration ? { icloudConfiguration } : {}),
     };
   }
 }

@@ -15,6 +15,7 @@ import { openDatabase } from './persistence/database';
 import { CredentialService } from './security/credential-service';
 import { ProfileStore } from './persistence/profile-store';
 import { WorkspaceService } from './sessions/workspace-service';
+import { discoverICloudAvailability } from './providers/icloud/icloud-availability';
 import { dirname, join, resolve } from 'node:path';
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
 import { createFileDragHandler } from './ipc/file-drag-handler';
@@ -269,6 +270,10 @@ app.whenReady().then(async () => {
     localRootPath: localBrowsePaths.rootPath,
   });
   const profileStore = new ProfileStore(database, credentials);
+  const icloudAvailability = await discoverICloudAvailability(
+    undefined,
+    profileStore.getSetting('rclone-path'),
+  );
   let applicationCloseApproved = false;
   let readActiveTransfers = (): boolean => false;
   const closeGuard: ApplicationCloseGuard = {
@@ -330,6 +335,17 @@ app.whenReady().then(async () => {
     },
     applyApplicationLanguage,
     {
+      rcloneAvailable: icloudAvailability.available,
+      icloudRemotes: icloudAvailability.remotes,
+      pickRclone: async () => {
+        const result = await dialog.showOpenDialog({
+          properties: ['openFile'],
+          ...(process.platform === 'win32'
+            ? { filters: [{ name: 'rclone', extensions: ['exe'] }] }
+            : {}),
+        });
+        return result.canceled ? null : (result.filePaths[0] ?? null);
+      },
       dragDirectory: join(app.getPath('userData'), 'drag-files'),
       google: createGoogleConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
       yandex: createYandexConfiguration(app.isPackaged, (url) => shell.openExternal(url)),

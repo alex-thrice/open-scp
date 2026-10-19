@@ -4,11 +4,20 @@ export type ErrorCategory = 'transient' | 'auth' | 'conflict' | 'permanent';
 
 export const classifyTransferError = (error: unknown): ErrorCategory => {
   const code = serializeApplicationError(error).code;
-  if (['PROVIDER_IO_ERROR', 'PROVIDER_NOT_CONNECTED', 'CONNECTION_FAILED', 'S3_DNS'].includes(code))
+  if (
+    [
+      'PROVIDER_IO_ERROR',
+      'PROVIDER_NOT_CONNECTED',
+      'CONNECTION_FAILED',
+      'RCLONE_TIMEOUT',
+      'S3_DNS',
+    ].includes(code)
+  )
     return 'transient';
   if (
     [
       'AUTHENTICATION_FAILED',
+      'RCLONE_AUTHENTICATION',
       'CREDENTIAL_REQUIRED',
       'HOST_KEY_UNKNOWN',
       'HOST_KEY_CHANGED',

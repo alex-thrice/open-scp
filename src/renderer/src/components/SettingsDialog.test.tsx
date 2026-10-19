@@ -24,6 +24,9 @@ describe('transfer preferences', () => {
         initialPage="transfers"
         keyboardShortcuts={defaultKeyboardShortcuts}
         puttyPath={null}
+        rclonePath={null}
+        rcloneAvailable={false}
+        icloudRemoteCount={0}
         rememberPaths
         updateSettings={defaultUpdateSettings}
         transferSettings={{ ...defaultTransferSettings }}

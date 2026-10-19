@@ -12,58 +12,66 @@ export const exportProfiles = (store: ProfileStore, profiles = store.list()): st
         kind: profile.kind,
         group: store.getSetting(`group:${profile.id}`) ?? '',
         profile:
-          profile.kind === 'yandex' || profile.kind === 'google'
+          profile.kind === 'icloud'
             ? {
                 id: null,
                 name: profile.name,
-                initialDirectory:
-                  profile.initialDirectory ?? (profile.kind === 'google' ? 'gdrive:/' : '/'),
-                timeout: profile.timeout ?? 20000,
+                remote: profile.remote,
+                initialDirectory: profile.initialDirectory ?? '/',
+                timeout: profile.timeout ?? 60000,
               }
-            : profile.kind === 's3'
+            : profile.kind === 'yandex' || profile.kind === 'google'
               ? {
                   id: null,
                   name: profile.name,
-                  region: profile.region,
-                  endpoint: profile.endpoint ?? '',
-                  bucket: profile.bucket ?? '',
-                  initialPrefix: profile.initialPrefix ?? '',
-                  accessKeyId: profile.accessKeyId ?? '',
-                  forcePathStyle: profile.forcePathStyle,
+                  initialDirectory:
+                    profile.initialDirectory ?? (profile.kind === 'google' ? 'gdrive:/' : '/'),
+                  timeout: profile.timeout ?? 20000,
                 }
-              : profile.kind === 'mailru'
+              : profile.kind === 's3'
                 ? {
                     id: null,
                     name: profile.name,
-                    username: profile.username,
-                    initialDirectory: profile.initialDirectory ?? '/',
-                    timeout: profile.timeout ?? 20000,
+                    region: profile.region,
+                    endpoint: profile.endpoint ?? '',
+                    bucket: profile.bucket ?? '',
+                    initialPrefix: profile.initialPrefix ?? '',
+                    accessKeyId: profile.accessKeyId ?? '',
+                    forcePathStyle: profile.forcePathStyle,
                   }
-                : profile.kind === 'ftp'
+                : profile.kind === 'mailru'
                   ? {
                       id: null,
                       name: profile.name,
-                      host: profile.host,
-                      port: profile.port,
                       username: profile.username,
                       initialDirectory: profile.initialDirectory ?? '/',
                       timeout: profile.timeout ?? 20000,
                     }
-                  : {
-                      id: null,
-                      name: profile.name,
-                      host: profile.host,
-                      port: profile.port,
-                      username: profile.username,
-                      authMode: profile.authentication.method,
-                      privateKeyPath:
-                        profile.authentication.method === 'private-key'
-                          ? profile.authentication.privateKeyPath
-                          : '',
-                      initialDirectory: profile.initialDirectory ?? '/',
-                      timeout: profile.timeout ?? 20000,
-                      keepalive: profile.keepalive ?? 10000,
-                    },
+                  : profile.kind === 'ftp'
+                    ? {
+                        id: null,
+                        name: profile.name,
+                        host: profile.host,
+                        port: profile.port,
+                        username: profile.username,
+                        initialDirectory: profile.initialDirectory ?? '/',
+                        timeout: profile.timeout ?? 20000,
+                      }
+                    : {
+                        id: null,
+                        name: profile.name,
+                        host: profile.host,
+                        port: profile.port,
+                        username: profile.username,
+                        authMode: profile.authentication.method,
+                        privateKeyPath:
+                          profile.authentication.method === 'private-key'
+                            ? profile.authentication.privateKeyPath
+                            : '',
+                        initialDirectory: profile.initialDirectory ?? '/',
+                        timeout: profile.timeout ?? 20000,
+                        keepalive: profile.keepalive ?? 10000,
+                      },
       })),
     },
     null,
@@ -78,7 +86,9 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
     for (const entry of archive.profiles) {
       const id = randomUUID();
       let profile: ConnectionProfile;
-      if (entry.kind === 'yandex' || entry.kind === 'google') {
+      if (entry.kind === 'icloud') {
+        profile = { ...entry.profile, id, kind: 'icloud' };
+      } else if (entry.kind === 'yandex' || entry.kind === 'google') {
         profile = {
           ...entry.profile,
           id,

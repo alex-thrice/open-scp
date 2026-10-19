@@ -1157,18 +1157,27 @@ describe('App', () => {
   });
 
   it('shows SFTP, S3 and explicitly insecure FTP editors without a redundant Close button', async () => {
-    statefulApi();
+    statefulApi({ icloudRemotes: [], rcloneAvailable: true });
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
     fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(1);
     const type = screen.getByLabelText('Connection type');
+    await within(type).findByRole('option', { name: 'iCloud Drive' });
     expect(
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud', 'Yandex Disk', 'Google Drive']);
+    ).toEqual([
+      'SFTP',
+      'S3',
+      'FTP',
+      'Mail.ru Cloud',
+      'Yandex Disk',
+      'Google Drive',
+      'iCloud Drive',
+    ]);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();
@@ -1188,6 +1197,10 @@ describe('App', () => {
     ).toBe(true);
     expect(screen.queryByLabelText('Host')).toBeNull();
     expect(screen.queryByLabelText('Password')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'icloud' } });
+    expect(screen.getByLabelText('Connection name in rclone')).toBeTruthy();
+    expect(screen.getByLabelText('Apple Account password')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '← All connections' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();
   });

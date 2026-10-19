@@ -66,7 +66,7 @@ export const ProfileLibrary = ({
       />
     );
   return (
-    <Dialog title={t('ui.connections')} onClose={close}>
+    <Dialog title={t('ui.connections')} onClose={close} initialFocus=".dialog-header button">
       <section className="profile-library">
         <div className="section-heading">
           <h3>{t('ui.profiles')}</h3>
@@ -264,24 +264,28 @@ export const ProfileLibrary = ({
                         <small>
                           {item.kind === 'sftp' || item.kind === 'ftp'
                             ? `${item.username}@${item.host}`
-                            : item.kind === 'mailru'
-                              ? item.username
-                              : item.kind === 'yandex' || item.kind === 'google'
-                                ? (item.accountName ??
-                                  t(
-                                    item.kind === 'google'
-                                      ? 'google.signedOut'
-                                      : 'yandex.signedOut',
-                                  ))
-                                : item.bucket || item.endpoint || item.region}
+                            : item.kind === 'icloud'
+                              ? `${item.remote}:`
+                              : item.kind === 'mailru'
+                                ? item.username
+                                : item.kind === 'yandex' || item.kind === 'google'
+                                  ? (item.accountName ??
+                                    t(
+                                      item.kind === 'google'
+                                        ? 'google.signedOut'
+                                        : 'yandex.signedOut',
+                                    ))
+                                  : item.bucket || item.endpoint || item.region}
                         </small>
                       </button>
                       <span className="protocol-label">
-                        {item.kind === 'mailru'
-                          ? t('mailru.name')
-                          : item.kind === 'yandex' || item.kind === 'google'
-                            ? t(item.kind === 'google' ? 'google.name' : 'yandex.name')
-                            : item.kind.toUpperCase()}
+                        {item.kind === 'icloud'
+                          ? t('icloud.name')
+                          : item.kind === 'mailru'
+                            ? t('mailru.name')
+                            : item.kind === 'yandex' || item.kind === 'google'
+                              ? t(item.kind === 'google' ? 'google.name' : 'yandex.name')
+                              : item.kind.toUpperCase()}
                       </span>
                       <button
                         className="icon-button"

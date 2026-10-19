@@ -719,7 +719,12 @@ small {
   border: 0;
   background: transparent;
   padding-inline: 0;
-  outline-offset: 2px;
+  outline: none;
+}
+.source-search:focus-within,
+.search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .source-search svg,
 .search-field svg {
@@ -930,6 +935,20 @@ small {
 .native-dialog form {
   display: grid;
   gap: 14px;
+}
+.icloud-profile-fields,
+.icloud-verification {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.icloud-profile-fields input:disabled,
+.icloud-profile-fields select:disabled {
+  background: var(--raised);
+  color: var(--muted);
 }
 .native-dialog label {
   display: grid;

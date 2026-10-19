@@ -4,6 +4,11 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
+import {
+  icloudConfigurationResultSchema,
+  icloudProfileDraftSchema,
+  icloudRemoteSchema,
+} from '@shared/models/icloud-profile';
 import { googleProfileDraftSchema } from '@shared/models/google-profile';
 import { googleEntrySchema } from '@shared/models/google-entry';
 import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
@@ -49,6 +54,24 @@ export const profileDraftSchema = z.strictObject({
 });
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('save-icloud-profile'), profile: icloudProfileDraftSchema }),
+  z.strictObject({
+    action: z.literal('start-icloud-configuration'),
+    id,
+    remote: icloudRemoteSchema,
+    appleId: z.string().trim().email().max(320),
+    password: z
+      .string()
+      .min(1)
+      .max(4096)
+      .regex(/^[^\r\n\0]+$/u),
+  }),
+  z.strictObject({
+    action: z.literal('continue-icloud-configuration'),
+    id,
+    answer: z.string().trim().min(1).max(128),
+  }),
+  z.strictObject({ action: z.literal('cancel-icloud-configuration'), id }),
   z.strictObject({ action: z.literal('save-google-profile'), profile: googleProfileDraftSchema }),
   z.strictObject({ action: z.literal('authorize-google-profile'), profileId: id }),
   z.strictObject({ action: z.literal('cancel-google-authorization'), profileId: id }),
@@ -86,6 +109,8 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('open-ssh-terminal'), workspaceId: id }),
   z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('set-rclone-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('refresh-rclone') }),
   z.strictObject({ action: z.literal('set-remember-paths'), enabled: z.boolean() }),
   z.strictObject({ action: z.literal('remember-workspace-layout'), layout: workspaceLayoutSchema }),
   z.strictObject({ action: z.literal('remember-local-path'), workspaceId: id, path }),
@@ -224,6 +249,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('pick-private-key') }),
   z.strictObject({ action: z.literal('pick-editor') }),
+  z.strictObject({ action: z.literal('pick-rclone') }),
   z.strictObject({ action: z.literal('set-language'), language: z.enum(['en', 'ru']) }),
 ]);
 export type WorkspaceRequest = z.infer<typeof workspaceRequestSchema>;
@@ -255,6 +281,7 @@ export const workspaceSnapshotSchema = z.strictObject({
   updateState: updateStateSchema.optional(),
   editorPath: path.nullable().optional(),
   puttyPath: path.nullable().optional(),
+  rclonePath: path.nullable().optional(),
   rememberPaths: z.boolean().optional(),
   workspaceLayout: workspaceLayoutSchema.optional(),
   localPathHistory: z.record(z.string(), path).optional(),
@@ -266,6 +293,8 @@ export const workspaceSnapshotSchema = z.strictObject({
     .array(z.strictObject({ profileId: id, count: z.number().int().nonnegative() }))
     .optional(),
   profiles: z.array(connectionProfileSchema),
+  icloudRemotes: z.array(icloudRemoteSchema).optional(),
+  rcloneAvailable: z.boolean().optional(),
   googleOAuthConfigured: z.boolean().optional(),
   googleAuthorizations: z
     .array(
@@ -293,7 +322,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['ftp', 'google', 'mailru', 'sftp', 's3', 'yandex']).optional(),
+      kind: z.enum(['ftp', 'google', 'icloud', 'mailru', 'sftp', 's3', 'yandex']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z
@@ -380,6 +409,7 @@ export const workspaceSnapshotSchema = z.strictObject({
 });
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export const workspaceResultSchema = z.strictObject({
+  icloudConfiguration: icloudConfigurationResultSchema.optional(),
   connectionTest: z
     .discriminatedUnion('status', [
       z.strictObject({ status: z.literal('success') }),

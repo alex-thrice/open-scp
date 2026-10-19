@@ -4,6 +4,7 @@ import type { TransferSnapshot } from '@shared/models/transfer-snapshot';
 import type { ProfileStore } from '../persistence/profile-store';
 
 const providerPath = z.discriminatedUnion('provider', [
+  z.strictObject({ provider: z.literal('icloud'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('google'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('yandex'), path: z.string().min(1) }),
   z.strictObject({ provider: z.literal('mailru'), path: z.string().min(1) }),

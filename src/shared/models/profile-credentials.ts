@@ -1,6 +1,7 @@
 import type { ConnectionProfile, SecretReference } from './connection-profile';
 
 export const profileSecretReference = (profile: ConnectionProfile): SecretReference | undefined => {
+  if (profile.kind === 'icloud') return undefined;
   if (profile.kind === 's3') return profile.secret;
   if (profile.kind === 'yandex' || profile.kind === 'google') return profile.authentication.secret;
   const authentication = profile.authentication;
@@ -12,6 +13,7 @@ export const withProfileSecretReference = (
   profile: ConnectionProfile,
   reference: SecretReference,
 ): ConnectionProfile => {
+  if (profile.kind === 'icloud') return profile;
   if (profile.kind === 's3') return { ...profile, secret: reference };
   if (profile.kind === 'yandex' || profile.kind === 'google')
     return { ...profile, authentication: { method: 'oauth', secret: reference } };

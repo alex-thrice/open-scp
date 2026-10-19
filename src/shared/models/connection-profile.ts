@@ -71,6 +71,7 @@ export interface MailruConnectionProfile extends BaseConnectionProfile {
 export type ConnectionProfile =
   | FtpConnectionProfile
   | GoogleConnectionProfile
+  | ICloudConnectionProfile
   | MailruConnectionProfile
   | S3ConnectionProfile
   | SftpConnectionProfile
@@ -87,4 +88,11 @@ export interface YandexConnectionProfile extends BaseConnectionProfile {
 
 export interface GoogleConnectionProfile extends Omit<YandexConnectionProfile, 'kind'> {
   readonly kind: 'google';
+}
+
+export interface ICloudConnectionProfile extends BaseConnectionProfile {
+  readonly kind: 'icloud';
+  readonly remote: string;
+  readonly initialDirectory?: string;
+  readonly timeout?: number;
 }

@@ -1,4 +1,10 @@
-export type ProviderKind = 'ftp' | 'google' | 'local' | 'mailru' | 's3' | 'sftp' | 'yandex';
+export type ProviderKind =
+  'ftp' | 'google' | 'icloud' | 'local' | 'mailru' | 's3' | 'sftp' | 'yandex';
+
+export interface ICloudProviderPath {
+  readonly path: string;
+  readonly provider: 'icloud';
+}
 
 export interface GoogleProviderPath {
   readonly path: string;
@@ -43,6 +49,7 @@ export interface S3ProviderPath {
 export type ProviderPath =
   | FtpProviderPath
   | GoogleProviderPath
+  | ICloudProviderPath
   | LocalProviderPath
   | MailruProviderPath
   | S3ProviderPath
@@ -60,11 +67,12 @@ export const createMailruProviderPath = (path: string): MailruProviderPath => ({
 });
 
 export const createRemoteProviderPath = (
-  provider: 'ftp' | 'google' | 'mailru' | 'sftp' | 'yandex',
+  provider: 'ftp' | 'google' | 'icloud' | 'mailru' | 'sftp' | 'yandex',
   path: string,
 ):
   | FtpProviderPath
   | GoogleProviderPath
+  | ICloudProviderPath
   | MailruProviderPath
   | SftpProviderPath
   | YandexProviderPath => ({

@@ -7,7 +7,7 @@ export interface PaneLocation {
   readonly googleAccountId?: string;
   readonly path: string;
   readonly title: string;
-  readonly kind: 'google' | 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
+  readonly kind: 'google' | 'ftp' | 'icloud' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
   readonly ready: boolean;
   readonly writable: boolean;
 }
@@ -27,19 +27,21 @@ export const workspaceIds = (workspaceId: string): readonly string[] => [
 ];
 export const workspaceOf = (id: string): string => id.replace(/:(left|right)$/u, '');
 export const protocolIcon = (kind: PaneLocation['kind']): IconName =>
-  kind === 'google'
-    ? 'GoogleDrive'
-    : kind === 'mailru'
-      ? 'MailruCloud'
-      : kind === 'yandex'
-        ? 'YandexDisk'
-        : kind === 's3'
-          ? 'Database'
-          : kind === 'sftp'
-            ? 'ShieldCheck'
-            : kind === 'ftp'
-              ? 'Plug'
-              : 'HardDrive';
+  kind === 'icloud'
+    ? 'Cloud'
+    : kind === 'google'
+      ? 'GoogleDrive'
+      : kind === 'mailru'
+        ? 'MailruCloud'
+        : kind === 'yandex'
+          ? 'YandexDisk'
+          : kind === 's3'
+            ? 'Database'
+            : kind === 'sftp'
+              ? 'ShieldCheck'
+              : kind === 'ftp'
+                ? 'Plug'
+                : 'HardDrive';
 export const directoryName = (path: string): string =>
   path.startsWith('gdrive:/')
     ? googlePathName(path)

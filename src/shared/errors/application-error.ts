@@ -1,4 +1,10 @@
 export const applicationErrorCodes = {
+  rcloneUnavailable: 'RCLONE_UNAVAILABLE',
+  rcloneConfiguration: 'RCLONE_CONFIGURATION',
+  rcloneAuthentication: 'RCLONE_AUTHENTICATION',
+  rcloneTimeout: 'RCLONE_TIMEOUT',
+  rcloneRemoteExists: 'RCLONE_REMOTE_EXISTS',
+  rcloneSetupExpired: 'RCLONE_SETUP_EXPIRED',
   oauthRequired: 'OAUTH_REQUIRED',
   oauthConfiguration: 'OAUTH_CONFIGURATION',
   oauthCallbackUnavailable: 'OAUTH_CALLBACK_UNAVAILABLE',
@@ -51,6 +57,30 @@ export class ApplicationError<Code extends string = string> extends Error {
 }
 
 const safeErrors = {
+  [applicationErrorCodes.rcloneRemoteExists]: {
+    code: applicationErrorCodes.rcloneRemoteExists,
+    messageKey: 'errors.icloud.remoteExists',
+  },
+  [applicationErrorCodes.rcloneSetupExpired]: {
+    code: applicationErrorCodes.rcloneSetupExpired,
+    messageKey: 'errors.icloud.setupExpired',
+  },
+  [applicationErrorCodes.rcloneUnavailable]: {
+    code: applicationErrorCodes.rcloneUnavailable,
+    messageKey: 'errors.icloud.unavailable',
+  },
+  [applicationErrorCodes.rcloneConfiguration]: {
+    code: applicationErrorCodes.rcloneConfiguration,
+    messageKey: 'errors.icloud.configuration',
+  },
+  [applicationErrorCodes.rcloneAuthentication]: {
+    code: applicationErrorCodes.rcloneAuthentication,
+    messageKey: 'errors.icloud.authentication',
+  },
+  [applicationErrorCodes.rcloneTimeout]: {
+    code: applicationErrorCodes.rcloneTimeout,
+    messageKey: 'errors.icloud.timeout',
+  },
   [applicationErrorCodes.oauthRequired]: {
     code: applicationErrorCodes.oauthRequired,
     messageKey: 'errors.oauth.required',
