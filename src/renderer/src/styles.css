@@ -719,7 +719,12 @@ small {
   border: 0;
   background: transparent;
   padding-inline: 0;
-  outline-offset: 2px;
+  outline: none;
+}
+.source-search:focus-within,
+.search-field:focus-within {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 .source-search svg,
 .search-field svg {

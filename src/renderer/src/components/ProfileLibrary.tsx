@@ -66,7 +66,7 @@ export const ProfileLibrary = ({
       />
     );
   return (
-    <Dialog title={t('ui.connections')} onClose={close}>
+    <Dialog title={t('ui.connections')} onClose={close} initialFocus=".dialog-header button">
       <section className="profile-library">
         <div className="section-heading">
           <h3>{t('ui.profiles')}</h3>
