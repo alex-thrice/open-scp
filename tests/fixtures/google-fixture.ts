@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { createServer, type IncomingHttpHeaders } from 'node:http';
 import { once } from 'node:events';
+import { googleNativeCopyFormats } from '../../src/shared/models/google-path';
 
 export interface GoogleFixtureEntry {
   id: string;
@@ -29,6 +30,7 @@ export const googleFixtureEntry = (
   trashed: false,
   capabilities: {
     canDownload: true,
+    canCopy: true,
     canModifyContent: true,
     canRename: true,
     canTrash: true,
@@ -105,10 +107,14 @@ export async function startGoogleFixture() {
     name: entry.name,
     mimeType: entry.mimeType,
     parents: entry.parents,
-    size: String(entry.content.length),
+    ...(!entry.mimeType.startsWith('application/vnd.google-apps.')
+      ? {
+          size: String(entry.content.length),
+          md5Checksum: createHash('md5').update(entry.content).digest('hex'),
+        }
+      : {}),
     version: String(entry.version),
     modifiedTime: '2026-10-19T10:00:00Z',
-    md5Checksum: createHash('md5').update(entry.content).digest('hex'),
     trashed: entry.trashed,
     capabilities: entry.capabilities,
     ...(entry.driveId ? { driveId: entry.driveId } : {}),
@@ -209,6 +215,12 @@ export async function startGoogleFixture() {
       const entries = tree(account);
       if (url.pathname === '/drive/v3/about') {
         json(200, {
+          importFormats: Object.fromEntries(
+            Object.entries(googleNativeCopyFormats).map(([native, exported]) => [
+              exported,
+              [native],
+            ]),
+          ),
           user: {
             permissionId: account,
             emailAddress: `fixture-${account}@example.test`,
@@ -222,6 +234,48 @@ export async function startGoogleFixture() {
         return;
       }
       if (url.pathname.startsWith('/upload/drive/v3/files')) {
+        if (url.searchParams.get('uploadType') === 'multipart') {
+          const boundary = /boundary=([^;]+)/u.exec(request.headers['content-type'] ?? '')?.[1];
+          if (!boundary) throw new Error('No multipart boundary');
+          const body = await collect();
+          const metadataStart = body.indexOf('\r\n\r\n') + 4;
+          const metadataEnd = body.indexOf(`\r\n--${boundary}`, metadataStart);
+          const contentStart = body.indexOf('\r\n\r\n', metadataEnd + 2) + 4;
+          const contentEnd = body.lastIndexOf(`\r\n--${boundary}--`);
+          const uploadMetadata = JSON.parse(
+            body.subarray(metadataStart, metadataEnd).toString(),
+          ) as {
+            name?: string;
+            mimeType: string;
+            parents?: string[];
+          };
+          record.json = uploadMetadata;
+          const existing =
+            record.method === 'PATCH'
+              ? entries.get(url.pathname.split('/').at(-1) ?? '')
+              : undefined;
+          if (
+            (record.method === 'PATCH' && !existing) ||
+            (existing && !existing.capabilities.canModifyContent)
+          ) {
+            json(existing ? 403 : 404);
+            return;
+          }
+          const entry =
+            existing ??
+            googleFixtureEntry(uploadMetadata.name ?? '', '', uploadMetadata.parents?.[0]);
+          entry.mimeType = uploadMetadata.mimeType;
+          entry.content = Buffer.from(body.subarray(contentStart, contentEnd));
+          entry.version += 1;
+          entries.set(entry.id, entry);
+          if (fixture.loseCompletionOnce) {
+            fixture.loseCompletionOnce = false;
+            response.destroy();
+            return;
+          }
+          json(200, metadata(entry));
+          return;
+        }
         const sessionId = url.searchParams.get('upload_id');
         if (!sessionId) {
           const body = JSON.parse((await collect()).toString()) as {
@@ -374,6 +428,22 @@ export async function startGoogleFixture() {
       const entry = entries.get(id);
       if (!entry || entry.trashed) {
         json(404);
+        return;
+      }
+      if (record.method === 'POST' && parts[5] === 'copy') {
+        const body = JSON.parse((await collect()).toString()) as {
+          name: string;
+          parents: string[];
+        };
+        record.json = body;
+        if (!entry.capabilities.canCopy) {
+          json(403);
+          return;
+        }
+        const copied = googleFixtureEntry(body.name, entry.content, body.parents[0]);
+        copied.mimeType = entry.mimeType;
+        entries.set(copied.id, copied);
+        json(200, metadata(copied));
         return;
       }
       if (record.method === 'PATCH') {

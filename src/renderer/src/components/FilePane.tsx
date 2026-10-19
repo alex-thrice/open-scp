@@ -7,6 +7,7 @@ import {
   googleDisplayPath,
   googleExportPath,
   googleExportFormats,
+  googleNativeCopyFormats,
 } from '@shared/models/google-path';
 import { GoogleAuthorizationControls } from './GoogleAuthorizationControls';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
@@ -94,6 +95,8 @@ export const FilePane = ({
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
+  const profile = snapshot.profiles.find((item) => item.id === session?.profileId);
+  const googleAccountId = profile?.kind === 'google' ? profile.accountId : undefined;
   const yandexAuthorization = (
     kind === 'google' ? snapshot.googleAuthorizations : snapshot.yandexAuthorizations
   )?.find((entry) => entry.profileId === session?.profileId);
@@ -234,13 +237,25 @@ export const FilePane = ({
   const title = session?.name ?? directoryName(currentPath);
   useEffect(() => {
     onLocation(side, {
+      ...(googleAccountId ? { googleAccountId } : {}),
       kind,
       path: currentPath,
       title,
       ready: ready && !!listing && !loading,
       writable,
     });
-  }, [side, kind, currentPath, title, ready, listing, loading, writable, onLocation]);
+  }, [
+    side,
+    kind,
+    currentPath,
+    title,
+    ready,
+    listing,
+    loading,
+    writable,
+    onLocation,
+    googleAccountId,
+  ]);
   const entries =
     listing?.entries.filter((entry) => appearance.showHidden || !entry.name.startsWith('.')) ?? [];
   useLayoutEffect(() => {
@@ -266,6 +281,19 @@ export const FilePane = ({
       ((entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
         (entry.google.type === 'binary' && !entry.google.canDownload) ||
         (entry.google.type === 'folder' && !entry.google.canListChildren)),
+  );
+  const sameGoogleAccount = !!googleAccountId && googleAccountId === destination?.googleAccountId;
+  const googleCannotCopy = selectedEntries.some(
+    (entry) =>
+      entry.google &&
+      (entry.google.type === 'native'
+        ? destination?.kind !== 'google' ||
+          !entry.google.canCopy ||
+          (!sameGoogleAccount &&
+            (!entry.google.canDownload || !googleNativeCopyFormats[entry.google.mimeType]))
+        : (entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
+          (entry.google.type === 'binary' && !entry.google.canDownload) ||
+          (entry.google.type === 'folder' && !entry.google.canListChildren)),
   );
   const invalidSelection =
     !selected.length ||
@@ -327,7 +355,7 @@ export const FilePane = ({
         loading ||
         !destination?.ready ||
         !destination.writable ||
-        googleCannotRead ||
+        googleCannotCopy ||
         (kind !== 'local' && !session?.capabilities?.read),
       run: () => {
         if (destination)

@@ -16,8 +16,8 @@ const location = (kind: PaneLocation['kind'], path: string): PaneLocation => ({
 });
 describe('workspace layout', () => {
   it('routes all local and remote copy combinations through the queue with conflict review', () => {
-    for (const source of ['local', 'sftp', 's3', 'ftp', 'mailru'] as const) {
-      for (const target of ['local', 'sftp', 's3', 'ftp', 'mailru'] as const) {
+    for (const source of ['local', 'sftp', 's3', 'ftp', 'mailru', 'yandex', 'google'] as const) {
+      for (const target of ['local', 'sftp', 's3', 'ftp', 'mailru', 'yandex', 'google'] as const) {
         const request = copyRequest(
           'one:left',
           source,

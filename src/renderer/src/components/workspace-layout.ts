@@ -4,6 +4,7 @@ import type { IconName } from './Icon';
 
 export type PaneSide = 'left' | 'right';
 export interface PaneLocation {
+  readonly googleAccountId?: string;
   readonly path: string;
   readonly title: string;
   readonly kind: 'google' | 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';

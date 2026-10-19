@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGoogleHarness, required } from '../fixtures/google-harness';
+import { createGoogleHarness, googleFixtureProfile, required } from '../fixtures/google-harness';
 import { googleFixtureEntry } from '../fixtures/google-fixture';
 import { createGoogleProviderPath as path } from '../../src/shared/models/provider-path';
 import {
@@ -8,6 +8,7 @@ import {
   googleExportPath,
   googleRootPath,
   parseGooglePath,
+  googleNativeCopyFormats,
 } from '../../src/shared/models/google-path';
 import { Readable } from 'node:stream';
 import type { IncomingMessage, ClientRequest } from 'node:http';
@@ -43,6 +44,86 @@ describe('Google Drive API provider', () => {
     await writer.write(content);
     await writer.close();
   };
+  it('copies native documents directly within an account without exporting or changing the original', async () => {
+    const tree = required(harness.fixture.accounts.get('one'));
+    const doc = googleFixtureEntry('source.txt', 'native');
+    doc.mimeType = 'application/vnd.google-apps.document';
+    doc.capabilities.canDownload = false;
+    tree.set(doc.id, doc);
+    await provider.copyFrom(
+      provider,
+      path(googleChildPath(googleRootPath, doc.name, doc.id)),
+      path(googleChildPath(googleRootPath, 'copied.txt')),
+    );
+    const copied = await provider.stat(path(googleChildPath(googleRootPath, 'copied.txt')));
+    expect(copied.google?.type).toBe('native');
+    expect(copied.google?.id).not.toBe(doc.id);
+    expect(doc.name).toBe('source.txt');
+    expect(harness.fixture.requests.some((request) => request.path.endsWith('/copy'))).toBe(true);
+    expect(harness.fixture.requests.some((request) => request.path.endsWith('/export'))).toBe(
+      false,
+    );
+  });
+  it.each(Object.entries(googleNativeCopyFormats))(
+    'copies %s into another account with its native type and original name',
+    async (mimeType, exportMimeType) => {
+      const profile = googleFixtureProfile();
+      harness.store.save(profile);
+      harness.fixture.nextAccount = 'two';
+      await harness.authorize(profile.id);
+      const destination = harness.provider(profile.id);
+      await destination.connect();
+      const doc = googleFixtureEntry('named.txt', 'native');
+      doc.mimeType = mimeType;
+      required(harness.fixture.accounts.get('one')).set(doc.id, doc);
+      try {
+        await destination.copyFrom(
+          provider,
+          path(googleChildPath(googleRootPath, doc.name, doc.id)),
+          path(googleChildPath(googleRootPath, doc.name)),
+        );
+        const copied = await destination.stat(path(googleChildPath(googleRootPath, doc.name)));
+        expect(copied.google?.mimeType).toBe(mimeType);
+        expect(copied.google?.id).not.toBe(doc.id);
+        expect(
+          required(harness.fixture.accounts.get('two'))
+            .get(required(copied.google?.id))
+            ?.content.toString(),
+        ).toBe(`export:${doc.id}:${exportMimeType}`);
+        expect(
+          harness.fixture.requests.filter(
+            (request) => request.query.get('uploadType') === 'multipart',
+          ),
+        ).toHaveLength(1);
+        expect(harness.fixture.requests.some((request) => request.path.endsWith('/copy'))).toBe(
+          false,
+        );
+        expect(doc.trashed).toBe(false);
+      } finally {
+        await destination.disconnect();
+      }
+    },
+  );
+  it('rejects a prohibited native copy and a stale source before publishing', async () => {
+    const doc = googleFixtureEntry('source', 'native');
+    doc.mimeType = 'application/vnd.google-apps.document';
+    required(harness.fixture.accounts.get('one')).set(doc.id, doc);
+    const source = path(googleChildPath(googleRootPath, doc.name, doc.id));
+    const target = path(googleChildPath(googleRootPath, 'copied'));
+    doc.capabilities.canCopy = false;
+    await expect(provider.copyFrom(provider, source, target)).rejects.toMatchObject({
+      code: 'PROVIDER_ACCESS_DENIED',
+    });
+    doc.capabilities.canCopy = true;
+    await expect(
+      provider.copyFrom(provider, source, target, { sourceVersionTag: 'outdated' }),
+    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
+    expect(
+      harness.fixture.requests.some(
+        (request) => request.method === 'POST' && request.path.endsWith('/copy'),
+      ),
+    ).toBe(false);
+  });
   it('does not replace a missing explicit target ID with a newly created object', async () => {
     await expect(
       provider.openWrite(path(googleChildPath(googleRootPath, 'missing', 'missing-id')), {

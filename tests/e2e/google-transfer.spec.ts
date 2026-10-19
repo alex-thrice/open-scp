@@ -8,6 +8,108 @@ import { startGoogleFixture } from '../fixtures/google-fixture';
 import { copySelection, finishProfile, newConnection, openConnection } from './workspace-ui';
 import { nativeKeyringLaunchOptions } from './electron-launch';
 
+test('copies TXT files and Google documents between two accounts in both directions', async () => {
+  test.setTimeout(90000);
+  const fixture = await startGoogleFixture();
+  const localRoot = await mkdtemp(join(tmpdir(), 'openscp-google-copy-ui-'));
+  const userData = await mkdtemp(join(tmpdir(), 'openscp-google-copy-user-'));
+  let application: ElectronApplication | undefined;
+  try {
+    application = await electron.launch({
+      ...nativeKeyringLaunchOptions(),
+      args: [
+        '--disable-gpu',
+        '--in-process-gpu',
+        '--no-sandbox',
+        `--user-data-dir=${userData}`,
+        resolve('out/main/index.js'),
+      ],
+      env: {
+        ...process.env,
+        OPENSCP_DISABLE_HARDWARE_ACCELERATION: '1',
+        OPENSCP_LOCAL_ROOT: localRoot,
+        OPENSCP_GOOGLE_FIXTURE: '1',
+        OPENSCP_TEST_GOOGLE_ENDPOINT: fixture.endpoint,
+      },
+    });
+    const window = await application.firstWindow();
+    for (const account of ['one', 'two']) {
+      fixture.nextAccount = account;
+      const form = await newConnection(window, 'google');
+      await form.getByLabel('Profile name').fill(`Google ${account}`);
+      await form.getByRole('button', { name: 'Sign in to Google', exact: true }).click();
+      await expect(
+        form.getByText(`Google account: fixture-${account}@example.test`, { exact: true }),
+      ).toBeVisible();
+      await finishProfile(window, form);
+      const file = googleFixtureEntry(`${account}.txt`, `TXT content from ${account}.`);
+      file.mimeType = 'text/plain';
+      fixture.accounts.get(account)?.set(file.id, file);
+      const document = googleFixtureEntry(`${account}-document.txt`, 'Native document content.');
+      document.mimeType = 'application/vnd.google-apps.document';
+      fixture.accounts.get(account)?.set(document.id, document);
+    }
+    await openConnection(window, 'left', 'Google one');
+    await openConnection(window, 'right', 'Google two');
+    const left = window.getByTestId('left-panel');
+    const right = window.getByTestId('right-panel');
+    await left.getByRole('row', { name: 'one.txt', exact: true }).click();
+    await expect(left.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
+    await copySelection(window, left);
+    await expect(window.getByText(/^Completed ·/u)).toHaveCount(1);
+    await expect(right.getByRole('row', { name: 'one.txt', exact: true })).toBeVisible();
+    expect(
+      [...(fixture.accounts.get('two')?.values() ?? [])]
+        .find((entry) => entry.name === 'one.txt')
+        ?.content.toString(),
+    ).toBe('TXT content from one.');
+    await right.getByRole('row', { name: 'two.txt', exact: true }).click();
+    await expect(right.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
+    await copySelection(window, right);
+    await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
+    await expect(left.getByRole('row', { name: 'two.txt', exact: true })).toBeVisible();
+    expect(
+      [...(fixture.accounts.get('one')?.values() ?? [])]
+        .find((entry) => entry.name === 'two.txt')
+        ?.content.toString(),
+    ).toBe('TXT content from two.');
+    for (const [source, destination, account, count] of [
+      [left, right, 'one', 3],
+      [right, left, 'two', 4],
+    ] as const) {
+      const name = `${account}-document.txt`;
+      await source.getByRole('row', { name, exact: true }).click();
+      await expect(source.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
+      await copySelection(window, source);
+      await expect(window.getByText(/^Completed ·/u)).toHaveCount(count);
+      await expect(destination.getByRole('row', { name, exact: true })).toBeVisible();
+      const copied = [
+        ...(fixture.accounts.get(account === 'one' ? 'two' : 'one')?.values() ?? []),
+      ].find((entry) => entry.name === name);
+      expect(copied?.mimeType).toBe('application/vnd.google-apps.document');
+      expect(copied?.content.toString()).toContain(
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      );
+    }
+    const restricted = [...(fixture.accounts.get('one')?.values() ?? [])].find(
+      (entry) => entry.name === 'one-document.txt',
+    );
+    if (!restricted) throw new Error('No source document');
+    for (const capability of ['canCopy', 'canDownload']) {
+      restricted.capabilities[capability] = false;
+      await left.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await left.getByRole('row', { name: restricted.name, exact: true }).click();
+      await expect(left.getByRole('button', { name: /^Copy to /u })).toBeDisabled();
+      restricted.capabilities[capability] = true;
+    }
+  } finally {
+    await application?.close();
+    await fixture.close();
+    await rm(localRoot, { recursive: true, force: true });
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
 test('Google browser authorization, queue, restart, sign-out and cancellation', async () => {
   test.setTimeout(90000);
   const fixture = await startGoogleFixture();

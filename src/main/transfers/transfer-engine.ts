@@ -117,6 +117,14 @@ const tryStat = async (
     throw error;
   }
 };
+const canOverwrite = (source: FileSystemEntry, target: FileSystemEntry): boolean =>
+  source.kind === target.kind &&
+  (target.kind === 'file' ||
+    target.kind === 'directory' ||
+    (source.google?.type === 'native' &&
+      target.google?.type === 'native' &&
+      source.google.mimeType === target.google.mimeType &&
+      target.google.canWrite));
 const providerPathFromText = (reference: ProviderPath, path: string): ProviderPath =>
   reference.provider === 'local'
     ? createLocalProviderPath(path)
@@ -371,13 +379,22 @@ export class TransferEngine {
   ): Promise<bigint> {
     this.check(job);
     const entry = await provider.stat(path, { signal: job.controller.signal });
-    if (entry.kind === 'file') return entry.size;
+    if (entry.kind === 'file' || this.isNativeCopy(job, entry, path)) return entry.size;
     if (entry.kind !== 'directory')
       throw new ApplicationError(applicationErrorCodes.providerUnsupported);
     let total = 0n;
     for (const child of await provider.list(path, { signal: job.controller.signal }))
       total += await this.size(provider, child.path, job);
     return total;
+  }
+  private isNativeCopy(job: TransferJob, entry: FileSystemEntry, path: ProviderPath): boolean {
+    return (
+      entry.google?.type === 'native' &&
+      path.provider === 'google' &&
+      !parseGooglePath(path.path).exportMimeType &&
+      job.request.destination.kind === 'google' &&
+      job.request.destination.copyFrom !== undefined
+    );
   }
   private progress(job: TransferJob, bytes: bigint): void {
     const elapsed = (Date.now() - job.started) / 1000;
@@ -493,7 +510,7 @@ export class TransferEngine {
             ? candidates.map((item) => ({
                 path: localPath(item.path),
                 name: item.name,
-                writable: item.kind === 'file' && item.google?.canWrite === true,
+                writable: canOverwrite(sourceEntry, item) && item.google?.canWrite === true,
               }))
             : undefined,
         conflictSourcePath: localPath(sourcePath),
@@ -503,10 +520,7 @@ export class TransferEngine {
     }
     if (policy === 'fail') throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (policy === 'overwrite') {
-      if (
-        existing.kind !== sourceEntry.kind ||
-        (existing.kind !== 'file' && existing.kind !== 'directory')
-      )
+      if (!canOverwrite(sourceEntry, existing))
         throw new ApplicationError(applicationErrorCodes.providerConflict);
       job.conflictResolutions.delete(key);
       job.pendingTargets.delete(localPath(sourcePath));
@@ -594,7 +608,7 @@ export class TransferEngine {
       requested = createS3ProviderPath(requested.bucket, s3Prefix(requested.key));
     let target = await this.target(job, sourcePath, requested, entry);
     if (target === undefined) {
-      job.completed.set(key, entry.kind === 'file' ? entry.size : 0n);
+      job.completed.set(key, entry.kind === 'directory' ? 0n : entry.size);
       return;
     }
     if (entry.kind === 'directory') {
@@ -606,6 +620,28 @@ export class TransferEngine {
       }
       for (const child of await source.list(sourcePath, { signal: job.controller.signal }))
         await this.copy(job, child.path, childPath(target, child.name));
+      return;
+    }
+    if (this.isNativeCopy(job, entry, sourcePath) && destination.copyFrom) {
+      const existing = await tryStat(destination, target);
+      try {
+        await destination.copyFrom(source, sourcePath, target, {
+          overwrite: job.overwriteTargets.has(localPath(target)),
+          ...(entry.versionTag ? { sourceVersionTag: entry.versionTag } : {}),
+          ...(existing?.versionTag ? { versionTag: existing.versionTag } : {}),
+          signal: job.controller.signal,
+          onPublish: () => {
+            this.check(job);
+            job.publishing = true;
+            this.persist();
+          },
+        });
+      } catch (error) {
+        this.pauseForConflict(job, sourcePath, target, error);
+      }
+      job.publishing = false;
+      job.completed.set(key, entry.size);
+      this.progress(job, entry.size);
       return;
     }
     if (entry.kind !== 'file')
