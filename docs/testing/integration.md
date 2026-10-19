@@ -18,6 +18,16 @@ health checks и заполняет MinIO. Повторный запуск оч�
 Compose-проекта `openscp-integration`. Сгенерированный клиентский ключ остаётся в
 игнорируемом `tests/fixtures/runtime/`; его можно использовать повторно.
 
+MinIO и `mc` собираются в `tests/fixtures/minio/Dockerfile` из официальных исходников:
+сервер `RELEASE.2025-09-07T16-13-09Z` (`07c3a429bfed433e49018cb0f78a52145d4bedeb`),
+клиент `RELEASE.2025-08-13T08-35-41Z` (`7394ce0dd2a80935aded936b09fa12cbb3cb8096`).
+Сборка использует закреплённый Go 1.24.7 и проверку Go modules через checksum database;
+первый запуск скачивает зависимости и компилирует оба бинарника, последующие используют
+Docker build cache. Лицензии и CREDITS включены в тестовые образы. Готовые образы MinIO
+из Docker Hub/Quay больше не требуются: Quay отказал в анонимном скачивании при сборке v0.4.0,
+а upstream [распространяет Community Edition в исходниках](https://github.com/minio/minio#source-only-distribution).
+Эти контейнеры используются только для тестов и не входят в пакеты OpenSCP.
+
 ## Только фиктивные credentials
 
 T33 использует `tests/fixtures/google-fixture.ts`: desktop OAuth/PKCE с Bearer, ID-дерево
