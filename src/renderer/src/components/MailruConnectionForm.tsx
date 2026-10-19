@@ -11,16 +11,20 @@ export const MailruConnectionForm = ({
   profile,
   run,
   onClose,
+  onConfirm,
   errorKey,
   editorControls,
   afterSave,
+  initialName,
 }: {
   readonly profile: MailruConnectionProfile | undefined;
   readonly run: WorkspaceRunner;
   readonly onClose: () => void;
+  readonly onConfirm?: () => void;
   readonly errorKey: string | null;
   readonly editorControls?: ReactNode;
   readonly afterSave?: (result: WorkspaceResult) => Promise<boolean>;
+  readonly initialName?: string;
 }) => {
   const { t } = useTranslation();
   const formId = useId();
@@ -61,7 +65,7 @@ export const MailruConnectionForm = ({
       setCreatedId(result.savedProfileId);
       if (afterSave && !(await afterSave(result))) return;
       if (testConnection) await connectionTest.test(result.savedProfileId);
-      else onClose();
+      else (onConfirm ?? onClose)();
     } finally {
       setIsSaving(false);
     }
@@ -107,8 +111,8 @@ export const MailruConnectionForm = ({
         <label>
           {t('connections.name')}
           <input
-            autoFocus
-            defaultValue={profile?.name ?? ''}
+            data-dialog-autofocus
+            defaultValue={profile?.name ?? initialName ?? ''}
             name="name"
             maxLength={200}
             required

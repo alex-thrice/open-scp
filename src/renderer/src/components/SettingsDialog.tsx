@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Appearance } from '@shared/ipc/workspace';
+import type { Appearance, WorkspaceRequest } from '@shared/ipc/workspace';
 import {
   defaultKeyboardShortcuts,
   formatShortcut,
@@ -15,7 +15,7 @@ import {
   transferSettingsSchema,
   type TransferSettings,
 } from '@shared/models/transfer-settings';
-import { Dialog } from './Dialog';
+import { Dialog, type ModalResult } from './Dialog';
 import { Icon } from './Icon';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
@@ -61,7 +61,7 @@ export const SettingsDialog = ({
   readonly updateState: UpdateState | undefined;
   readonly run: WorkspaceRunner;
   readonly errorKey: string | null;
-  readonly onClose: () => void;
+  readonly onClose: (result: ModalResult) => void;
 }) => {
   const { t, i18n } = useTranslation();
   const [page, setPage] = useState<SettingsPage>(initialPage);
@@ -70,50 +70,55 @@ export const SettingsDialog = ({
   const [shortcutError, setShortcutError] = useState<string | null>(null);
   const [draft, setDraft] = useState(appearance);
   const [transferDraft, setTransferDraft] = useState(transferSettings);
-  const { sftpUploadConcurrency, sftpDownloadConcurrency } = transferSettings;
-  useEffect(() => {
-    setTransferDraft({ sftpUploadConcurrency, sftpDownloadConcurrency });
-  }, [sftpUploadConcurrency, sftpDownloadConcurrency]);
+  const [shortcutDraft, setShortcutDraft] = useState(keyboardShortcuts);
+  const [updateDraft, setUpdateDraft] = useState(updateSettings);
+  const [rememberDraft, setRememberDraft] = useState(rememberPaths);
+  const [confirmCloseDraft, setConfirmCloseDraft] = useState(confirmTabClose);
+  const initialLanguage = i18n.resolvedLanguage === 'ru' ? 'ru' : 'en';
+  const [languageDraft, setLanguageDraft] = useState<'en' | 'ru'>(initialLanguage);
   const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
   const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
   const isMac = /Mac/iu.test(navigator.platform);
-  useEffect(() => {
-    setDraft(appearance);
-  }, [appearance]);
-  useEffect(() => {
-    setEditorPathDraft(editorPath ?? '');
-  }, [editorPath]);
-  useEffect(() => {
-    setPuttyPathDraft(puttyPath ?? '');
-  }, [puttyPath]);
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
-  const update = async (value: Partial<Appearance>) => {
+  const update = (value: Partial<Appearance>) => {
     if (busy) return;
-    const next = { ...draft, ...value };
-    setDraft(next);
-    setBusy(true);
-    try {
-      const result = await run({ action: 'set-appearance', appearance: next });
-      if (!result) setDraft(appearance);
-    } finally {
-      setBusy(false);
-    }
+    setDraft((current) => ({ ...current, ...value }));
   };
-  const saveShortcuts = async (shortcuts: KeyboardShortcuts) => {
+  const saveShortcuts = (shortcuts: KeyboardShortcuts) => {
     if (busy) return;
-    setBusy(true);
-    try {
-      await run({ action: 'set-keyboard-shortcuts', shortcuts });
-    } finally {
-      setBusy(false);
-    }
+    setShortcutDraft(shortcuts);
   };
-  const saveUpdateSettings = async (value: Partial<UpdateSettings>) => {
+  const saveUpdateSettings = (value: Partial<UpdateSettings>) => {
     if (busy) return;
+    setUpdateDraft((current) => ({ ...current, ...value }));
+  };
+  const confirm = async () => {
+    if (busy || !transferSettingsSchema.safeParse(transferDraft).success) return;
+    const requests: WorkspaceRequest[] = [];
+    if (JSON.stringify(draft) !== JSON.stringify(appearance))
+      requests.push({ action: 'set-appearance', appearance: draft });
+    if (JSON.stringify(shortcutDraft) !== JSON.stringify(keyboardShortcuts))
+      requests.push({ action: 'set-keyboard-shortcuts', shortcuts: shortcutDraft });
+    if (JSON.stringify(updateDraft) !== JSON.stringify(updateSettings))
+      requests.push({ action: 'set-update-settings', settings: updateDraft });
+    if (JSON.stringify(transferDraft) !== JSON.stringify(transferSettings))
+      requests.push({ action: 'set-transfer-settings', settings: transferDraft });
+    if (rememberDraft !== rememberPaths)
+      requests.push({ action: 'set-remember-paths', enabled: rememberDraft });
+    if (confirmCloseDraft !== confirmTabClose)
+      requests.push({ action: 'set-confirm-tab-close', enabled: confirmCloseDraft });
+    if ((puttyPathDraft.trim() || null) !== puttyPath)
+      requests.push({ action: 'set-putty-path', path: puttyPathDraft.trim() || null });
+    if ((editorPathDraft.trim() || null) !== editorPath)
+      requests.push({ action: 'set-editor-path', path: editorPathDraft.trim() || null });
+    if (languageDraft !== initialLanguage)
+      requests.push({ action: 'set-language', language: languageDraft });
     setBusy(true);
     try {
-      await run({ action: 'set-update-settings', settings: { ...updateSettings, ...value } });
+      for (const request of requests) if (!(await run(request))) return;
+      if (languageDraft !== initialLanguage) await i18n.changeLanguage(languageDraft);
+      onClose('ok');
     } finally {
       setBusy(false);
     }
@@ -121,8 +126,10 @@ export const SettingsDialog = ({
   return (
     <Dialog
       title={t('ui.settings')}
-      onClose={() => {
-        if (!busy) onClose();
+      onClose={(result) => {
+        if (busy) return;
+        if (result === 'ok') void confirm();
+        else onClose('cancel');
       }}
     >
       <div className="settings-layout">
@@ -206,14 +213,10 @@ export const SettingsDialog = ({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={rememberPaths}
+                  checked={rememberDraft}
                   disabled={busy}
                   onChange={(event) => {
-                    const enabled = event.currentTarget.checked;
-                    setBusy(true);
-                    void run({ action: 'set-remember-paths', enabled }).finally(() =>
-                      setBusy(false),
-                    );
+                    setRememberDraft(event.currentTarget.checked);
                   }}
                 />
                 <span>
@@ -224,14 +227,10 @@ export const SettingsDialog = ({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={confirmTabClose}
+                  checked={confirmCloseDraft}
                   disabled={busy}
                   onChange={(event) => {
-                    setBusy(true);
-                    void run({
-                      action: 'set-confirm-tab-close',
-                      enabled: event.currentTarget.checked,
-                    }).finally(() => setBusy(false));
+                    setConfirmCloseDraft(event.currentTarget.checked);
                   }}
                 />
                 <span>
@@ -244,15 +243,10 @@ export const SettingsDialog = ({
                 <select
                   aria-label={t('language.label')}
                   disabled={busy}
-                  value={i18n.resolvedLanguage ?? i18n.language}
+                  value={languageDraft}
                   onChange={(event) => {
                     const language = event.currentTarget.value as 'en' | 'ru';
-                    setBusy(true);
-                    void run({ action: 'set-language', language })
-                      .then((result) => {
-                        if (result) void i18n.changeLanguage(language);
-                      })
-                      .finally(() => setBusy(false));
+                    setLanguageDraft(language);
                   }}
                 >
                   <option value="ru">{t('language.russian')}</option>
@@ -292,7 +286,7 @@ export const SettingsDialog = ({
                           const duplicate = shortcutLabels.find(
                             ([candidate]) =>
                               candidate !== action &&
-                              sameShortcut(keyboardShortcuts[candidate], shortcut),
+                              sameShortcut(shortcutDraft[candidate], shortcut),
                           );
                           if (duplicate) {
                             setShortcutError('shortcuts.duplicate');
@@ -300,13 +294,13 @@ export const SettingsDialog = ({
                           }
                           setEditingShortcut(null);
                           setShortcutError(null);
-                          void saveShortcuts({ ...keyboardShortcuts, [action]: shortcut });
+                          saveShortcuts({ ...shortcutDraft, [action]: shortcut });
                         }}
                       >
                         <kbd>
                           {editingShortcut === action
                             ? t('shortcuts.press')
-                            : formatShortcut(keyboardShortcuts[action], isMac)}
+                            : formatShortcut(shortcutDraft[action], isMac)}
                         </kbd>
                       </button>
                     </dd>
@@ -354,26 +348,14 @@ export const SettingsDialog = ({
                 <button
                   type="button"
                   disabled={busy || !transferSettingsSchema.safeParse(transferDraft).success}
-                  onClick={() => {
-                    setBusy(true);
-                    void run({ action: 'set-transfer-settings', settings: transferDraft }).finally(
-                      () => setBusy(false),
-                    );
-                  }}
+                  onClick={() => void confirm()}
                 >
                   {t('ui.transferSettingsSave')}
                 </button>
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={() => {
-                    setBusy(true);
-                    void run({ action: 'set-transfer-settings', settings: defaultTransferSettings })
-                      .then((result) => {
-                        if (result) setTransferDraft(defaultTransferSettings);
-                      })
-                      .finally(() => setBusy(false));
-                  }}
+                  onClick={() => setTransferDraft(defaultTransferSettings)}
                 >
                   {t('ui.transferSettingsReset')}
                 </button>
@@ -386,7 +368,7 @@ export const SettingsDialog = ({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={updateSettings.automaticCheck}
+                  checked={updateDraft.automaticCheck}
                   disabled={busy}
                   onChange={(event) =>
                     void saveUpdateSettings({ automaticCheck: event.currentTarget.checked })
@@ -397,7 +379,7 @@ export const SettingsDialog = ({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={updateSettings.automaticDownload}
+                  checked={updateDraft.automaticDownload}
                   disabled={busy || updateState?.automaticUpdateSupported === false}
                   onChange={(event) =>
                     void saveUpdateSettings({ automaticDownload: event.currentTarget.checked })
@@ -413,7 +395,7 @@ export const SettingsDialog = ({
               <label className="checkbox-label">
                 <input
                   type="checkbox"
-                  checked={updateSettings.automaticInstall}
+                  checked={updateDraft.automaticInstall}
                   disabled={busy || updateState?.automaticUpdateSupported === false}
                   onChange={(event) =>
                     void saveUpdateSettings({ automaticInstall: event.currentTarget.checked })
@@ -517,13 +499,7 @@ export const SettingsDialog = ({
               </label>
               <button
                 disabled={busy || puttyPathDraft === (puttyPath ?? '')}
-                onClick={() => {
-                  setBusy(true);
-                  const path = puttyPathDraft.trim();
-                  void run({ action: 'set-putty-path', path: path || null }).finally(() =>
-                    setBusy(false),
-                  );
-                }}
+                onClick={() => void confirm()}
               >
                 <Icon name="SquareTerminal" />
                 {t('terminal.savePath')}
@@ -560,13 +536,7 @@ export const SettingsDialog = ({
                 <button
                   disabled={busy || editorPathDraft === (editorPath ?? '')}
                   type="button"
-                  onClick={() => {
-                    setBusy(true);
-                    const path = editorPathDraft.trim();
-                    void run({ action: 'set-editor-path', path: path || null }).finally(() =>
-                      setBusy(false),
-                    );
-                  }}
+                  onClick={() => void confirm()}
                 >
                   <Icon name="TextCursorInput" />
                   {t('editor.savePath')}
@@ -632,7 +602,15 @@ export const SettingsDialog = ({
         </section>
       </div>
       <div className="dialog-actions dialog-footer">
-        <button disabled={busy} onClick={onClose}>
+        <button type="button" data-dialog-result="cancel" disabled={busy}>
+          {t('connections.cancel')}
+        </button>
+        <button
+          type="button"
+          data-dialog-result="ok"
+          className="primary"
+          disabled={busy || !transferSettingsSchema.safeParse(transferDraft).success}
+        >
           {t('ui.done')}
         </button>
       </div>

@@ -7,6 +7,7 @@ import {
   googleDisplayPath,
   googleExportPath,
   googleExportFormats,
+  googleNativeCopyFormats,
 } from '@shared/models/google-path';
 import { GoogleAuthorizationControls } from './GoogleAuthorizationControls';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
@@ -94,6 +95,8 @@ export const FilePane = ({
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
+  const profile = snapshot.profiles.find((item) => item.id === session?.profileId);
+  const googleAccountId = profile?.kind === 'google' ? profile.accountId : undefined;
   const yandexAuthorization = (
     kind === 'google' ? snapshot.googleAuthorizations : snapshot.yandexAuthorizations
   )?.find((entry) => entry.profileId === session?.profileId);
@@ -130,6 +133,7 @@ export const FilePane = ({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [pendingCopies, setPendingCopies] = useState<readonly FileTransferRequest[]>([]);
   const [preparingDrag, setPreparingDrag] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [deletions, setDeletions] = useState<Record<
@@ -234,13 +238,25 @@ export const FilePane = ({
   const title = session?.name ?? directoryName(currentPath);
   useEffect(() => {
     onLocation(side, {
+      ...(googleAccountId ? { googleAccountId } : {}),
       kind,
       path: currentPath,
       title,
       ready: ready && !!listing && !loading,
       writable,
     });
-  }, [side, kind, currentPath, title, ready, listing, loading, writable, onLocation]);
+  }, [
+    side,
+    kind,
+    currentPath,
+    title,
+    ready,
+    listing,
+    loading,
+    writable,
+    onLocation,
+    googleAccountId,
+  ]);
   const entries =
     listing?.entries.filter((entry) => appearance.showHidden || !entry.name.startsWith('.')) ?? [];
   useLayoutEffect(() => {
@@ -267,6 +283,19 @@ export const FilePane = ({
         (entry.google.type === 'binary' && !entry.google.canDownload) ||
         (entry.google.type === 'folder' && !entry.google.canListChildren)),
   );
+  const sameGoogleAccount = !!googleAccountId && googleAccountId === destination?.googleAccountId;
+  const googleCannotCopy = selectedEntries.some(
+    (entry) =>
+      entry.google &&
+      (entry.google.type === 'native'
+        ? destination?.kind !== 'google' ||
+          !entry.google.canCopy ||
+          (!sameGoogleAccount &&
+            (!entry.google.canDownload || !googleNativeCopyFormats[entry.google.mimeType]))
+        : (entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
+          (entry.google.type === 'binary' && !entry.google.canDownload) ||
+          (entry.google.type === 'folder' && !entry.google.canListChildren)),
+  );
   const invalidSelection =
     !selected.length ||
     entries.some((entry) => selected.includes(entry.path) && entry.s3Kind === 'bucket');
@@ -292,9 +321,7 @@ export const FilePane = ({
       })();
   };
   const queueCopy = (requests: FileTransferRequest[]) => {
-    void (async () => {
-      for (const request of requests) if (!(await run(request))) return;
-    })();
+    setPendingCopies(requests);
   };
   const commands: FileCommand[] = [
     {
@@ -327,7 +354,7 @@ export const FilePane = ({
         loading ||
         !destination?.ready ||
         !destination.writable ||
-        googleCannotRead ||
+        googleCannotCopy ||
         (kind !== 'local' && !session?.capabilities?.read),
       run: () => {
         if (destination)
@@ -801,13 +828,72 @@ export const FilePane = ({
           </form>
         </Dialog>
       ) : null}
+      {pendingCopies.length ? (
+        <Dialog
+          title={t('operations.copy')}
+          className="confirmation-dialog"
+          initialFocus='[data-dialog-result="ok"]'
+          onClose={(result) => {
+            if (busy) return;
+            if (result === 'cancel') {
+              setPendingCopies([]);
+              return;
+            }
+            setBusy(true);
+            void (async () => {
+              for (let index = 0; index < pendingCopies.length; index += 1) {
+                const request = pendingCopies[index];
+                if (!request || !(await run(request))) return;
+                setPendingCopies(pendingCopies.slice(index + 1));
+              }
+            })().finally(() => setBusy(false));
+          }}
+        >
+          <p>{t('commander.selected', { count: pendingCopies.length })}</p>
+          <ul className="operation-selection">
+            {pendingCopies.map((request) => (
+              <li key={request.sourcePath}>
+                {request.sourcePath.startsWith('gdrive:/')
+                  ? googleDisplayPath(request.sourcePath)
+                  : request.sourcePath}
+              </li>
+            ))}
+          </ul>
+          <p>{t('commander.destinationPath')}</p>
+          <code>
+            {pendingCopies[0]?.destinationDirectory.startsWith('gdrive:/')
+              ? googleDisplayPath(pendingCopies[0].destinationDirectory)
+              : pendingCopies[0]?.destinationDirectory}
+          </code>
+          {errorKey ? (
+            <p role="alert" className="inline-error">
+              {t(errorKey)}
+            </p>
+          ) : null}
+          <div className="dialog-actions">
+            <button type="button" data-dialog-result="cancel" disabled={busy}>
+              {t('connections.cancel')}
+            </button>
+            <button type="button" data-dialog-result="ok" className="primary" disabled={busy}>
+              {t('operations.confirm')}
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
       {exporting && selectedEntry?.google && destination ? (
-        <Dialog title={t('google.export')} onClose={() => setExporting(false)}>
+        <Dialog
+          title={t('google.export')}
+          onClose={() => {
+            if (!busy) setExporting(false);
+          }}
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault();
+              if (busy) return;
               const mimeType = String(new FormData(event.currentTarget).get('mimeType'));
-              queueCopy([
+              setBusy(true);
+              void run(
                 copyRequest(
                   paneId,
                   kind,
@@ -815,13 +901,16 @@ export const FilePane = ({
                   destinationId,
                   destination,
                 ),
-              ]);
-              setExporting(false);
+              )
+                .then((result) => {
+                  if (result) setExporting(false);
+                })
+                .finally(() => setBusy(false));
             }}
           >
             <label>
               {t('google.exportFormat')}
-              <select name="mimeType" required>
+              <select name="mimeType" required disabled={busy}>
                 {(
                   googleExportFormats[
                     selectedEntry.google.mimeType as keyof typeof googleExportFormats
@@ -835,10 +924,12 @@ export const FilePane = ({
             </label>
             <p>{t('google.exportLimit')}</p>
             <div className="dialog-actions">
-              <button type="button" onClick={() => setExporting(false)}>
+              <button type="button" disabled={busy} onClick={() => setExporting(false)}>
                 {t('connections.cancel')}
               </button>
-              <button className="primary">{t('operations.confirm')}</button>
+              <button type="submit" className="primary" disabled={busy}>
+                {t('operations.confirm')}
+              </button>
             </div>
           </form>
         </Dialog>
@@ -851,6 +942,7 @@ export const FilePane = ({
               : `operations.${operation}`,
           )}
           onClose={closeOperation}
+          initialFocus={operation === 'delete' ? 'button[type="submit"]' : 'input[name="name"]'}
         >
           {operation === 'rename' && isS3 ? (
             <p className="inline-error">{t('s3.renameWarning')}</p>
@@ -970,6 +1062,7 @@ export const FilePane = ({
                 {t('connections.cancel')}
               </button>
               <button
+                type="submit"
                 className={operation === 'delete' ? 'destructive' : 'primary'}
                 disabled={busy || (operation === 'delete' && isS3 && !deletions)}
               >

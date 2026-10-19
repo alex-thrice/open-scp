@@ -116,6 +116,8 @@ right folder name (local) or connection name (remote). A remote source picker is
 close the tab to disconnect. Closing the last connected tab creates a fresh local workspace.
 Tab closing asks for confirmation by default and can be disabled in Settings. The gear opens
 Settings: appearance, shortcuts, update automation, external applications and language.
+Settings are applied with Done; Cancel, Escape and the close icon discard the draft.
+Connection edits are also canceled after a connection test, including temporary credentials.
 
 Drive discovery and filesystem access run in the main process through fixed, validated IPC
 channels. Each discovered root uses its own bounded `LocalProvider`; tabs do not change a shared
@@ -164,6 +166,8 @@ Ctrl+A to select all, F5 to copy to the opposite panel, F2 to rename, F7 to crea
 Delete to confirm deletion, F4 to edit, Ctrl+F5 to refresh and Backspace to go up. These command
 and tab shortcuts can be reassigned in Settings. Context menus expose only provider-supported
 commands. Internal drops and operating-system file drops use the same queue.
+Tab and Shift+Tab move directly between file panels, including empty folders. Copying first
+shows the selected files and destination for confirmation; Cancel leaves the queue unchanged.
 Connect both panels to stream directly between SFTP/S3 sources using the same Copy action.
 
 **Connections** provides search, folders, duplication, deletion and secret-free JSON import/export,

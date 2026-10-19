@@ -36,6 +36,52 @@ const profile = (): SftpConnectionProfile => ({
 });
 
 describe('persistence and credentials', () => {
+  it('rolls back edited profile fields, group and replacement credentials without changing other profiles', () => {
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, secureStorage());
+    const store = new ProfileStore(database, credentials);
+    const original = store.save(profile(), 'original-password');
+    if (original.kind !== 'sftp' || original.authentication.method !== 'password')
+      throw new Error('Unexpected profile');
+    store.setSetting(`group:${original.id}`, 'Original group');
+    const rollback = store.createRollbackPoint(original.id);
+    store.save({ ...original, name: 'Unsaved name' }, 'replacement-password');
+    store.setSetting(`group:${original.id}`, 'Unsaved group');
+    const other = store.save(profile(), 'other-password');
+    rollback();
+    expect(store.list().find((entry) => entry.id === original.id)).toEqual(original);
+    expect(credentials.read(original.authentication.secret.id)).toBe('original-password');
+    expect(store.getSetting(`group:${original.id}`)).toBe('Original group');
+    expect(store.list().some((entry) => entry.id === other.id)).toBe(true);
+    expect(
+      database
+        .prepare('SELECT count(*) AS count FROM credentials WHERE profile_id = ?')
+        .get(original.id)?.count,
+    ).toBe(1);
+    database.close();
+  });
+
+  it('removes a canceled new profile and preserves a refreshed credential when its reference is unchanged', () => {
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, secureStorage());
+    const store = new ProfileStore(database, credentials);
+    const draft = profile();
+    const discard = store.createRollbackPoint(draft.id);
+    store.save(draft, 'new-password');
+    discard();
+    expect(store.list()).toHaveLength(0);
+    expect(database.prepare('SELECT count(*) AS count FROM credentials').get()?.count).toBe(0);
+    const original = store.save(profile(), 'old-token');
+    if (original.kind !== 'sftp' || original.authentication.method !== 'password')
+      throw new Error('Unexpected profile');
+    const rollback = store.createRollbackPoint(original.id);
+    store.replaceCredential(original.id, original.authentication.secret.id, 'refreshed-token');
+    store.save({ ...original, name: 'Unsaved name' });
+    rollback();
+    expect(credentials.read(original.authentication.secret.id)).toBe('refreshed-token');
+    expect(store.list()[0]?.name).toBe(original.name);
+    database.close();
+  });
   it.each(['basic_text', 'unknown', '', 'future_unverified_backend'])(
     'refuses %s before encryption, decryption or persistence',
     (backend) => {

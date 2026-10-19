@@ -23,7 +23,18 @@ export interface RenameOptions extends ProviderOperationOptions {
   readonly overwrite?: boolean;
 }
 
+export interface CopyOptions extends RenameOptions {
+  readonly sourceVersionTag?: string;
+  readonly onPublish?: () => void;
+}
+
 export interface FileSystemProvider {
+  copyFrom?(
+    source: FileSystemProvider,
+    sourcePath: ProviderPath,
+    destinationPath: ProviderPath,
+    options?: CopyOptions,
+  ): Promise<void>;
   conflictCandidates?(
     path: ProviderPath,
     options?: ProviderOperationOptions,

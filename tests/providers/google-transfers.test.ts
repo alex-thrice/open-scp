@@ -3,9 +3,10 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGoogleHarness, required } from '../fixtures/google-harness';
+import { createGoogleHarness, googleFixtureProfile, required } from '../fixtures/google-harness';
 import { googleFixtureEntry } from '../fixtures/google-fixture';
 import { GoogleProvider } from '../../src/main/providers/google/google-provider';
+import { googleChunkSize } from '../../src/main/providers/google/google-upload';
 import { LocalProvider } from '../../src/main/providers/local/local-provider';
 import { TransferEngine } from '../../src/main/transfers/transfer-engine';
 import {
@@ -62,8 +63,106 @@ describe('Google Drive shared queue and workspace', () => {
       direction: 'upload',
       conflictPolicy: policy,
     });
+  const nativeCopy = (sourcePath: string, destinationPath: string, destination = google) =>
+    engine.enqueue({
+      source: google,
+      destination,
+      sourcePath: path(sourcePath),
+      destinationPath: path(destinationPath),
+      workspaceId: 'source',
+      destinationWorkspaceId: 'destination',
+      direction: 'remote',
+      conflictPolicy: 'ask',
+    });
+  it('copies a folder containing binary files and native documents through the queue', async () => {
+    const tree = required(harness.fixture.accounts.get('one'));
+    const folder = googleFixtureEntry('folder');
+    const document = googleFixtureEntry('notes.txt', 'native', folder.id);
+    document.mimeType = 'application/vnd.google-apps.document';
+    const file = googleFixtureEntry('file.txt', 'binary content', folder.id);
+    for (const entry of [folder, document, file]) tree.set(entry.id, entry);
+    await wait(
+      nativeCopy(
+        googleChildPath(googleRootPath, folder.name, folder.id),
+        googleChildPath(googleRootPath, 'copied'),
+      ),
+    );
+    const copied = await google.stat(path(googleChildPath(googleRootPath, 'copied')));
+    const entries = await google.list(copied.path);
+    expect(entries.map((entry) => entry.name).sort()).toEqual(['file.txt', 'notes.txt']);
+    expect(entries.find((entry) => entry.name === 'notes.txt')?.google?.type).toBe('native');
+    expect(engine.snapshots()[0]?.transferredBytes).toBe(engine.snapshots()[0]?.totalBytes);
+  });
+  it('requires a chosen ID to overwrite native duplicate names and preserves the other document', async () => {
+    const tree = required(harness.fixture.accounts.get('one'));
+    const source = googleFixtureEntry('source', 'native');
+    const first = googleFixtureEntry('same', 'first');
+    const second = googleFixtureEntry('same', 'second');
+    for (const entry of [source, first, second]) {
+      entry.mimeType = 'application/vnd.google-apps.document';
+      tree.set(entry.id, entry);
+    }
+    const id = nativeCopy(
+      googleChildPath(googleRootPath, source.name, source.id),
+      googleChildPath(googleRootPath, 'same'),
+    );
+    await wait(id, 'requiring-review');
+    expect(engine.snapshots()[0]?.conflictCandidates?.every((entry) => entry.writable)).toBe(true);
+    await engine.resolveConflict(
+      id,
+      'overwrite',
+      false,
+      googleChildPath(googleRootPath, second.name, second.id),
+    );
+    await wait(id);
+    expect(first.content.toString()).toBe('first');
+    expect(second.content.toString()).toBe(
+      `export:${source.id}:application/vnd.openxmlformats-officedocument.wordprocessingml.document`,
+    );
+    expect(
+      (await google.list(path(googleRootPath))).filter((entry) => entry.name === 'same'),
+    ).toHaveLength(2);
+  });
+  it('reviews an uncertain cross-account import and asks before retrying without creating another document', async () => {
+    const profile = googleFixtureProfile();
+    harness.store.save(profile);
+    harness.fixture.nextAccount = 'two';
+    await harness.authorize(profile.id);
+    const destination = harness.provider(profile.id);
+    await destination.connect();
+    const source = googleFixtureEntry('notes.txt', 'native');
+    source.mimeType = 'application/vnd.google-apps.document';
+    required(harness.fixture.accounts.get('one')).set(source.id, source);
+    try {
+      harness.fixture.loseCompletionOnce = true;
+      const id = nativeCopy(
+        googleChildPath(googleRootPath, source.name, source.id),
+        googleChildPath(googleRootPath, source.name),
+        destination,
+      );
+      await wait(id, 'requiring-review');
+      expect(engine.snapshots()[0]?.reviewReason).toBe('uncertain');
+      await engine.retry(id, false);
+      await wait(id, 'requiring-review');
+      expect(engine.snapshots()[0]?.conflictPath).toBe(
+        googleChildPath(googleRootPath, source.name),
+      );
+      expect(
+        (await destination.list(path(googleRootPath))).filter(
+          (entry) => entry.name === source.name,
+        ),
+      ).toHaveLength(1);
+      expect(
+        harness.fixture.requests.filter(
+          (request) => request.query.get('uploadType') === 'multipart',
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await destination.disconnect();
+    }
+  });
   it('asks before publishing when a same-name file appears during upload, then restarts to a new name', async () => {
-    await writeFile(join(root, 'race'), Buffer.alloc(2 * 1048576 + 1, 0x37));
+    await writeFile(join(root, 'race'), Buffer.alloc(googleChunkSize + 1, 0x37));
     const competing = googleFixtureEntry('race', 'other client');
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -97,7 +196,7 @@ describe('Google Drive shared queue and workspace', () => {
     Object.defineProperty(local, 'capabilities', {
       value: { ...local.capabilities, resumeRead: false },
     });
-    await writeFile(join(root, 'restart'), Buffer.alloc(2 * 1048576 + 1));
+    await writeFile(join(root, 'restart'), Buffer.alloc(googleChunkSize + 1));
     let id = '';
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -160,7 +259,7 @@ describe('Google Drive shared queue and workspace', () => {
     expect(second.content.toString()).toBe('new');
   });
   it('cancels and resumes a current-run upload using a checked source and server offset', async () => {
-    const content = Buffer.alloc(4 * 1048576 + 11, 0x4a);
+    const content = Buffer.alloc(2 * googleChunkSize + 11, 0x4a);
     await writeFile(join(root, 'resume'), content);
     let id = '';
     harness.fixture.afterChunk = () => {
@@ -181,7 +280,7 @@ describe('Google Drive shared queue and workspace', () => {
     expect(harness.fixture.sessions.size).toBe(1);
   });
   it('refuses resume after source changes and can restart an expired session without duplicating creates', async () => {
-    await writeFile(join(root, 'change'), Buffer.alloc(3 * 1048576));
+    await writeFile(join(root, 'change'), Buffer.alloc(googleChunkSize + 1));
     let id = '';
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -204,7 +303,7 @@ describe('Google Drive shared queue and workspace', () => {
     ).toHaveLength(1);
   });
   it('detects a changing source before publishing the final chunk', async () => {
-    await writeFile(join(root, 'changing'), Buffer.alloc(3 * 1048576));
+    await writeFile(join(root, 'changing'), Buffer.alloc(googleChunkSize + 1));
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
       const entry = required(harness.fixture.accounts.get('one'));

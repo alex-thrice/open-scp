@@ -269,6 +269,108 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
 };
 
 describe('App', () => {
+  it('switches Tab and Shift+Tab directly between file panels, including an empty panel', async () => {
+    setDesktopApi(createDesktopApi(listingApi()));
+    render(<App />);
+    const left = await pane('left').findByRole('row', { name: 'notes.txt' });
+    const right = pane('right').getByRole('row', { name: 'notes.txt' });
+    left.focus();
+    fireEvent.keyDown(left, { key: 'Tab' });
+    expect(document.activeElement?.closest('[data-testid="right-panel"]')).toBeTruthy();
+    expect(document.activeElement?.getAttribute('data-testid')).toBe('file-row');
+    fireEvent.keyDown(right, { key: 'Tab', shiftKey: true });
+    expect(document.activeElement?.closest('[data-testid="left-panel"]')).toBeTruthy();
+    await chooseDrive('right', 'D:\\');
+    await pane('right').findByText('This directory is empty.');
+    left.focus();
+    fireEvent.keyDown(left, { key: 'Tab' });
+    expect(document.activeElement?.classList.contains('commander-surface')).toBe(true);
+    expect(document.activeElement?.closest('[data-testid="right-panel"]')).toBeTruthy();
+  });
+
+  it('focuses creation inputs and the delete confirmation instead of the close icon', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    for (const command of ['New file', 'New directory']) {
+      fireEvent.click(pane('left').getByRole('button', { name: command }));
+      const dialog = screen.getByRole('dialog', { name: command });
+      expect(document.activeElement).toBe(within(dialog).getByLabelText('Name'));
+      fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    }
+    const row = pane('left').getByRole('row', { name: 'notes.txt' });
+    fireEvent.click(row);
+    fireEvent.keyDown(row, { key: 'Delete' });
+    const deletion = screen.getByRole('dialog', { name: 'Delete' });
+    expect(document.activeElement).toBe(within(deletion).getByRole('button', { name: 'Confirm' }));
+    fireEvent(deletion, new Event('cancel', { cancelable: true }));
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'local-operation', operation: 'delete' }),
+    );
+  });
+
+  it('keeps the profile name when switching through every connection type', async () => {
+    statefulApi();
+    render(<App />);
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
+    fireEvent.change(screen.getByLabelText('Profile name'), { target: { value: 'My connection' } });
+    for (const kind of ['ftp', 's3', 'mailru', 'yandex', 'google', 'sftp']) {
+      fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: kind } });
+      expect(screen.getByLabelText<HTMLInputElement>('Profile name').value).toBe('My connection');
+    }
+  });
+
+  it('opens a separate modal before deleting a profile and cancels without modifying it', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Delete profile: Development' }));
+    const dialog = screen.getByRole('dialog', { name: 'Delete profile' });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Confirm' }));
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    expect(screen.queryByRole('dialog', { name: 'Delete profile' })).toBeNull();
+    expect(workspace).not.toHaveBeenCalledWith({ action: 'delete-profile', profileId: 'sftp-one' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete profile: Development' }));
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Delete profile' })).getByRole('button', {
+        name: 'Confirm',
+      }),
+    );
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({ action: 'delete-profile', profileId: 'sftp-one' }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Delete profile' })).toBeNull(),
+    );
+  });
+
+  it('discards settings on Cancel, Escape and the close icon', async () => {
+    const workspace = statefulApi();
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    for (const cancel of ['button', 'escape', 'close']) {
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
+      fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'ru' } });
+      const dialog = screen.getByRole('dialog', { name: 'Settings' });
+      if (cancel === 'escape') fireEvent(dialog, new Event('cancel', { cancelable: true }));
+      else
+        fireEvent.click(
+          within(dialog).getByRole('button', {
+            name: cancel === 'button' ? 'Cancel' : 'Close',
+          }),
+        );
+      expect(screen.queryByRole('dialog', { name: 'Settings' })).toBeNull();
+      expect(workspace).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'set-appearance' }),
+      );
+      expect(workspace).not.toHaveBeenCalledWith(
+        expect.objectContaining({ action: 'set-language' }),
+      );
+    }
+  });
   it.each([
     { side: 'left', bucket: '' },
     { side: 'right', bucket: '' },
@@ -661,6 +763,12 @@ describe('App', () => {
     const shortcutButton = within(shortcutRow).getByRole('button');
     fireEvent.click(shortcutButton);
     fireEvent.keyDown(shortcutButton, { ctrlKey: true, key: 'n' });
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'set-keyboard-shortcuts' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /Confirm before closing tabs/u }));
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'set-keyboard-shortcuts',
@@ -670,12 +778,9 @@ describe('App', () => {
         },
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Appearance' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: /Confirm before closing tabs/u }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({ action: 'set-confirm-tab-close', enabled: false }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
 
     fireEvent.keyDown(screen.getByRole('main'), { ctrlKey: true, key: 'n' });
     await waitFor(() => expect(screen.getAllByRole('tab')).toHaveLength(2));
@@ -684,13 +789,24 @@ describe('App', () => {
     expect(screen.queryByRole('dialog', { name: 'Close tab?' })).toBeNull();
   });
 
-  it('queues local copies immediately and defers conflict decisions', async () => {
+  it('confirms F5 copies and cancels without queuing a transfer', async () => {
     const workspace = statefulApi();
     render(<App />);
     fireEvent.doubleClick(await pane('right').findByRole('row', { name: 'Open Documents' }));
     await screen.findByRole('tab', { name: 'test - Documents' });
     fireEvent.click(pane('left').getByRole('row', { name: 'notes.txt' }));
     fireEvent.keyDown(pane('left').getByRole('row', { name: 'notes.txt' }), { key: 'F5' });
+    const dialog = screen.getByRole('dialog', { name: 'Copy' });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Confirm' }));
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'local-transfer' }),
+    );
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog', { name: 'Copy' })).toBeNull();
+    fireEvent.keyDown(pane('left').getByRole('row', { name: 'notes.txt' }), { key: 'F5' });
+    fireEvent.click(
+      within(screen.getByRole('dialog', { name: 'Copy' })).getByRole('button', { name: 'Confirm' }),
+    );
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'local-transfer',
@@ -700,7 +816,7 @@ describe('App', () => {
         conflictPolicy: 'ask',
       }),
     );
-    expect(screen.queryByRole('dialog', { name: 'Copy' })).toBeNull();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Copy' })).toBeNull());
   });
 
   it('uses F4 for editing and Ctrl+F5 for refreshing the active pane', async () => {
@@ -1102,16 +1218,16 @@ describe('App', () => {
     expect(screen.queryByRole('button', { name: 'Dark' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Dark' }));
-    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
     fireEvent.change(screen.getByLabelText('List density'), { target: { value: 'compact' } });
-    await waitFor(() =>
-      expect(screen.getByRole('main', { hidden: true }).dataset.density).toBe('compact'),
-    );
     fireEvent.change(screen.getByLabelText('Language'), { target: { value: 'ru' } });
-    expect(await screen.findByRole('dialog', { name: 'Настройки' })).toBeTruthy();
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'set-appearance' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+    expect(screen.getByRole('main', { hidden: true }).dataset.density).toBe('compact');
+    await screen.findByRole('button', { name: 'Подключения' });
     expect(workspace).toHaveBeenCalledWith({ action: 'set-language', language: 'ru' });
-    fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
-    expect(screen.getByRole('button', { name: 'Подключения' })).toBeTruthy();
   });
 
   it('remembers session paths by default and allows disabling path history', async () => {
@@ -1123,10 +1239,12 @@ describe('App', () => {
     const checkbox = screen.getByRole('checkbox', { name: /Remember session paths/u });
     expect((checkbox as HTMLInputElement).checked).toBe(true);
     fireEvent.click(checkbox);
+    expect((checkbox as HTMLInputElement).checked).toBe(false);
+    expect(workspace).not.toHaveBeenCalledWith({ action: 'set-remember-paths', enabled: false });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({ action: 'set-remember-paths', enabled: false }),
     );
-    expect((checkbox as HTMLInputElement).checked).toBe(false);
   });
 
   it('stores an optional PuTTY executable path in advanced settings', async () => {
@@ -1189,14 +1307,18 @@ describe('App', () => {
     fireEvent.click(
       screen.getByRole('checkbox', { name: 'Automatically download available updates' }),
     );
+    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
+    await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'check-for-updates' }));
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'set-update-settings' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'set-update-settings',
         settings: { ...defaultUpdateSettings, automaticDownload: true },
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Check for updates' }));
-    await waitFor(() => expect(workspace).toHaveBeenCalledWith({ action: 'check-for-updates' }));
   });
 
   it('opens update settings from the available-update toolbar icon', async () => {

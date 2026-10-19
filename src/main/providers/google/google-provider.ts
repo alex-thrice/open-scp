@@ -1,4 +1,5 @@
 import { Readable } from 'node:stream';
+import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import type { FileSystemEntry } from '@shared/models/file-system-entry';
 import { createGoogleProviderPath, type ProviderPath } from '@shared/models/provider-path';
@@ -9,6 +10,8 @@ import {
   googlePathName,
   googleExportFormats,
   googleRootPath,
+  googleExportPath,
+  googleNativeCopyFormats,
 } from '@shared/models/google-path';
 import type {
   FileSystemProvider,
@@ -16,10 +19,12 @@ import type {
   DeleteOptions,
   RenameOptions,
   WriteOptions,
+  CopyOptions,
 } from '@shared/providers/file-system-provider';
 import { ProviderError, type ProviderOperation } from '@shared/providers/provider-error';
 import { GoogleConnection } from './google-connection';
-import { googleFailure, normalizeGoogleError } from './google-api';
+import { googleFailure, googleStatusError, normalizeGoogleError } from './google-api';
+import { readHttpBody } from '../../oauth/http-client';
 import { googleUploadStream, queryGoogleUpload, type GoogleUploadSession } from './google-upload';
 
 const folderMime = 'application/vnd.google-apps.folder';
@@ -43,6 +48,7 @@ const metadataSchema = z.object({
   capabilities: z
     .object({
       canDownload: z.boolean().optional(),
+      canCopy: z.boolean().optional(),
       canModifyContent: z.boolean().optional(),
       canRename: z.boolean().optional(),
       canTrash: z.boolean().optional(),
@@ -67,7 +73,7 @@ export class GoogleProvider implements FileSystemProvider {
     rename: true,
     resumeRead: true,
     resumeWrite: true,
-    serverSideCopy: false,
+    serverSideCopy: true,
     symbolicLinks: false,
     trueDirectories: true,
     write: true,
@@ -176,7 +182,10 @@ export class GoogleProvider implements FileSystemProvider {
         mimeType: item.mimeType,
         type,
         canDownload: capabilities?.canDownload === true,
-        canWrite: type === 'binary' && capabilities?.canModifyContent === true,
+        canCopy: capabilities?.canCopy === true,
+        canWrite:
+          (type === 'binary' || (type === 'native' && !!googleNativeCopyFormats[item.mimeType])) &&
+          capabilities?.canModifyContent === true,
         canRename: capabilities?.canRename === true,
         canTrash: capabilities?.canTrash === true,
         canListChildren: capabilities?.canListChildren === true,
@@ -507,6 +516,154 @@ export class GoogleProvider implements FileSystemProvider {
       return queryGoogleUpload(this.connection.api(), session, options.signal);
     });
   }
+  public copyFrom(
+    source: FileSystemProvider,
+    sourcePath: ProviderPath,
+    destinationPath: ProviderPath,
+    options?: CopyOptions,
+  ): Promise<void> {
+    return this.run('write', options, async () => {
+      if (!(source instanceof GoogleProvider)) throw googleFailure('unsupported', 'write');
+      const from = source.path(sourcePath);
+      const address = this.path(destinationPath);
+      const parsed = parseGooglePath(address);
+      if (parseGooglePath(from).exportMimeType || parsed.exportMimeType || !parsed.segments.length)
+        throw googleFailure('invalidPath', 'write');
+      const entry = await source.stat(sourcePath, options);
+      if (entry.google?.type !== 'native' || !entry.google.canCopy)
+        throw googleFailure('accessDenied', 'read');
+      if (
+        !entry.versionTag ||
+        (options?.sourceVersionTag && entry.versionTag !== options.sourceVersionTag)
+      )
+        throw googleFailure('conflict', 'read');
+      let existing: FileSystemEntry | undefined;
+      try {
+        existing = await this.stat(destinationPath, options);
+      } catch (error) {
+        if (!(error instanceof ProviderError && error.code === 'PROVIDER_NOT_FOUND')) throw error;
+      }
+      if (!existing && parsed.segments.at(-1)?.id) throw googleFailure('notFound', 'write');
+      if (
+        existing &&
+        (!options?.overwrite ||
+          !parsed.segments.at(-1)?.id ||
+          existing.google?.type !== 'native' ||
+          existing.google.mimeType !== entry.google.mimeType ||
+          !existing.google.canWrite ||
+          existing.google.id === entry.google.id)
+      )
+        throw googleFailure('conflict', 'write');
+      if (options?.versionTag && existing?.versionTag !== options.versionTag)
+        throw googleFailure('conflict', 'write');
+      const parent = await this.resolve(googleParentPath(address), options);
+      if (!existing && !parent.capabilities?.canAddChildren)
+        throw googleFailure('accessDenied', 'write');
+      const sourceAccount = source.connection.profile.accountId;
+      const sameAccount =
+        source.connection.profile.id === this.connection.profile.id ||
+        (!!sourceAccount && sourceAccount === this.connection.profile.accountId);
+      let bytes: Buffer | undefined;
+      let exportMimeType: string | undefined;
+      if (!sameAccount || existing) {
+        exportMimeType = googleNativeCopyFormats[entry.google.mimeType];
+        if (!exportMimeType || !entry.google.canDownload)
+          throw googleFailure('unsupported', 'read');
+        const formats = z
+          .object({ importFormats: z.record(z.string(), z.array(z.string())) })
+          .parse(
+            (
+              await this.connection
+                .api()
+                .request('GET', '/about', { fields: 'importFormats' }, 'write', options?.signal)
+            ).body,
+          ).importFormats;
+        if (!formats[exportMimeType]?.includes(entry.google.mimeType))
+          throw googleFailure('unsupported', 'write');
+        const exported = googleExportPath(from, exportMimeType);
+        await source.stat(createGoogleProviderPath(exported), options);
+        const prepared = source.exports.get(exported);
+        if (!prepared || prepared.version !== entry.versionTag)
+          throw googleFailure('conflict', 'read');
+        bytes = prepared.bytes;
+      }
+      const currentSource = await source.stat(sourcePath, options);
+      if (currentSource.versionTag !== entry.versionTag) throw googleFailure('conflict', 'read');
+      if (!currentSource.google?.canCopy || (bytes && !currentSource.google.canDownload))
+        throw googleFailure('accessDenied', 'read');
+      const candidates = await this.conflictCandidates(destinationPath, options);
+      if (
+        existing
+          ? candidates.length !== 1 ||
+            candidates[0]?.versionTag !== existing.versionTag ||
+            !candidates[0]?.google?.canWrite
+          : candidates.length > 0
+      )
+        throw googleFailure('conflict', 'write');
+      let result: unknown;
+      if (!bytes) {
+        options?.onPublish?.();
+        result = (
+          await this.connection
+            .api()
+            .request(
+              'POST',
+              `/files/${entry.google.id}/copy`,
+              { fields },
+              'write',
+              options?.signal,
+              { name: googlePathName(address), parents: [parent.id] },
+            )
+        ).body;
+      } else {
+        const boundary = `openscp-${randomUUID()}`;
+        const metadata = {
+          ...(existing ? {} : { name: googlePathName(address), parents: [parent.id] }),
+          mimeType: entry.google.mimeType,
+        };
+        const body = Buffer.concat([
+          Buffer.from(
+            `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n--${boundary}\r\nContent-Type: ${exportMimeType}\r\n\r\n`,
+          ),
+          bytes,
+          Buffer.from(`\r\n--${boundary}--\r\n`),
+        ]);
+        options?.onPublish?.();
+        const response = await this.connection.api().raw(
+          this.connection
+            .api()
+            .url(
+              existing ? `/files/${existing.google?.id}` : '/files',
+              { uploadType: 'multipart', fields },
+              true,
+            ),
+          existing ? 'PATCH' : 'POST',
+          'write',
+          options?.signal,
+          {
+            'Content-Type': `multipart/related; boundary=${boundary}`,
+            'Content-Length': String(body.length),
+          },
+          body,
+        );
+        const text = await readHttpBody(response, 8388608);
+        result = text ? JSON.parse(text) : null;
+        if (response.statusCode !== 200 && response.statusCode !== 201)
+          throw googleStatusError(response.statusCode ?? 0, result, 'write');
+      }
+      const copied = metadataSchema.parse(result);
+      if (
+        copied.trashed ||
+        copied.driveId ||
+        copied.mimeType !== entry.google.mimeType ||
+        copied.name !== googlePathName(address) ||
+        copied.parents?.length !== 1 ||
+        copied.parents[0] !== parent.id ||
+        (existing ? copied.id !== existing.google?.id : copied.id === entry.google.id)
+      )
+        throw googleFailure('ioError', 'write');
+    });
+  }
   public openWrite(path: ProviderPath, options: WriteOptions): Promise<WritableStream<Uint8Array>> {
     return this.run('write', options, async () => {
       const address = this.path(path);
@@ -537,7 +694,10 @@ export class GoogleProvider implements FileSystemProvider {
         if (!existing && parsed.segments.at(-1)?.id) throw googleFailure('notFound', 'write');
         if (
           existing &&
-          (!options.overwrite || !parsed.segments.at(-1)?.id || !existing.google?.canWrite)
+          (!options.overwrite ||
+            !parsed.segments.at(-1)?.id ||
+            existing.google?.type !== 'binary' ||
+            !existing.google.canWrite)
         )
           throw googleFailure('conflict', 'write');
         if (options.versionTag && existing?.versionTag !== options.versionTag)
@@ -583,7 +743,8 @@ export class GoogleProvider implements FileSystemProvider {
       return googleUploadStream(this.connection.api(), upload, options, async () => {
         if (parsed.segments.at(-1)?.id) {
           const current = await this.stat(path, options);
-          if (!current.google?.canWrite) throw googleFailure('accessDenied', 'write');
+          if (current.google?.type !== 'binary' || !current.google.canWrite)
+            throw googleFailure('accessDenied', 'write');
           if (upload.originalVersion && current.versionTag !== upload.originalVersion)
             throw googleFailure('conflict', 'write');
         } else if (

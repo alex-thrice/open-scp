@@ -41,6 +41,14 @@ export const googleExportFormats = {
     { mimeType: 'application/pdf', extension: '.pdf', label: 'PDF' },
   ],
 } as const;
+export const googleNativeCopyFormats: Readonly<Partial<Record<string, string>>> = {
+  'application/vnd.google-apps.document':
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.google-apps.spreadsheet':
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/vnd.google-apps.presentation':
+    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+};
 export const googleRootPath = 'gdrive:/';
 const encodeName = (name: string) => encodeURIComponent(name).replace(/~/gu, '%7E');
 export const formatGooglePath = (

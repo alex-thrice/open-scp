@@ -151,6 +151,12 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('copy'), workspaceId: id, path, destinationPath: path }),
   z.strictObject({ action: z.literal('cleanup-multipart'), profileId: id }),
   z.strictObject({ action: z.literal('snapshot') }),
+  z.strictObject({ action: z.literal('begin-profile-edit'), profileId: id }),
+  z.strictObject({
+    action: z.literal('finish-profile-edit'),
+    editId: id,
+    result: z.enum(['ok', 'cancel']),
+  }),
   z.strictObject({ action: z.literal('save-yandex-profile'), profile: yandexProfileDraftSchema }),
   z.strictObject({ action: z.literal('authorize-yandex-profile'), profileId: id }),
   z.strictObject({ action: z.literal('cancel-yandex-authorization'), profileId: id }),
@@ -386,6 +392,7 @@ export const workspaceResultSchema = z.strictObject({
     ])
     .optional(),
   savedProfileId: id.optional(),
+  profileEditId: id.optional(),
   document: z.string().max(2097152).optional(),
   importSummary: z
     .strictObject({

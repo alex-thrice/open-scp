@@ -4,7 +4,7 @@ import type { WriteOptions } from '@shared/providers/file-system-provider';
 import { readHttpBody } from '../../oauth/http-client';
 import { GoogleApi, googleFailure, googleStatusError, normalizeGoogleError } from './google-api';
 
-export const googleChunkSize = 1024 * 1024;
+export const googleChunkSize = 8 * 1024 * 1024;
 export interface GoogleUploadSession {
   readonly url: URL;
   readonly id: string;
@@ -64,13 +64,14 @@ export const googleUploadStream = (
   options: WriteOptions,
   beforeClose: () => Promise<void>,
 ): WritableStream<Uint8Array> => {
-  let buffer = Buffer.alloc(0);
+  let buffer = Buffer.allocUnsafe(Math.min(googleChunkSize, session.total - session.offset));
+  let buffered = 0;
   let received = session.offset;
   let aborted = false;
   const send = async (final: boolean) => {
     try {
       if (aborted || options.signal?.aborted) throw googleFailure('cancelled', 'write');
-      const length = final ? buffer.length : googleChunkSize;
+      const length = buffered;
       const start = session.offset;
       const end = start + length;
       if (session.completed) {
@@ -108,7 +109,8 @@ export const googleUploadStream = (
           throw new ApplicationError(applicationErrorCodes.unsafeResume);
         throw googleStatusError(status, body, 'write');
       }
-      buffer = Buffer.from(buffer.subarray(offset - start));
+      buffer.copyWithin(0, offset - start, buffered);
+      buffered -= offset - start;
       session.offset = offset;
       options.onProgress?.(offset - start);
     } catch (error) {
@@ -120,11 +122,15 @@ export const googleUploadStream = (
       write: async (chunk) => {
         if (aborted || options.signal?.aborted) throw googleFailure('cancelled', 'write');
         if (received + chunk.length > session.total) throw googleFailure('ioError', 'write');
-        for (let offset = 0; offset < chunk.length; offset += googleChunkSize) {
-          const part = chunk.subarray(offset, offset + googleChunkSize);
-          buffer = Buffer.concat([buffer, part]);
-          received += part.length;
-          while (buffer.length > googleChunkSize) await send(false);
+        let offset = 0;
+        while (offset < chunk.length) {
+          // Последний блок отправляем только после проверки источника при close().
+          if (buffered === buffer.length) await send(false);
+          const length = Math.min(buffer.length - buffered, chunk.length - offset);
+          buffer.set(chunk.subarray(offset, offset + length), buffered);
+          buffered += length;
+          received += length;
+          offset += length;
         }
       },
       close: async () => {
@@ -134,10 +140,12 @@ export const googleUploadStream = (
           await send(true);
         } while (!session.completed);
         buffer = Buffer.alloc(0);
+        buffered = 0;
       },
       abort: () => {
         aborted = true;
         buffer = Buffer.alloc(0);
+        buffered = 0;
       },
     },
     { highWaterMark: 1 },
