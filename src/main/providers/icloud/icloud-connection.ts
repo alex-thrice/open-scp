@@ -45,12 +45,9 @@ export class ICloudConnection {
     this.stage = 'starting';
     this.failureCode = undefined;
     try {
-      const remotes = await this.process.output(['listremotes', '--long'], 'connect', signal);
-      const configured = remotes.split(/\r?\n/u).some((line) => {
-        const [name, type] = line.trim().split(/\s+/u);
-        return name === `${this.profile.remote}:` && type === 'iclouddrive';
-      });
-      if (!configured) throw new ApplicationError(applicationErrorCodes.rcloneConfiguration);
+      const remotes = await this.process.icloudRemotes(signal);
+      if (!remotes.includes(this.profile.remote))
+        throw new ApplicationError(applicationErrorCodes.rcloneConfiguration);
       this.stage = 'authenticating';
       const root = await this.process.json(
         ['lsjson', '--stat', '--no-mimetype', `${this.profile.remote}:`],

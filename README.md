@@ -205,6 +205,9 @@ pending. See [registration and setup](docs/user/yandex.md) and
 Install current rclone and configure an `iclouddrive` remote using `rclone config`, then add
 **Connections → Connection → iCloud Drive** with its remote name. Apple sign-in and 2FA are
 handled by rclone. Browsing, file operations and transfers use the existing panels and queue.
+Set the executable under **Settings → Advanced → iCloud Drive / rclone** or use automatic
+detection. Startup checks local configuration; iCloud creation and unavailable source options
+are hidden until a configured `iclouddrive` remote is found. Saved profiles remain editable.
 The binary and its configuration are external; real-account and platform acceptance remain open.
 See [setup and limitations](docs/user/icloud.md) and [ADR 0011](docs/adr/0011-icloud-rclone.md).
 

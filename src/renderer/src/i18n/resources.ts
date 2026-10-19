@@ -12,6 +12,12 @@ export const resources = {
       icloud: {
         name: 'iCloud Drive',
         profile: 'iCloud Drive connection',
+        settings: 'iCloud Drive / rclone',
+        settingsHint:
+          'Leave the path empty for automatic detection. iCloud connections are available when rclone is installed and an iCloud Drive remote is configured. Saving this setting checks availability again.',
+        executablePath: 'rclone executable path',
+        chooseFile: 'Choose rclone…',
+        savePath: 'Save rclone setting',
         remote: 'Connection name in rclone',
         setupHint:
           'Install rclone and connect your Apple account using rclone config before adding this profile. Sign-in and two-factor authentication are handled by rclone.',
@@ -282,7 +288,7 @@ export const resources = {
       errors: {
         icloud: {
           unavailable:
-            'rclone could not be started. Install rclone and add it to PATH, or set OPENSCP_RCLONE_PATH to its full executable path before starting OpenSCP.',
+            'rclone could not be started. Install it and select its executable in Settings → Advanced → iCloud Drive / rclone, or add it to PATH.',
           configuration:
             'The selected rclone connection is missing or is not an iCloud Drive connection. Check the name and configure it using rclone config.',
           authentication:
@@ -449,6 +455,12 @@ export const resources = {
       icloud: {
         name: 'iCloud Drive',
         profile: 'Подключение iCloud Drive',
+        settings: 'iCloud Drive / rclone',
+        settingsHint:
+          'Оставьте путь пустым для автоматического поиска. Подключения iCloud доступны, когда установлен rclone и настроен remote iCloud Drive. При сохранении настройки доступность проверяется заново.',
+        executablePath: 'Путь к rclone',
+        chooseFile: 'Выбрать rclone…',
+        savePath: 'Сохранить настройку rclone',
         remote: 'Имя подключения в rclone',
         setupHint:
           'Установите rclone и подключите Apple Account через rclone config перед добавлением профиля. Вход и двухфакторную аутентификацию выполняет rclone.',
@@ -719,7 +731,7 @@ export const resources = {
       errors: {
         icloud: {
           unavailable:
-            'Не удалось запустить rclone. Установите его и добавьте в PATH либо задайте полный путь к программе в OPENSCP_RCLONE_PATH перед запуском OpenSCP.',
+            'Не удалось запустить rclone. Установите его и укажите путь в Настройки → Дополнительно → iCloud Drive / rclone либо добавьте программу в PATH.',
           configuration:
             'Подключение rclone не найдено или имеет тип, отличный от iCloud Drive. Проверьте имя и настройте подключение через rclone config.',
           authentication:

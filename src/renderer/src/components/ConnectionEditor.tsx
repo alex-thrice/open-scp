@@ -122,7 +122,9 @@ export const ConnectionEditor = ({
           <option value="mailru">{t('mailru.name')}</option>
           <option value="yandex">{t('yandex.name')}</option>
           <option value="google">{t('google.name')}</option>
-          <option value="icloud">{t('icloud.name')}</option>
+          {profile?.kind === 'icloud' || snapshot.icloudRemotes?.length ? (
+            <option value="icloud">{t('icloud.name')}</option>
+          ) : null}
         </select>
       </label>
     </>

@@ -105,6 +105,7 @@ export const SourcePicker = ({
     ...folders.map((folder) => ({
       name: folder || t('ui.ungrouped'),
       items: snapshot.profiles
+        .filter((item) => item.kind !== 'icloud' || snapshot.icloudRemotes?.includes(item.remote))
         .filter(
           (item) => (snapshot.profileGroups?.[item.id] ?? '') === folder && includes(item.name),
         )

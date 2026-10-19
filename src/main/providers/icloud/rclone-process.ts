@@ -5,13 +5,14 @@ import type { ProviderOperation } from '@shared/providers/provider-error';
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from '../../ipc/application-error';
+import { icloudRemoteSchema } from '@shared/models/icloud-profile';
 
 export type RcloneLauncher = (args: readonly string[]) => ChildProcessWithoutNullStreams;
 
-const defaultLauncher =
-  (profile: ICloudConnectionProfile): RcloneLauncher =>
+export const createRcloneLauncher =
+  (profile: ICloudConnectionProfile, configuredPath?: () => string | undefined): RcloneLauncher =>
   (args) => {
-    const executable = process.env.OPENSCP_RCLONE_PATH || 'rclone';
+    const executable = configuredPath?.() || process.env.OPENSCP_RCLONE_PATH || 'rclone';
     if (executable !== 'rclone' && !isAbsolute(executable))
       throw new ApplicationError(applicationErrorCodes.rcloneUnavailable);
     // Исключаем унаследованные фильтры, dry-run и другие настройки операций rclone.
@@ -70,7 +71,7 @@ export class RcloneProcess {
     private readonly profile: ICloudConnectionProfile,
     launch?: RcloneLauncher,
   ) {
-    this.launch = launch ?? defaultLauncher(profile);
+    this.launch = launch ?? createRcloneLauncher(profile);
   }
 
   public start(
@@ -178,6 +179,20 @@ export class RcloneProcess {
     } catch {
       throw icloudFailure('ioError', operation);
     }
+  }
+
+  public async icloudRemotes(signal?: AbortSignal): Promise<readonly string[]> {
+    const output = await this.output(['listremotes', '--long'], 'connect', signal);
+    return [
+      ...new Set(
+        output.split(/\r?\n/u).flatMap((line) => {
+          const [name, type] = line.trim().split(/\s+/u);
+          if (type !== 'iclouddrive' || !name?.endsWith(':')) return [];
+          const remote = name.slice(0, -1);
+          return icloudRemoteSchema.safeParse(remote).success ? [remote] : [];
+        }),
+      ),
+    ];
   }
 
   public async run(

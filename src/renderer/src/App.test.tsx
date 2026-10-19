@@ -1157,13 +1157,14 @@ describe('App', () => {
   });
 
   it('shows SFTP, S3 and explicitly insecure FTP editors without a redundant Close button', async () => {
-    statefulApi();
+    statefulApi({ icloudRemotes: ['icloud'] });
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
     fireEvent.click(screen.getByRole('button', { name: 'Connection' }));
     expect(screen.getAllByRole('dialog')).toHaveLength(1);
     expect(screen.getAllByRole('button', { name: 'Close' })).toHaveLength(1);
     const type = screen.getByLabelText('Connection type');
+    await within(type).findByRole('option', { name: 'iCloud Drive' });
     expect(
       within(type)
         .getAllByRole('option')

@@ -24,6 +24,7 @@ describe('transfer preferences', () => {
         initialPage="transfers"
         keyboardShortcuts={defaultKeyboardShortcuts}
         puttyPath={null}
+        rclonePath={null}
         rememberPaths
         updateSettings={defaultUpdateSettings}
         transferSettings={{ ...defaultTransferSettings }}

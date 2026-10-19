@@ -456,6 +456,7 @@ export const App = () => {
           initialPage={settingsPage}
           keyboardShortcuts={shortcuts}
           puttyPath={service.snapshot.puttyPath ?? null}
+          rclonePath={service.snapshot.rclonePath ?? null}
           rememberPaths={service.snapshot.rememberPaths !== false}
           updateSettings={service.snapshot.updateSettings ?? defaultUpdateSettings}
           transferSettings={service.snapshot.transferSettings ?? defaultTransferSettings}

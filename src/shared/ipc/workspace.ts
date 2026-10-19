@@ -4,7 +4,7 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
-import { icloudProfileDraftSchema } from '@shared/models/icloud-profile';
+import { icloudProfileDraftSchema, icloudRemoteSchema } from '@shared/models/icloud-profile';
 import { googleProfileDraftSchema } from '@shared/models/google-profile';
 import { googleEntrySchema } from '@shared/models/google-entry';
 import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
@@ -88,6 +88,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('open-ssh-terminal'), workspaceId: id }),
   z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('set-rclone-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-remember-paths'), enabled: z.boolean() }),
   z.strictObject({ action: z.literal('remember-workspace-layout'), layout: workspaceLayoutSchema }),
   z.strictObject({ action: z.literal('remember-local-path'), workspaceId: id, path }),
@@ -226,6 +227,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('pick-private-key') }),
   z.strictObject({ action: z.literal('pick-editor') }),
+  z.strictObject({ action: z.literal('pick-rclone') }),
   z.strictObject({ action: z.literal('set-language'), language: z.enum(['en', 'ru']) }),
 ]);
 export type WorkspaceRequest = z.infer<typeof workspaceRequestSchema>;
@@ -257,6 +259,7 @@ export const workspaceSnapshotSchema = z.strictObject({
   updateState: updateStateSchema.optional(),
   editorPath: path.nullable().optional(),
   puttyPath: path.nullable().optional(),
+  rclonePath: path.nullable().optional(),
   rememberPaths: z.boolean().optional(),
   workspaceLayout: workspaceLayoutSchema.optional(),
   localPathHistory: z.record(z.string(), path).optional(),
@@ -268,6 +271,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     .array(z.strictObject({ profileId: id, count: z.number().int().nonnegative() }))
     .optional(),
   profiles: z.array(connectionProfileSchema),
+  icloudRemotes: z.array(icloudRemoteSchema).optional(),
   googleOAuthConfigured: z.boolean().optional(),
   googleAuthorizations: z
     .array(

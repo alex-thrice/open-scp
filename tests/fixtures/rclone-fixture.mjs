@@ -44,7 +44,15 @@ const entry = async (path, entryPath) => {
 };
 try {
   if (command === 'listremotes') {
-    process.stdout.write(`icloud: ${behavior.remoteType ?? 'iclouddrive'}\nsecond: iclouddrive\n`);
+    const remotes = behavior.remotes ?? {
+      icloud: behavior.remoteType ?? 'iclouddrive',
+      second: 'iclouddrive',
+    };
+    process.stdout.write(
+      Object.entries(remotes)
+        .map(([name, type]) => `${name}: ${type}\n`)
+        .join(''),
+    );
   } else if (command === 'lsjson') {
     if (behavior.invalidJson) {
       process.stdout.write('broken-json');

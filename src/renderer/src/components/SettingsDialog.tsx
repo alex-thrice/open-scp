@@ -41,6 +41,7 @@ export const SettingsDialog = ({
   initialPage,
   keyboardShortcuts,
   puttyPath,
+  rclonePath,
   rememberPaths,
   updateSettings,
   transferSettings,
@@ -55,6 +56,7 @@ export const SettingsDialog = ({
   readonly initialPage: SettingsPage;
   readonly keyboardShortcuts: KeyboardShortcuts;
   readonly puttyPath: string | null;
+  readonly rclonePath: string | null;
   readonly rememberPaths: boolean;
   readonly updateSettings: UpdateSettings;
   readonly transferSettings: TransferSettings;
@@ -78,6 +80,7 @@ export const SettingsDialog = ({
   const [languageDraft, setLanguageDraft] = useState<'en' | 'ru'>(initialLanguage);
   const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
   const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
+  const [rclonePathDraft, setRclonePathDraft] = useState(rclonePath ?? '');
   const isMac = /Mac/iu.test(navigator.platform);
   const [content, setContent] = useState('');
   const [summary, setSummary] = useState('');
@@ -110,6 +113,8 @@ export const SettingsDialog = ({
       requests.push({ action: 'set-confirm-tab-close', enabled: confirmCloseDraft });
     if ((puttyPathDraft.trim() || null) !== puttyPath)
       requests.push({ action: 'set-putty-path', path: puttyPathDraft.trim() || null });
+    if ((rclonePathDraft.trim() || null) !== rclonePath)
+      requests.push({ action: 'set-rclone-path', path: rclonePathDraft.trim() || null });
     if ((editorPathDraft.trim() || null) !== editorPath)
       requests.push({ action: 'set-editor-path', path: editorPathDraft.trim() || null });
     if (languageDraft !== initialLanguage)
@@ -504,6 +509,44 @@ export const SettingsDialog = ({
                 <Icon name="SquareTerminal" />
                 {t('terminal.savePath')}
               </button>
+              <h4>{t('icloud.settings')}</h4>
+              <p className="muted">{t('icloud.settingsHint')}</p>
+              <label>
+                {t('icloud.executablePath')}
+                <input
+                  aria-label={t('icloud.executablePath')}
+                  disabled={busy}
+                  maxLength={32768}
+                  placeholder={t('terminal.puttyPathPlaceholder')}
+                  value={rclonePathDraft}
+                  onChange={(event) => setRclonePathDraft(event.currentTarget.value)}
+                />
+              </label>
+              <div className="button-group">
+                <button
+                  disabled={busy}
+                  type="button"
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'pick-rclone' })
+                      .then((result) => {
+                        if (result?.selectedPath) setRclonePathDraft(result.selectedPath);
+                      })
+                      .finally(() => setBusy(false));
+                  }}
+                >
+                  <Icon name="FileInput" />
+                  {t('icloud.chooseFile')}
+                </button>
+                <button
+                  disabled={busy || rclonePathDraft === (rclonePath ?? '')}
+                  type="button"
+                  onClick={() => void confirm()}
+                >
+                  <Icon name="Cloud" />
+                  {t('icloud.savePath')}
+                </button>
+              </div>
               <h4>{t('editor.settings')}</h4>
               <p className="muted">{t('editor.settingsHint')}</p>
               <label>

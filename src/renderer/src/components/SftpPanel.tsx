@@ -63,7 +63,9 @@ export const SftpPanel = ({
   );
   const requestVersion = useRef(0);
   const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId);
-  const profiles = snapshot.profiles;
+  const profiles = snapshot.profiles.filter(
+    (profile) => profile.kind !== 'icloud' || snapshot.icloudRemotes?.includes(profile.remote),
+  );
   const isS3 = session?.kind === 's3';
   const selectedEntry = listing?.entries.find((entry) => entry.path === selected);
   const isBucketList = isS3 && listing && !parseS3Path(listing.currentPath).bucket;

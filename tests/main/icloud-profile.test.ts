@@ -8,6 +8,7 @@ import { Diagnostics } from '../../src/main/security/diagnostics';
 import { WorkspaceService } from '../../src/main/sessions/workspace-service';
 import { workspaceRequestSchema, workspaceSnapshotSchema } from '../../src/shared/ipc/workspace';
 import { startICloudFixture } from '../fixtures/icloud-harness';
+import { join } from 'node:path';
 
 const setup = () => {
   const database = openDatabase(':memory:');
@@ -43,7 +44,11 @@ describe('iCloud workspace profiles', () => {
       async () => null,
       undefined,
       undefined,
-      { icloudLaunch: fixture.launch },
+      {
+        icloudLaunch: fixture.launch,
+        icloudRemotes: ['icloud', 'second'],
+        pickRclone: async () => join(fixture.root, 'rclone.exe'),
+      },
     );
   });
   afterEach(async () => {
@@ -55,6 +60,7 @@ describe('iCloud workspace profiles', () => {
   it('saves, tests, clones and exports only metadata without requiring an OS keyring', async () => {
     const saved = await service.execute({ action: 'save-icloud-profile', profile: draft });
     const profileId = saved.savedProfileId ?? '';
+    expect(saved.snapshot.icloudRemotes).toEqual(['icloud', 'second']);
     await service.execute({ action: 'test-profile', profileId });
     expect(service.snapshot().sessions).toHaveLength(0);
     await service.execute({ action: 'clone-profile', profileId, name: 'Copy' });
@@ -72,6 +78,25 @@ describe('iCloud workspace profiles', () => {
     expect(JSON.parse(new Diagnostics().report(service.snapshot()))).toMatchObject({
       profileCounts: { icloud: 2 },
     });
+  });
+
+  it('persists the executable path outside profiles and refreshes availability after changing it', async () => {
+    const path = join(fixture.root, 'rclone.exe');
+    expect((await service.execute({ action: 'pick-rclone' })).selectedPath).toBe(path);
+    const saved = await service.execute({ action: 'set-rclone-path', path });
+    expect(saved.snapshot).toMatchObject({ rclonePath: path, icloudRemotes: ['icloud', 'second'] });
+    expect(data.store.getSetting('rclone-path')).toBe(path);
+    await service.execute({ action: 'save-icloud-profile', profile: draft });
+    expect(exportProfiles(data.store)).not.toContain(path);
+    await fixture.behavior({ remotes: {} });
+    expect(
+      (await service.execute({ action: 'set-rclone-path', path: null })).snapshot,
+    ).toMatchObject({ rclonePath: null, icloudRemotes: [] });
+    expect(data.store.list()).toHaveLength(1);
+    await expect(
+      service.execute({ action: 'set-rclone-path', path: 'relative/rclone.exe' }),
+    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_PATH' });
+    expect(data.store.getSetting('rclone-path')).toBe('');
   });
 
   it('connects both panes, runs filesystem operations and restores the last directory', async () => {

@@ -39,7 +39,8 @@ import { MailruConnection } from '../providers/mailru/mailru-connection';
 import { MailruProvider } from '../providers/mailru/mailru-provider';
 import { ICloudConnection } from '../providers/icloud/icloud-connection';
 import { ICloudProvider } from '../providers/icloud/icloud-provider';
-import type { RcloneLauncher } from '../providers/icloud/rclone-process';
+import { createRcloneLauncher, type RcloneLauncher } from '../providers/icloud/rclone-process';
+import { discoverICloudRemotes } from '../providers/icloud/icloud-availability';
 import { GoogleProvider } from '../providers/google/google-provider';
 import { GoogleConnection } from '../providers/google/google-connection';
 import {
@@ -93,6 +94,8 @@ const sourcePathGoogleName = (path: string) =>
   path.startsWith(googleRootPath) ? googlePathName(path) : posix.basename(path);
 
 export interface WorkspaceExternalActions {
+  readonly icloudRemotes?: readonly string[];
+  readonly pickRclone?: () => Promise<string | null>;
   readonly icloudLaunch?: RcloneLauncher;
   readonly google?: GoogleConfiguration;
   readonly yandex?: YandexConfiguration;
@@ -203,6 +206,8 @@ const readRecentPaths = (value: string | undefined): string[] => {
 };
 
 export class WorkspaceService {
+  private icloudRemotes: readonly string[];
+  private icloudAvailabilityVersion = 0;
   private readonly google: GoogleAuthorization;
   private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
@@ -236,6 +241,7 @@ export class WorkspaceService {
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
     private readonly externalActions: WorkspaceExternalActions = {},
   ) {
+    this.icloudRemotes = externalActions.icloudRemotes ?? [];
     this.google = new GoogleAuthorization(
       store,
       credentials,
@@ -353,6 +359,7 @@ export class WorkspaceService {
         : {}),
       editorPath: this.store.getSetting('editor-path') || null,
       puttyPath: this.store.getSetting('putty-path') || null,
+      rclonePath: this.store.getSetting('rclone-path') || null,
       rememberPaths,
       workspaceLayout: readWorkspaceLayout(this.store.getSetting('workspace-layout-v1')),
       localPathHistory: localHistory,
@@ -388,6 +395,7 @@ export class WorkspaceService {
             ),
         ),
       profiles: [...this.store.list()],
+      icloudRemotes: [...this.icloudRemotes],
       googleOAuthConfigured: this.google.configured,
       googleAuthorizations: this.google.snapshots(),
       yandexOAuthConfigured: this.yandex.configured,
@@ -503,7 +511,13 @@ export class WorkspaceService {
   }
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
     if (profile.kind === 'icloud')
-      return new ICloudProvider(new ICloudConnection(profile, this.externalActions.icloudLaunch));
+      return new ICloudProvider(
+        new ICloudConnection(
+          profile,
+          this.externalActions.icloudLaunch ??
+            createRcloneLauncher(profile, () => this.store.getSetting('rclone-path')),
+        ),
+      );
     if (profile.kind === 'google')
       return new GoogleProvider(
         new GoogleConnection(profile, this.google.vault, this.externalActions.google?.apiEndpoint),
@@ -1023,6 +1037,28 @@ export class WorkspaceService {
       case 'set-putty-path':
         this.store.setSetting('putty-path', request.path ?? '');
         break;
+      case 'set-rclone-path': {
+        if (request.path && !isAbsolute(request.path))
+          throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+        if (
+          [...this.sessions].some(
+            ([workspaceId, provider]) =>
+              provider.kind === 'icloud' &&
+              (this.hasActiveTransfers(workspaceId) || this.mutating.has(workspaceId)),
+          ) ||
+          [...this.profileTests.values()].some((provider) => provider.kind === 'icloud')
+        )
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        this.store.setSetting('rclone-path', request.path ?? '');
+        this.icloudRemotes = [];
+        const version = ++this.icloudAvailabilityVersion;
+        const remotes = await discoverICloudRemotes(
+          this.externalActions.icloudLaunch,
+          request.path ?? undefined,
+        );
+        if (version === this.icloudAvailabilityVersion) this.icloudRemotes = remotes;
+        break;
+      }
       case 'set-editor-path':
         if (request.path && !isAbsolute(request.path))
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
@@ -1808,6 +1844,9 @@ export class WorkspaceService {
         break;
       case 'pick-editor':
         selectedPath = (await this.externalActions.pickEditor?.()) ?? null;
+        break;
+      case 'pick-rclone':
+        selectedPath = (await this.externalActions.pickRclone?.()) ?? null;
         break;
       case 'set-language':
         this.store.setSetting('language', request.language);
