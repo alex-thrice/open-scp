@@ -177,7 +177,10 @@ export class ExternalEditService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     const endpoint = await this.resolveRemote(workspaceId, remotePath);
     const entry = await endpoint.provider.stat(endpoint.path);
-    if (entry.kind !== 'file')
+    if (
+      entry.kind !== 'file' ||
+      (entry.google && (!entry.google.canWrite || !entry.google.canDownload))
+    )
       throw new ApplicationError(applicationErrorCodes.providerUnsupported);
     const temporaryDirectory = await mkdtemp(join(tmpdir(), 'openscp-edit-'));
     try {

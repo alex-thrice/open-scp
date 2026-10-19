@@ -2,6 +2,7 @@ import type { SerializedApplicationError } from '@shared/errors/application-erro
 import type { WorkspaceRequest, WorkspaceResult } from './workspace';
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
 import type { FileSystemEntryKind } from '@shared/models/file-system-entry';
+import type { GoogleEntry } from '@shared/models/google-entry';
 
 export type RuntimePlatform =
   | 'aix'
@@ -37,6 +38,7 @@ export interface LocalBreadcrumb {
 }
 
 export interface LocalDirectoryEntry {
+  readonly google?: GoogleEntry | undefined;
   readonly s3Kind?: 'bucket' | 'prefix' | 'object' | undefined;
   readonly permissions?: number | null;
   readonly kind: FileSystemEntryKind;
@@ -47,6 +49,8 @@ export interface LocalDirectoryEntry {
 }
 
 export interface LocalDirectoryListing {
+  readonly displayPath?: string | undefined;
+  readonly google?: GoogleEntry | undefined;
   readonly breadcrumbs: readonly LocalBreadcrumb[];
   readonly currentPath: string;
   readonly entries: readonly LocalDirectoryEntry[];

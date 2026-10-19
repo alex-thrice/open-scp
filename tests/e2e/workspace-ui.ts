@@ -19,7 +19,7 @@ export const expectSourceIndicatorAtEnd = async (panel: Locator) => {
 
 export const newConnection = async (
   page: Page,
-  kind: 'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex',
+  kind: 'google' | 'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex',
 ) => {
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByRole('button', { name: 'Connection', exact: true }).click();

@@ -11,6 +11,7 @@ import { S3ConnectionForm } from './S3ConnectionForm';
 import { ConnectionForm } from './ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
 import { MailruConnectionForm } from './MailruConnectionForm';
+import { GoogleConnectionForm } from './GoogleConnectionForm';
 import { YandexConnectionForm } from './YandexConnectionForm';
 import { PathBreadcrumbs } from './PathBreadcrumbs';
 import { VirtualFileList } from './VirtualFileList';
@@ -42,7 +43,9 @@ export const SftpPanel = ({
   const [profileId, setProfileId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isNew, setIsNew] = useState(false);
-  const [newKind, setNewKind] = useState<'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex'>('sftp');
+  const [newKind, setNewKind] = useState<'google' | 'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex'>(
+    'sftp',
+  );
   const [operation, setOperation] = useState<'mkdir' | 'rename' | 'copy' | 'delete' | null>(null);
   const [deletion, setDeletion] = useState<WorkspaceResult['deletion']>();
   const [listing, setListing] = useState<RemoteDirectoryListing | null>(null);
@@ -325,6 +328,15 @@ export const SftpPanel = ({
           {t('yandex.new')}
         </button>
         <button
+          onClick={() => {
+            setIsNew(true);
+            setNewKind('google');
+            setIsEditing(true);
+          }}
+        >
+          {t('google.new')}
+        </button>
+        <button
           disabled={!selectedProfile}
           onClick={() => {
             setIsNew(false);
@@ -522,6 +534,14 @@ export const SftpPanel = ({
             profile={!isNew && selectedProfile?.kind === 's3' ? selectedProfile : undefined}
             run={run}
             onClose={() => setIsEditing(false)}
+          />
+        ) : (isNew ? newKind === 'google' : selectedProfile?.kind === 'google') ? (
+          <GoogleConnectionForm
+            profile={!isNew && selectedProfile?.kind === 'google' ? selectedProfile : undefined}
+            snapshot={snapshot}
+            run={run}
+            onClose={() => setIsEditing(false)}
+            errorKey={errorKey}
           />
         ) : (isNew ? newKind === 'yandex' : selectedProfile?.kind === 'yandex') ? (
           <YandexConnectionForm

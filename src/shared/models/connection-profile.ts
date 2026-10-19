@@ -70,6 +70,7 @@ export interface MailruConnectionProfile extends BaseConnectionProfile {
 
 export type ConnectionProfile =
   | FtpConnectionProfile
+  | GoogleConnectionProfile
   | MailruConnectionProfile
   | S3ConnectionProfile
   | SftpConnectionProfile
@@ -82,4 +83,8 @@ export interface YandexConnectionProfile extends BaseConnectionProfile {
   readonly accountId?: string;
   readonly accountName?: string;
   readonly authentication: { readonly method: 'oauth'; readonly secret: SecretReference };
+}
+
+export interface GoogleConnectionProfile extends Omit<YandexConnectionProfile, 'kind'> {
+  readonly kind: 'google';
 }

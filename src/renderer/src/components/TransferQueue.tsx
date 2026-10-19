@@ -1,3 +1,4 @@
+import { googleDisplayPath } from '@shared/models/google-path';
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TransferSnapshot } from '@shared/models/transfer-snapshot';
@@ -13,6 +14,8 @@ export const TransferQueue = ({
 }) => {
   const { t, i18n } = useTranslation();
   const [applyToAll, setApplyToAll] = useState<Record<string, boolean>>({});
+  const [targets, setTargets] = useState<Record<string, string>>({});
+  const display = (path: string) => (path.startsWith('gdrive:/') ? googleDisplayPath(path) : path);
   const number = new Intl.NumberFormat(i18n.language, { maximumFractionDigits: 0 });
   return (
     <section className="transfer-queue">
@@ -35,7 +38,7 @@ export const TransferQueue = ({
                 title={`${item.sourcePath} → ${item.destinationPath}`}
                 className="transfer-item__path"
               >
-                {item.sourcePath} → {item.destinationPath}
+                {display(item.sourcePath)} → {display(item.destinationPath)}
               </div>
               <progress
                 aria-label={t('transfers.progress')}
@@ -95,10 +98,36 @@ export const TransferQueue = ({
                   <strong>{t('transfers.conflictTitle')}</strong>
                   <span>
                     {t('transfers.conflictSource', {
-                      path: item.conflictSourcePath ?? item.sourcePath,
+                      path: display(item.conflictSourcePath ?? item.sourcePath),
                     })}
                   </span>
-                  <span>{t('transfers.conflictDestination', { path: item.conflictPath })}</span>
+                  <span>
+                    {t('transfers.conflictDestination', { path: display(item.conflictPath) })}
+                  </span>
+                  {item.conflictCandidates?.length ? (
+                    <label>
+                      {t('google.chooseTarget')}
+                      <select
+                        value={targets[item.id] ?? ''}
+                        onChange={(event) =>
+                          setTargets((current) => ({ ...current, [item.id]: event.target.value }))
+                        }
+                      >
+                        <option value="" disabled>
+                          —
+                        </option>
+                        {item.conflictCandidates.map((candidate) => (
+                          <option
+                            key={candidate.path}
+                            value={candidate.path}
+                            disabled={!candidate.writable}
+                          >
+                            {candidate.name} · ID: {candidate.path.split('/').at(-1)?.split('~')[0]}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : null}
                   <label className="checkbox-label">
                     <input
                       type="checkbox"
@@ -115,12 +144,22 @@ export const TransferQueue = ({
                   {(['overwrite', 'skip', 'rename'] as const).map((policy) => (
                     <button
                       key={policy}
+                      disabled={
+                        policy === 'overwrite' &&
+                        !!item.conflictCandidates?.length &&
+                        !item.conflictCandidates.some(
+                          (candidate) => candidate.path === targets[item.id] && candidate.writable,
+                        )
+                      }
                       onClick={() =>
                         void run({
                           action: 'resolve-conflict',
                           id: item.id,
                           policy,
                           applyToAll: applyToAll[item.id] ?? false,
+                          ...(policy === 'overwrite' && item.conflictCandidates?.length
+                            ? { targetPath: targets[item.id] }
+                            : {}),
                         })
                       }
                     >

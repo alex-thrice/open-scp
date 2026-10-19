@@ -266,16 +266,21 @@ export const ProfileLibrary = ({
                             ? `${item.username}@${item.host}`
                             : item.kind === 'mailru'
                               ? item.username
-                              : item.kind === 'yandex'
-                                ? (item.accountName ?? t('yandex.signedOut'))
+                              : item.kind === 'yandex' || item.kind === 'google'
+                                ? (item.accountName ??
+                                  t(
+                                    item.kind === 'google'
+                                      ? 'google.signedOut'
+                                      : 'yandex.signedOut',
+                                  ))
                                 : item.bucket || item.endpoint || item.region}
                         </small>
                       </button>
                       <span className="protocol-label">
                         {item.kind === 'mailru'
                           ? t('mailru.name')
-                          : item.kind === 'yandex'
-                            ? t('yandex.name')
+                          : item.kind === 'yandex' || item.kind === 'google'
+                            ? t(item.kind === 'google' ? 'google.name' : 'yandex.name')
                             : item.kind.toUpperCase()}
                       </span>
                       <button

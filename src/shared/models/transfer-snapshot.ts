@@ -1,6 +1,8 @@
 import type { TransferConflictPolicy, TransferOperationState } from './transfer-operation';
 
 export interface TransferSnapshot {
+  readonly conflictCandidates?:
+    { readonly path: string; readonly name: string; readonly writable: boolean }[] | undefined;
   readonly id: string;
   readonly workspaceId: string;
   readonly sourcePath: string;

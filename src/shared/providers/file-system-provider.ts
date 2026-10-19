@@ -24,6 +24,11 @@ export interface RenameOptions extends ProviderOperationOptions {
 }
 
 export interface FileSystemProvider {
+  conflictCandidates?(
+    path: ProviderPath,
+    options?: ProviderOperationOptions,
+  ): Promise<readonly FileSystemEntry[]>;
+  resumeWriteOffset?(path: ProviderPath, options: WriteOptions): Promise<number>;
   readonly capabilities: ProviderCapabilities;
   readonly connectionState: ProviderConnectionState;
   readonly kind: ProviderKind;

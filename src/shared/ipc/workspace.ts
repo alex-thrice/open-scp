@@ -4,6 +4,8 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
+import { googleProfileDraftSchema } from '@shared/models/google-profile';
+import { googleEntrySchema } from '@shared/models/google-entry';
 import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
 import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
 import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
@@ -47,6 +49,10 @@ export const profileDraftSchema = z.strictObject({
 });
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('save-google-profile'), profile: googleProfileDraftSchema }),
+  z.strictObject({ action: z.literal('authorize-google-profile'), profileId: id }),
+  z.strictObject({ action: z.literal('cancel-google-authorization'), profileId: id }),
+  z.strictObject({ action: z.literal('forget-google-authorization'), profileId: id }),
   z.strictObject({ action: z.literal('set-appearance'), appearance: appearanceSchema }),
   z.strictObject({ action: z.literal('set-confirm-tab-close'), enabled: z.boolean() }),
   z.strictObject({
@@ -200,6 +206,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('retry-transfer'), id, resume: z.boolean() }),
   z.strictObject({
     action: z.literal('resolve-conflict'),
+    targetPath: path.optional(),
     id,
     policy,
     applyToAll: z.boolean(),
@@ -215,6 +222,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
 ]);
 export type WorkspaceRequest = z.infer<typeof workspaceRequestSchema>;
 const entrySchema = z.strictObject({
+  google: googleEntrySchema.optional(),
   s3Kind: z.enum(['bucket', 'prefix', 'object']).optional(),
   kind: z.enum(['file', 'directory', 'symbolic-link', 'special']),
   modifiedAt: z.string().nullable(),
@@ -226,6 +234,8 @@ const entrySchema = z.strictObject({
 export const remoteListingSchema = z.strictObject({
   breadcrumbs: z.array(z.strictObject({ label: z.string(), path })),
   currentPath: path,
+  displayPath: z.string().optional(),
+  google: googleEntrySchema.optional(),
   entries: z.array(entrySchema),
   parentPath: path.nullable(),
 });
@@ -250,6 +260,17 @@ export const workspaceSnapshotSchema = z.strictObject({
     .array(z.strictObject({ profileId: id, count: z.number().int().nonnegative() }))
     .optional(),
   profiles: z.array(connectionProfileSchema),
+  googleOAuthConfigured: z.boolean().optional(),
+  googleAuthorizations: z
+    .array(
+      z.strictObject({
+        profileId: id,
+        authorized: z.boolean(),
+        state: z.enum(['waiting', 'exchanging', 'authorized', 'failed', 'cancelled', 'signed-out']),
+        errorKey: z.string().nullable(),
+      }),
+    )
+    .optional(),
   yandexOAuthConfigured: z.boolean().optional(),
   yandexAuthorizations: z
     .array(
@@ -266,7 +287,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['ftp', 'mailru', 'sftp', 's3', 'yandex']).optional(),
+      kind: z.enum(['ftp', 'google', 'mailru', 'sftp', 's3', 'yandex']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z
@@ -332,6 +353,9 @@ export const workspaceSnapshotSchema = z.strictObject({
       errorKey: z.string().nullable(),
       conflictPath: path.nullable(),
       conflictSourcePath: path.nullable().optional(),
+      conflictCandidates: z
+        .array(z.strictObject({ path, name: z.string(), writable: z.boolean() }))
+        .optional(),
     }),
   ),
   externalDrags: z.array(externalDragSnapshotSchema).optional(),

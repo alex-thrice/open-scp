@@ -9,6 +9,27 @@ export const resources = {
       ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
+      google: {
+        name: 'Google Drive',
+        new: 'New Google Drive',
+        signedOut: 'Not signed in to Google',
+        signIn: 'Sign in to Google',
+        signOut: 'Sign out',
+        cancelLogin: 'Cancel sign-in',
+        waiting: 'Complete sign-in in your browser.',
+        connectedAs: 'Google account: {{account}}',
+        authorizationTitle: 'Google Drive sign-in',
+        loginHint: 'Sign in with Google in your browser.',
+        initialDirectoryHint: 'Open a folder in a connected panel to select it here.',
+        export: 'Export document…',
+        exportFormat: 'Export format',
+        exportLimit: 'Google export is limited to 10 MiB. Shortcuts are not followed.',
+        trash: 'Move to trash',
+        trashHint: 'Selected items will be moved to Google Drive trash.',
+        chooseTarget: 'Choose the file to replace (ID)',
+        native: 'Google document',
+        shortcut: 'Shortcut',
+      },
       yandex: {
         name: 'Yandex Disk',
         new: 'New Yandex Disk',
@@ -253,12 +274,12 @@ export const resources = {
         oauth: {
           required: 'Sign in again to access this Disk.',
           configuration:
-            'Yandex sign-in is not configured for this build. The application owner must configure the OAuth client.',
+            'Cloud sign-in is not configured for this build. The application owner must configure the OAuth client.',
           callbackUnavailable:
             'The local sign-in address is unavailable. Close another OpenSCP instance and try again.',
           timeout: 'Sign-in timed out. Please try again.',
           accountMismatch:
-            'A different Yandex account was selected. Use the linked account, or sign out before linking another account.',
+            'A different cloud account was selected. Use the linked account, or sign out before linking another account.',
         },
         mailru: {
           webdavAccessDenied:
@@ -407,6 +428,27 @@ export const resources = {
         tagline: 'Кроссплатформенный файловый клиент',
       },
       common: { notAvailable: '—' },
+      google: {
+        name: 'Google Диск',
+        new: 'Новый Google Диск',
+        signedOut: 'Вход в Google не выполнен',
+        signIn: 'Войти в Google',
+        signOut: 'Выйти',
+        cancelLogin: 'Отменить вход',
+        waiting: 'Завершите вход в браузере.',
+        connectedAs: 'Аккаунт Google: {{account}}',
+        authorizationTitle: 'Вход в Google Диск',
+        loginHint: 'Войдите в Google через системный браузер.',
+        initialDirectoryHint: 'Откройте папку в подключённой панели, чтобы выбрать её здесь.',
+        export: 'Экспорт документа…',
+        exportFormat: 'Формат экспорта',
+        exportLimit: 'Экспорт Google ограничен 10 МиБ. Ярлыки не обходятся.',
+        trash: 'Переместить в корзину',
+        trashHint: 'Выбранные объекты будут перемещены в корзину Google Диска.',
+        chooseTarget: 'Выберите заменяемый файл (ID)',
+        native: 'Документ Google',
+        shortcut: 'Ярлык',
+      },
       yandex: {
         name: 'Яндекс Диск',
         new: 'Новый Яндекс Диск',
@@ -664,12 +706,12 @@ export const resources = {
         oauth: {
           required: 'Войдите повторно, чтобы открыть этот Диск.',
           configuration:
-            'Вход в Яндекс пока не настроен для этой сборки. Владелец приложения должен настроить OAuth-клиент.',
+            'Вход в облако пока не настроен для этой сборки. Владелец приложения должен настроить OAuth-клиент.',
           callbackUnavailable:
             'Локальный адрес входа недоступен. Закройте другой экземпляр OpenSCP и повторите вход.',
           timeout: 'Время ожидания входа истекло. Повторите попытку.',
           accountMismatch:
-            'Выбран другой аккаунт Яндекса. Войдите в связанный аккаунт или сначала выйдите, чтобы подключить другой.',
+            'Выбран другой аккаунт облака. Войдите в связанный аккаунт или сначала выйдите, чтобы подключить другой.',
         },
         s3: {
           endpoint: 'Неверный endpoint S3 или регион. Проверьте профиль.',

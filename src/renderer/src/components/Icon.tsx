@@ -1,5 +1,6 @@
 import { createElement } from 'react';
 import mailruCloudIcon from '../assets/providers/mailru-cloud.svg';
+import googleDriveIcon from '../assets/providers/google-drive.png';
 import yandexDiskIcon from '../assets/providers/yandex-disk.svg';
 
 // Иконки Lucide, лицензия ISC: см. LICENSE.lucide в этой папке.
@@ -859,7 +860,11 @@ const icons = {
   ],
 } as const;
 
-const brandIcons = { MailruCloud: mailruCloudIcon, YandexDisk: yandexDiskIcon } as const;
+const brandIcons = {
+  GoogleDrive: googleDriveIcon,
+  MailruCloud: mailruCloudIcon,
+  YandexDisk: yandexDiskIcon,
+} as const;
 export type IconName = keyof typeof icons | keyof typeof brandIcons;
 export const Icon = ({
   name,
@@ -868,7 +873,7 @@ export const Icon = ({
   readonly name: IconName;
   readonly className?: string;
 }) => {
-  if (name === 'MailruCloud' || name === 'YandexDisk')
+  if (name === 'GoogleDrive' || name === 'MailruCloud' || name === 'YandexDisk')
     return (
       <img
         data-icon={name}

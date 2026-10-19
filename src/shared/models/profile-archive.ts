@@ -3,6 +3,7 @@ import { profileDraftSchema } from '../ipc/workspace';
 import { s3ProfileDraftSchema } from './s3-profile';
 import { ftpProfileDraftSchema } from './ftp-profile';
 import { mailruProfileDraftSchema } from './mailru-profile';
+import { googleProfileDraftSchema } from './google-profile';
 import { yandexProfileDraftSchema } from './yandex-profile';
 
 export const profileArchiveSchema = z.strictObject({
@@ -11,6 +12,11 @@ export const profileArchiveSchema = z.strictObject({
   profiles: z
     .array(
       z.discriminatedUnion('kind', [
+        z.strictObject({
+          kind: z.literal('google'),
+          profile: googleProfileDraftSchema.refine((profile) => profile.id === null),
+          group: z.string().max(100),
+        }),
         z.strictObject({
           kind: z.literal('yandex'),
           profile: yandexProfileDraftSchema.refine((profile) => profile.id === null),

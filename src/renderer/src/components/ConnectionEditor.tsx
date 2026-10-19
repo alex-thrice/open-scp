@@ -6,6 +6,7 @@ import { ConnectionForm } from './ConnectionForm';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
 import { MailruConnectionForm } from './MailruConnectionForm';
+import { GoogleConnectionForm } from './GoogleConnectionForm';
 import { YandexConnectionForm } from './YandexConnectionForm';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
@@ -77,11 +78,22 @@ export const ConnectionEditor = ({
           <option value="ftp">FTP</option>
           <option value="mailru">{t('mailru.name')}</option>
           <option value="yandex">{t('yandex.name')}</option>
+          <option value="google">{t('google.name')}</option>
         </select>
       </label>
     </>
   );
-  return kind === 'yandex' ? (
+  return kind === 'google' ? (
+    <GoogleConnectionForm
+      profile={profile?.kind === 'google' ? profile : undefined}
+      snapshot={snapshot}
+      run={execute}
+      onClose={onClose}
+      errorKey={errorKey}
+      editorControls={editorControls}
+      afterSave={afterSave}
+    />
+  ) : kind === 'yandex' ? (
     <YandexConnectionForm
       profile={profile?.kind === 'yandex' ? profile : undefined}
       snapshot={snapshot}

@@ -12,11 +12,12 @@ export const exportProfiles = (store: ProfileStore, profiles = store.list()): st
         kind: profile.kind,
         group: store.getSetting(`group:${profile.id}`) ?? '',
         profile:
-          profile.kind === 'yandex'
+          profile.kind === 'yandex' || profile.kind === 'google'
             ? {
                 id: null,
                 name: profile.name,
-                initialDirectory: profile.initialDirectory ?? '/',
+                initialDirectory:
+                  profile.initialDirectory ?? (profile.kind === 'google' ? 'gdrive:/' : '/'),
                 timeout: profile.timeout ?? 20000,
               }
             : profile.kind === 's3'
@@ -77,11 +78,11 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
     for (const entry of archive.profiles) {
       const id = randomUUID();
       let profile: ConnectionProfile;
-      if (entry.kind === 'yandex') {
+      if (entry.kind === 'yandex' || entry.kind === 'google') {
         profile = {
           ...entry.profile,
           id,
-          kind: 'yandex',
+          kind: entry.kind,
           authentication: {
             method: 'oauth',
             secret: { id: randomUUID(), storage: 'safe-storage' },

@@ -12,6 +12,7 @@ import type {
   S3ConnectionProfile,
   SftpConnectionProfile,
   YandexConnectionProfile,
+  GoogleConnectionProfile,
 } from '@shared/models/connection-profile';
 import type {
   WorkspaceRequest,
@@ -36,6 +37,22 @@ import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connect
 import { FtpProvider } from '../providers/ftp/ftp-provider';
 import { MailruConnection } from '../providers/mailru/mailru-connection';
 import { MailruProvider } from '../providers/mailru/mailru-provider';
+import { GoogleProvider } from '../providers/google/google-provider';
+import { GoogleConnection } from '../providers/google/google-connection';
+import {
+  GoogleAuthorization,
+  type GoogleConfiguration,
+} from '../providers/google/google-authorization';
+import {
+  googleRootPath,
+  googleChildPath,
+  googleParentPath,
+  googlePathName,
+  googleDisplayPath,
+  parseGooglePath,
+  formatGooglePath,
+} from '@shared/models/google-path';
+import { createGoogleProviderPath } from '@shared/models/provider-path';
 import { YandexProvider } from '../providers/yandex/yandex-provider';
 import { YandexConnection } from '../providers/yandex/yandex-connection';
 import {
@@ -69,7 +86,11 @@ import {
   type UpdateState,
 } from '@shared/models/application-update';
 
+const sourcePathGoogleName = (path: string) =>
+  path.startsWith(googleRootPath) ? googlePathName(path) : posix.basename(path);
+
 export interface WorkspaceExternalActions {
+  readonly google?: GoogleConfiguration;
   readonly yandex?: YandexConfiguration;
   readonly mailruEndpoint?: string;
   readonly dragDirectory?: string;
@@ -87,7 +108,8 @@ export interface WorkspaceExternalActions {
   readonly updateState?: () => UpdateState;
 }
 
-type RemoteProvider = FtpProvider | MailruProvider | S3Provider | SftpProvider | YandexProvider;
+type RemoteProvider =
+  GoogleProvider | FtpProvider | MailruProvider | S3Provider | SftpProvider | YandexProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -171,6 +193,7 @@ const readRecentPaths = (value: string | undefined): string[] => {
 };
 
 export class WorkspaceService {
+  private readonly google: GoogleAuthorization;
   private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
   public readonly externalDrags: ExternalDragService;
@@ -199,6 +222,16 @@ export class WorkspaceService {
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
     private readonly externalActions: WorkspaceExternalActions = {},
   ) {
+    this.google = new GoogleAuthorization(
+      store,
+      credentials,
+      externalActions.google ?? {
+        clientId: '',
+        openBrowser: async () => {
+          throw new ApplicationError(applicationErrorCodes.oauthConfiguration);
+        },
+      },
+    );
     this.yandex = new YandexAuthorization(
       store,
       credentials,
@@ -341,6 +374,8 @@ export class WorkspaceService {
             ),
         ),
       profiles: [...this.store.list()],
+      googleOAuthConfigured: this.google.configured,
+      googleAuthorizations: this.google.snapshots(),
       yandexOAuthConfigured: this.yandex.configured,
       yandexAuthorizations: this.yandex.snapshots(),
       language: language === 'en' || language === 'ru' ? language : null,
@@ -353,7 +388,8 @@ export class WorkspaceService {
         ...(provider instanceof SftpProvider ||
         provider instanceof FtpProvider ||
         provider instanceof MailruProvider ||
-        provider instanceof YandexProvider
+        provider instanceof YandexProvider ||
+        provider instanceof GoogleProvider
           ? {
               connectionStage: provider.connection.stage,
               connectionErrorKey: provider.connection.failureCode
@@ -366,7 +402,7 @@ export class WorkspaceService {
                   provider.connection.failureCode ===
                     applicationErrorCodes.mailruWebdavAccessDenied),
               authorizationRequired:
-                provider instanceof YandexProvider &&
+                (provider instanceof YandexProvider || provider instanceof GoogleProvider) &&
                 provider.connection.failureCode === applicationErrorCodes.oauthRequired,
               pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
               ...(provider instanceof FtpProvider ? { insecure: true } : {}),
@@ -400,6 +436,7 @@ export class WorkspaceService {
   }
   public dispose(): void {
     this.yandex.dispose();
+    this.google.dispose();
     for (const provider of this.profileTests.values()) void provider.disconnect();
     this.profileTests.clear();
     this.pendingTestHosts.clear();
@@ -447,6 +484,10 @@ export class WorkspaceService {
     );
   }
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
+    if (profile.kind === 'google')
+      return new GoogleProvider(
+        new GoogleConnection(profile, this.google.vault, this.externalActions.google?.apiEndpoint),
+      );
     if (profile.kind === 'yandex')
       return new YandexProvider(
         new YandexConnection(profile, this.yandex.vault, this.externalActions.yandex?.apiEndpoint),
@@ -507,7 +548,10 @@ export class WorkspaceService {
               profile.bucket ?? '',
               profile.initialPrefix ? s3Prefix(profile.initialPrefix) : '',
             )
-          : this.remotePath(provider, profile.initialDirectory ?? '/');
+          : this.remotePath(
+              provider,
+              profile.initialDirectory ?? (profile.kind === 'google' ? googleRootPath : '/'),
+            );
       if (initialPath.provider !== 's3') {
         const initial = await provider.stat(initialPath);
         if (initial.kind !== 'directory')
@@ -648,6 +692,74 @@ export class WorkspaceService {
         })),
       };
     }
+    if (provider instanceof GoogleProvider) {
+      const profile = provider.connection.profile;
+      const preferred =
+        requested ??
+        (this.currentPathProfiles.get(workspaceId) === profile.id
+          ? this.currentPaths.get(workspaceId)
+          : undefined) ??
+        this.recentPaths(profile.id)[0] ??
+        profile.initialDirectory ??
+        googleRootPath;
+      const candidates = [preferred];
+      if (requested === null) {
+        let parent = preferred;
+        while (parent !== googleRootPath) {
+          parent = googleParentPath(parent);
+          candidates.push(parent);
+        }
+        candidates.push(googleRootPath);
+      }
+      provider.connection.setDirectoryLoading(true);
+      try {
+        let failure: unknown;
+        for (const currentPath of [...new Set(candidates)]) {
+          try {
+            const path = createGoogleProviderPath(currentPath);
+            const entries = await provider.list(path);
+            const directory = await provider.stat(path);
+            const segments = parseGooglePath(currentPath).segments;
+            this.pathFallbacks.set(workspaceId, requested === null && currentPath !== preferred);
+            return {
+              currentPath,
+              displayPath: googleDisplayPath(currentPath),
+              google: directory.google,
+              breadcrumbs: [
+                { label: 'My Drive', path: googleRootPath },
+                ...segments.map((segment, index) => ({
+                  label: segment.name,
+                  path: formatGooglePath(segments.slice(0, index + 1)),
+                })),
+              ],
+              parentPath: currentPath === googleRootPath ? null : googleParentPath(currentPath),
+              entries: entries.map((entry) => ({
+                name: entry.name,
+                path: entry.path.provider === 'google' ? entry.path.path : '',
+                google: entry.google,
+                kind: entry.kind,
+                size: entry.size,
+                modifiedAt: entry.modifiedAt ?? null,
+                permissions: null,
+              })),
+            };
+          } catch (error) {
+            failure = error;
+            if (
+              requested !== null ||
+              !(error instanceof ProviderError) ||
+              ![providerErrorCodes.notFound, providerErrorCodes.accessDenied].includes(
+                error.code as typeof providerErrorCodes.notFound,
+              )
+            )
+              throw error;
+          }
+        }
+        throw failure;
+      } finally {
+        provider.connection.setDirectoryLoading(false);
+      }
+    }
     const profile = provider.connection.profile;
     const preferredPath = posix.resolve(
       '/',
@@ -761,6 +873,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
         request.action === 'save-mailru-profile' ||
@@ -768,6 +881,7 @@ export class WorkspaceService {
       request.profile.id &&
       (this.profileTests.has(request.profile.id) ||
         this.yandex.isAuthorizing(request.profile.id) ||
+        this.google.isAuthorizing(request.profile.id) ||
         [...this.sessions].some(
           ([id, provider]) =>
             this.profile(provider).id === request.profile.id &&
@@ -777,6 +891,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
         request.action === 'save-mailru-profile' ||
@@ -988,6 +1103,7 @@ export class WorkspaceService {
         if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
         const reference = profileSecretReference(profile);
         if (
+          profile.kind === 'google' ||
           profile.kind === 'yandex' ||
           (reference &&
             !this.store.database
@@ -1085,6 +1201,49 @@ export class WorkspaceService {
         connectionTest = await this.testProfile(request.profileId, request.trustFingerprint);
         break;
       }
+      case 'save-google-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'google')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        const profile: GoogleConnectionProfile = {
+          ...(previous?.kind === 'google' ? previous : {}),
+          ...draft,
+          id: draft.id ?? randomUUID(),
+          kind: 'google',
+          authentication:
+            previous?.kind === 'google'
+              ? previous.authentication
+              : { method: 'oauth', secret: { id: randomUUID(), storage: 'safe-storage' } },
+        };
+        savedProfileId = this.store.save(profile).id;
+        break;
+      }
+      case 'authorize-google-profile':
+      case 'forget-google-authorization': {
+        if (
+          [...this.sessions].some(
+            ([id, provider]) =>
+              this.profile(provider).id === request.profileId &&
+              (this.hasActiveTransfers(id) || this.mutating.has(id)),
+          ) ||
+          this.profileTests.has(request.profileId)
+        )
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        if (request.action === 'authorize-google-profile') this.google.authorize(request.profileId);
+        else {
+          for (const [id, provider] of this.sessions)
+            if (this.profile(provider).id === request.profileId) {
+              await provider.disconnect();
+              this.sessions.delete(id);
+            }
+          this.google.forget(request.profileId);
+        }
+        break;
+      }
+      case 'cancel-google-authorization':
+        this.google.cancel(request.profileId);
+        break;
       case 'save-yandex-profile': {
         const draft = request.profile;
         const previous = this.store.list().find((profile) => profile.id === draft.id);
@@ -1270,6 +1429,7 @@ export class WorkspaceService {
       }
       case 'delete-profile': {
         this.yandex.cancel(request.profileId);
+        this.google.cancel(request.profileId);
         if (this.profileTests.has(request.profileId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         this.pendingTestHosts.delete(request.profileId);
@@ -1309,11 +1469,13 @@ export class WorkspaceService {
           !(provider instanceof SftpProvider) &&
           !(provider instanceof FtpProvider) &&
           !(provider instanceof MailruProvider) &&
+          !(provider instanceof GoogleProvider) &&
           !(provider instanceof YandexProvider)
         )
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.delete(request.workspaceId);
         if (provider instanceof YandexProvider) this.yandex.cancel(provider.connection.profile.id);
+        if (provider instanceof GoogleProvider) this.google.cancel(provider.connection.profile.id);
         await provider.disconnect();
         break;
       }
@@ -1455,7 +1617,7 @@ export class WorkspaceService {
           ? basename(request.sourcePath)
           : remoteSource.provider === 's3'
             ? s3Name(remoteSource.key)
-            : posix.basename(request.sourcePath);
+            : sourcePathGoogleName(request.sourcePath);
         if (
           !name ||
           name.includes('\\') ||
@@ -1478,10 +1640,12 @@ export class WorkspaceService {
           destinationPath: isUpload
             ? remoteSource.provider === 's3'
               ? createS3ProviderPath(remoteSource.bucket, `${s3Prefix(remoteSource.key)}${name}`)
-              : createRemoteProviderPath(
-                  remoteSource.provider,
-                  posix.join(request.destinationDirectory, name),
-                )
+              : remoteSource.provider === 'google'
+                ? createGoogleProviderPath(googleChildPath(request.destinationDirectory, name))
+                : createRemoteProviderPath(
+                    remoteSource.provider,
+                    posix.join(request.destinationDirectory, name),
+                  )
             : createLocalProviderPath(join(request.destinationDirectory, name)),
         });
         break;
@@ -1496,18 +1660,35 @@ export class WorkspaceService {
         const name =
           sourcePath.provider === 's3'
             ? s3Name(sourcePath.key)
-            : posix.basename(request.sourcePath);
+            : sourcePathGoogleName(request.sourcePath);
         if (!name || /[\\/\0]/u.test(name) || name === '.' || name === '..')
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
         const destinationPath =
           parent.provider === 's3'
             ? createS3ProviderPath(parent.bucket, `${s3Prefix(parent.key)}${name}`)
-            : createRemoteProviderPath(
-                parent.provider,
-                posix.join(request.destinationDirectory, name),
-              );
+            : parent.provider === 'google'
+              ? createGoogleProviderPath(googleChildPath(request.destinationDirectory, name))
+              : createRemoteProviderPath(
+                  parent.provider,
+                  posix.join(request.destinationDirectory, name),
+                );
         const sourceProfile = this.profile(source);
         const targetProfile = this.profile(destination);
+        if (
+          sourcePath.provider === 'google' &&
+          parent.provider === 'google' &&
+          sourceProfile.kind === 'google' &&
+          targetProfile.kind === 'google' &&
+          (sourceProfile.id === targetProfile.id ||
+            (sourceProfile.accountId && sourceProfile.accountId === targetProfile.accountId))
+        ) {
+          const sourceId = parseGooglePath(sourcePath.path).segments.at(-1)?.id;
+          if (
+            sourceId &&
+            parseGooglePath(parent.path).segments.some((segment) => segment.id === sourceId)
+          )
+            throw new ApplicationError(applicationErrorCodes.providerConflict);
+        }
         const sameServer =
           sourceProfile.kind === 'sftp' && targetProfile.kind === 'sftp'
             ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
@@ -1552,7 +1733,12 @@ export class WorkspaceService {
         await this.transfers.retry(request.id, request.resume);
         break;
       case 'resolve-conflict':
-        await this.transfers.resolveConflict(request.id, request.policy, request.applyToAll);
+        await this.transfers.resolveConflict(
+          request.id,
+          request.policy,
+          request.applyToAll,
+          request.targetPath,
+        );
         break;
       case 'pick-private-key':
         privateKeyPath = await this.pickPrivateKey();

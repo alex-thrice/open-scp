@@ -64,8 +64,10 @@ to their respective owners; their use does not imply endorsement or affiliation.
   [official Mail.ru Cloud page](https://cloud.mail.ru/)
   ([original SVG](https://cloud.imgsmail.ru/cloud.mail.ru/hashes/img/54cbc3d30f0b1da1d208.svg)).
 
-Sources retrieved on 2026-10-19. The SVG files are stored locally and bundled; displaying
-the icons does not load images from either provider's servers.
+- `src/renderer/src/assets/providers/google-drive.png`: [official Google Drive product icon](https://www.gstatic.com/images/branding/product/1x/drive_2020q4_48dp.png).
+
+Sources retrieved on 2026-10-19. The icon assets are stored locally and bundled; displaying
+the icons does not load images from the providers' servers.
 
 ## Independent implementation and test tools
 

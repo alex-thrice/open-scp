@@ -6,7 +6,7 @@
 
 Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict
 TypeScript. The application includes local drive browsing, independent workspaces, encrypted
-connection profiles, SFTP, FTP, S3, Mail.ru Cloud and Yandex Disk browsing/file operations, and a shared streaming transfer queue
+connection profiles, SFTP, FTP, S3, Mail.ru Cloud, Yandex Disk and Google Drive browsing/file operations, and a shared streaming transfer queue
 for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. It also includes customizable Commander
 shortcuts, profile management, GitHub updates and live English/Russian localization.
 
@@ -195,3 +195,15 @@ Set `OPENSCP_YANDEX_CLIENT_ID` in a Git-ignored `.env.local` or GitHub Actions r
 variable when building. The value is excluded from sources; real-service acceptance remains
 pending. See [registration and setup](docs/user/yandex.md) and
 [OAuth/REST semantics](docs/architecture/yandex.md).
+
+## Google Drive
+
+Select **Connections → Connection → Google Drive** after configuring a **Desktop app** OAuth
+client. My Drive uses ID-based addresses, explicit native-document export, object permissions,
+trash and streaming/resumable transfers through the common queue. Duplicate names remain
+distinct; ambiguous overwrite requires selecting the target ID. Shortcuts are not traversed.
+Set `OPENSCP_GOOGLE_CLIENT_ID` outside Git; an optional desktop credential uses
+`OPENSCP_GOOGLE_CLIENT_SECRET`. CI reads the repository variable and optional Actions secret.
+The OAuth client is configured locally outside Git; real-account acceptance remains pending. Public OAuth verification
+is a separate release dependency. See [registration and acceptance](docs/user/google.md) and
+[provider semantics](docs/architecture/google.md).

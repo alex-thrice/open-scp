@@ -2,6 +2,13 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { useTranslation } from 'react-i18next';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import type { Appearance, WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
+import {
+  googleChildPath,
+  googleDisplayPath,
+  googleExportPath,
+  googleExportFormats,
+} from '@shared/models/google-path';
+import { GoogleAuthorizationControls } from './GoogleAuthorizationControls';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
 import { defaultKeyboardShortcuts } from '@shared/models/keyboard-shortcuts';
 import {
@@ -87,9 +94,10 @@ export const FilePane = ({
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
-  const yandexAuthorization = snapshot.yandexAuthorizations?.find(
-    (entry) => entry.profileId === session?.profileId,
-  );
+  const yandexAuthorization = (
+    kind === 'google' ? snapshot.googleAuthorizations : snapshot.yandexAuthorizations
+  )?.find((entry) => entry.profileId === session?.profileId);
+  const [exporting, setExporting] = useState(false);
   const reauthorizing = useRef(false);
   useEffect(() => {
     if (
@@ -218,7 +226,11 @@ export const FilePane = ({
   }, [completed, listing, load, ready, operation]);
   const currentPath = listing?.currentPath ?? session?.currentPath ?? initialPath ?? '';
   const isBucketList = isS3 && !!listing && !parseS3Path(listing.currentPath).bucket;
-  const writable = kind === 'local' || (session?.capabilities?.write === true && !isBucketList);
+  const writable =
+    kind === 'local' ||
+    (session?.capabilities?.write === true &&
+      !isBucketList &&
+      (kind !== 'google' || listing?.google?.canAddChildren === true));
   const title = session?.name ?? directoryName(currentPath);
   useEffect(() => {
     onLocation(side, {
@@ -247,6 +259,14 @@ export const FilePane = ({
   const selected = selection.filter((path) => entries.some((entry) => entry.path === path));
   const selectedEntry = entries.find((entry) => entry.path === selected[0]);
   const externalDrag = snapshot.externalDrags?.find((item) => item.workspaceId === paneId);
+  const selectedEntries = entries.filter((entry) => selected.includes(entry.path));
+  const googleCannotRead = selectedEntries.some(
+    (entry) =>
+      entry.google &&
+      ((entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
+        (entry.google.type === 'binary' && !entry.google.canDownload) ||
+        (entry.google.type === 'folder' && !entry.google.canListChildren)),
+  );
   const invalidSelection =
     !selected.length ||
     entries.some((entry) => selected.includes(entry.path) && entry.s3Kind === 'bucket');
@@ -286,7 +306,8 @@ export const FilePane = ({
         !ready ||
         busy ||
         loading ||
-        (kind !== 'local' && (!session?.capabilities?.createDirectory || isBucketList)),
+        (kind !== 'local' &&
+          (!session?.capabilities?.createDirectory || !writable || isBucketList)),
       run: () => begin('mkdir'),
     },
     {
@@ -306,6 +327,7 @@ export const FilePane = ({
         loading ||
         !destination?.ready ||
         !destination.writable ||
+        googleCannotRead ||
         (kind !== 'local' && !session?.capabilities?.read),
       run: () => {
         if (destination)
@@ -324,6 +346,7 @@ export const FilePane = ({
         !ready ||
         busy ||
         loading ||
+        selectedEntries.some((entry) => entry.google && !entry.google.canRename) ||
         (kind !== 'local' && !session?.capabilities?.rename),
       run: () => begin('rename'),
     },
@@ -334,6 +357,8 @@ export const FilePane = ({
       disabled:
         selected.length !== 1 ||
         selectedEntry?.kind !== 'file' ||
+        (!!selectedEntry.google &&
+          (!selectedEntry.google.canWrite || !selectedEntry.google.canDownload)) ||
         !ready ||
         busy ||
         loading ||
@@ -346,13 +371,14 @@ export const FilePane = ({
     },
     {
       id: 'delete',
-      label: t('operations.delete'),
+      label: t(kind === 'google' ? 'google.trash' : 'operations.delete'),
       shortcut: shortcuts.delete,
       disabled:
         invalidSelection ||
         !ready ||
         busy ||
         loading ||
+        selectedEntries.some((entry) => entry.google && !entry.google.canTrash) ||
         (kind !== 'local' && !session?.capabilities?.delete),
       run: () => begin('delete'),
     },
@@ -373,12 +399,29 @@ export const FilePane = ({
       },
     },
   ];
+  if (kind === 'google')
+    commands.push({
+      id: 'export',
+      label: t('google.export'),
+      disabled:
+        busy ||
+        loading ||
+        selected.length !== 1 ||
+        selectedEntry?.google?.type !== 'native' ||
+        !selectedEntry.google.canDownload ||
+        !googleExportFormats[selectedEntry.google.mimeType as keyof typeof googleExportFormats]
+          ?.length ||
+        !destination?.ready ||
+        !destination.writable,
+      run: () => setExporting(true),
+    });
   if (kind !== 'local')
     commands.push({
       id: 'externalDrag',
       label: t('fileDrag.prepare'),
       disabled:
         invalidSelection ||
+        googleCannotRead ||
         selected.length > 100 ||
         entries.some((entry) => selected.includes(entry.path) && entry.kind !== 'file') ||
         !ready ||
@@ -452,7 +495,7 @@ export const FilePane = ({
           <span className="source-state">
             {kind === 'local'
               ? t('ui.local')
-              : `${kind === 'mailru' ? t('mailru.name') : kind === 'yandex' ? t('yandex.name') : kind.toUpperCase()} · ${t(
+              : `${kind === 'mailru' ? t('mailru.name') : kind === 'google' ? t('google.name') : kind === 'yandex' ? t('yandex.name') : kind.toUpperCase()} · ${t(
                   session?.connectionStage
                     ? `connections.stages.${session.connectionStage}`
                     : `connections.states.${session?.state}`,
@@ -489,13 +532,15 @@ export const FilePane = ({
             className="address-form"
             onSubmit={(event) => {
               event.preventDefault();
-              if (ready && pathInput.current?.value) void load(pathInput.current.value);
+              if (ready && kind !== 'google' && pathInput.current?.value)
+                void load(pathInput.current.value);
             }}
           >
             <input
               ref={pathInput}
               aria-label={t('ui.editPath')}
-              defaultValue={currentPath}
+              defaultValue={listing?.displayPath ?? currentPath}
+              readOnly={kind === 'google'}
               disabled={!ready}
               title={currentPath}
               spellCheck={false}
@@ -655,9 +700,13 @@ export const FilePane = ({
       </CommanderSurface>
       {session?.authorizationRequired ? (
         <Dialog
-          title={t('yandex.authorizationTitle')}
+          title={t(kind === 'google' ? 'google.authorizationTitle' : 'yandex.authorizationTitle')}
           onClose={() => {
-            void run({ action: 'cancel-yandex-authorization', profileId: session.profileId });
+            void run({
+              action:
+                kind === 'google' ? 'cancel-google-authorization' : 'cancel-yandex-authorization',
+              profileId: session.profileId,
+            });
             void run({ action: 'cancel-connect', workspaceId: paneId });
           }}
           notice={
@@ -668,12 +717,20 @@ export const FilePane = ({
             ) : null
           }
         >
-          <p>{t('yandex.loginHint')}</p>
-          <YandexAuthorizationControls
-            profileId={session.profileId}
-            snapshot={snapshot}
-            run={run}
-          />
+          <p>{t(kind === 'google' ? 'google.loginHint' : 'yandex.loginHint')}</p>
+          {kind === 'google' ? (
+            <GoogleAuthorizationControls
+              profileId={session.profileId}
+              snapshot={snapshot}
+              run={run}
+            />
+          ) : (
+            <YandexAuthorizationControls
+              profileId={session.profileId}
+              snapshot={snapshot}
+              run={run}
+            />
+          )}
         </Dialog>
       ) : null}
       {session?.passwordRequired ? (
@@ -744,8 +801,57 @@ export const FilePane = ({
           </form>
         </Dialog>
       ) : null}
+      {exporting && selectedEntry?.google && destination ? (
+        <Dialog title={t('google.export')} onClose={() => setExporting(false)}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const mimeType = String(new FormData(event.currentTarget).get('mimeType'));
+              queueCopy([
+                copyRequest(
+                  paneId,
+                  kind,
+                  googleExportPath(selectedEntry.path, mimeType),
+                  destinationId,
+                  destination,
+                ),
+              ]);
+              setExporting(false);
+            }}
+          >
+            <label>
+              {t('google.exportFormat')}
+              <select name="mimeType" required>
+                {(
+                  googleExportFormats[
+                    selectedEntry.google.mimeType as keyof typeof googleExportFormats
+                  ] ?? []
+                ).map((format) => (
+                  <option key={format.mimeType} value={format.mimeType}>
+                    {format.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <p>{t('google.exportLimit')}</p>
+            <div className="dialog-actions">
+              <button type="button" onClick={() => setExporting(false)}>
+                {t('connections.cancel')}
+              </button>
+              <button className="primary">{t('operations.confirm')}</button>
+            </div>
+          </form>
+        </Dialog>
+      ) : null}
       {operation ? (
-        <Dialog title={t(`operations.${operation}`)} onClose={closeOperation}>
+        <Dialog
+          title={t(
+            operation === 'delete' && kind === 'google'
+              ? 'google.trash'
+              : `operations.${operation}`,
+          )}
+          onClose={closeOperation}
+        >
           {operation === 'rename' && isS3 ? (
             <p className="inline-error">{t('s3.renameWarning')}</p>
           ) : null}
@@ -759,13 +865,16 @@ export const FilePane = ({
                 if (listing) {
                   const separator =
                     kind === 'local' && listing.currentPath.includes('\\') ? '\\' : '/';
-                  const destinationPath = isS3
-                    ? s3Child(
-                        listing.currentPath,
-                        name,
-                        operation === 'mkdir' || selectedEntry?.s3Kind === 'prefix',
-                      )
-                    : `${listing.currentPath.replace(/[\\/]$/u, '')}${separator}${name}`;
+                  const destinationPath =
+                    kind === 'google'
+                      ? googleChildPath(listing.currentPath, name || 'unused')
+                      : isS3
+                        ? s3Child(
+                            listing.currentPath,
+                            name,
+                            operation === 'mkdir' || selectedEntry?.s3Kind === 'prefix',
+                          )
+                        : `${listing.currentPath.replace(/[\\/]$/u, '')}${separator}${name}`;
                   const paths =
                     operation === 'mkdir' || operation === 'createFile'
                       ? [destinationPath]
@@ -810,10 +919,10 @@ export const FilePane = ({
           >
             {operation === 'delete' ? (
               <>
-                <p>{t('commander.deleteSelection')}</p>
+                <p>{t(kind === 'google' ? 'google.trashHint' : 'commander.deleteSelection')}</p>
                 <ul className="operation-selection">
                   {selected.map((path) => (
-                    <li key={path}>{path}</li>
+                    <li key={path}>{kind === 'google' ? googleDisplayPath(path) : path}</li>
                   ))}
                 </ul>
                 {isS3 ? (
@@ -840,7 +949,7 @@ export const FilePane = ({
                   name="name"
                   required
                   autoFocus
-                  pattern={'[^\\x2f\\x5c]+'}
+                  pattern={kind === 'google' ? undefined : '[^\\x2f\\x5c]+'}
                   defaultValue={
                     operation === 'rename'
                       ? selectedEntry?.name

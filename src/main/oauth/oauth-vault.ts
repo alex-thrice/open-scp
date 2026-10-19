@@ -1,4 +1,7 @@
-import type { YandexConnectionProfile } from '@shared/models/connection-profile';
+import type {
+  GoogleConnectionProfile,
+  YandexConnectionProfile,
+} from '@shared/models/connection-profile';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from '../ipc/application-error';
 import type { CredentialService } from '../security/credential-service';
@@ -12,10 +15,15 @@ export class OAuthVault {
     private readonly store: ProfileStore,
     private readonly credentials: CredentialService,
     private readonly oauth: LoopbackOAuth,
+    private readonly kind: 'google' | 'yandex' = 'yandex',
   ) {}
-  private profile(id: string): YandexConnectionProfile {
+  private profile(id: string): GoogleConnectionProfile | YandexConnectionProfile {
     const profile = this.store.list().find((candidate) => candidate.id === id);
-    if (profile?.kind !== 'yandex')
+    if (
+      !profile ||
+      (profile.kind !== 'yandex' && profile.kind !== 'google') ||
+      profile.kind !== this.kind
+    )
       throw new ApplicationError(applicationErrorCodes.providerNotFound);
     return profile;
   }

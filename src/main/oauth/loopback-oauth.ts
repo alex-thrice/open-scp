@@ -24,6 +24,8 @@ export const oauthBundleSchema = z.strictObject({
 export type OAuthBundle = z.infer<typeof oauthBundleSchema>;
 export interface OAuthConfiguration {
   readonly clientId: string;
+  readonly clientSecret?: string;
+  readonly authorizationParameters?: Readonly<Record<string, string>>;
   readonly authorizationEndpoint: string;
   readonly tokenEndpoint: string;
   readonly callbackPath: string;
@@ -166,11 +168,11 @@ export class LoopbackOAuth {
       this.pending.set(state, { verifier, signal, finish });
       const url = new URL(this.configuration.authorizationEndpoint);
       url.search = new URLSearchParams({
+        ...(this.configuration.authorizationParameters ?? { force_confirm: 'yes' }),
         response_type: 'code',
         client_id: this.configuration.clientId,
         redirect_uri: redirectUri,
         scope: this.configuration.scopes.join(' '),
-        force_confirm: 'yes',
         state,
         code_challenge: createHash('sha256').update(verifier).digest('base64url'),
         code_challenge_method: 'S256',
@@ -211,6 +213,8 @@ export class LoopbackOAuth {
     this.clients.add(client);
     try {
       body.set('client_id', this.configuration.clientId);
+      if (this.configuration.clientSecret)
+        body.set('client_secret', this.configuration.clientSecret);
       const bytes = Buffer.from(body.toString());
       const pending = client.start(
         new URL(this.configuration.tokenEndpoint),
@@ -224,15 +228,29 @@ export class LoopbackOAuth {
       pending.request.end(bytes);
       const response = await pending.response;
       const text = await readHttpBody(response, 65536);
-      if (response.statusCode !== 200)
+      if (response.statusCode !== 200) {
+        let configurationError = false;
+        try {
+          const failure = z.object({ error: z.string() }).parse(JSON.parse(text));
+          configurationError = ['invalid_client', 'unauthorized_client', 'invalid_scope'].includes(
+            failure.error,
+          );
+        } catch {
+          configurationError = false;
+        }
         throw new ApplicationError(
-          response.statusCode === 400 || response.statusCode === 401 || response.statusCode === 403
-            ? applicationErrorCodes.oauthRequired
-            : applicationErrorCodes.connectionFailed,
+          configurationError
+            ? applicationErrorCodes.oauthConfiguration
+            : response.statusCode === 400 ||
+                response.statusCode === 401 ||
+                response.statusCode === 403
+              ? applicationErrorCodes.oauthRequired
+              : applicationErrorCodes.connectionFailed,
         );
+      }
       const result = z
         .object({
-          token_type: z.literal('bearer'),
+          token_type: z.string().refine((value) => value.toLowerCase() === 'bearer'),
           access_token: token,
           refresh_token: token.optional(),
           expires_in: z.number().finite().positive().optional(),

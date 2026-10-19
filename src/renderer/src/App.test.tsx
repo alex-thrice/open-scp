@@ -1052,7 +1052,7 @@ describe('App', () => {
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud', 'Yandex Disk']);
+    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud', 'Yandex Disk', 'Google Drive']);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();

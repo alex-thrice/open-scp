@@ -22,6 +22,9 @@ jobs:
     timeout-minutes: 60
     environment: release-signing
     env:
+      OPENSCP_YANDEX_CLIENT_ID: ${{ vars.OPENSCP_YANDEX_CLIENT_ID }}
+      OPENSCP_GOOGLE_CLIENT_ID: ${{ vars.OPENSCP_GOOGLE_CLIENT_ID }}
+      OPENSCP_GOOGLE_CLIENT_SECRET: ${{ secrets.OPENSCP_GOOGLE_CLIENT_SECRET }}
       APP_BUNDLE_ID: ${{ vars.APP_BUNDLE_ID }}
       APP_PRODUCT_NAME: ${{ vars.APP_PRODUCT_NAME }}
       APP_PUBLISHER: ${{ vars.APP_PUBLISHER }}

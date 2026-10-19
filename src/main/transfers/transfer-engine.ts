@@ -1,3 +1,10 @@
+import {
+  googleChildPath,
+  googleSiblingPath,
+  googlePathName,
+  parseGooglePath,
+} from '@shared/models/google-path';
+import { createGoogleProviderPath } from '@shared/models/provider-path';
 import { createHash, randomUUID } from 'node:crypto';
 import { basename, dirname, join, posix } from 'node:path';
 import type { FileSystemEntry } from '@shared/models/file-system-entry';
@@ -54,6 +61,8 @@ const localPath = (path: ProviderPath): string => {
   return path.path;
 };
 const childPath = (parent: ProviderPath, name: string): ProviderPath => {
+  if (parent.provider === 'google')
+    return createGoogleProviderPath(googleChildPath(parent.path, name));
   if (
     name === '.' ||
     name === '..' ||
@@ -78,20 +87,24 @@ const childPath = (parent: ProviderPath, name: string): ProviderPath => {
     : createRemoteProviderPath(parent.provider, posix.join(localPath(parent), name));
 };
 const siblingPath = (path: ProviderPath, name: string): ProviderPath =>
-  path.provider === 's3'
-    ? createS3ProviderPath(
-        path.bucket,
-        `${path.key.slice(0, (path.key.endsWith('/') ? path.key.slice(0, -1) : path.key).lastIndexOf('/') + 1)}${name}${path.key.endsWith('/') ? '/' : ''}`,
-      )
-    : path.provider === 'local'
-      ? createLocalProviderPath(join(dirname(path.path), name))
-      : createRemoteProviderPath(path.provider, posix.join(posix.dirname(localPath(path)), name));
+  path.provider === 'google'
+    ? createGoogleProviderPath(googleSiblingPath(path.path, name))
+    : path.provider === 's3'
+      ? createS3ProviderPath(
+          path.bucket,
+          `${path.key.slice(0, (path.key.endsWith('/') ? path.key.slice(0, -1) : path.key).lastIndexOf('/') + 1)}${name}${path.key.endsWith('/') ? '/' : ''}`,
+        )
+      : path.provider === 'local'
+        ? createLocalProviderPath(join(dirname(path.path), name))
+        : createRemoteProviderPath(path.provider, posix.join(posix.dirname(localPath(path)), name));
 const nameOf = (path: ProviderPath) =>
-  path.provider === 's3'
-    ? s3Name(path.key)
-    : path.provider === 'local'
-      ? basename(path.path)
-      : posix.basename(localPath(path));
+  path.provider === 'google'
+    ? googlePathName(path.path)
+    : path.provider === 's3'
+      ? s3Name(path.key)
+      : path.provider === 'local'
+        ? basename(path.path)
+        : posix.basename(localPath(path));
 const tryStat = async (
   provider: FileSystemProvider,
   path: ProviderPath,
@@ -287,6 +300,7 @@ export class TransferEngine {
       errorKey: null,
       conflictPath: null,
       conflictSourcePath: null,
+      conflictCandidates: undefined,
       conflictPolicy: _reviewReason ? 'ask' : snapshot.conflictPolicy,
     };
     this.persist();
@@ -296,6 +310,7 @@ export class TransferEngine {
     id: string,
     policy: TransferConflictPolicy,
     applyToAll: boolean,
+    targetPath?: string,
   ): Promise<void> {
     if (policy === 'ask' || policy === 'fail')
       throw new ApplicationError(applicationErrorCodes.providerConflict);
@@ -324,6 +339,18 @@ export class TransferEngine {
     const job = this.requireJob(id);
     if (job.snapshot.state !== 'requiring-review' || !job.snapshot.conflictPath)
       throw new ApplicationError(applicationErrorCodes.providerConflict);
+    if (job.snapshot.conflictCandidates?.length && policy === 'overwrite') {
+      const candidate = job.snapshot.conflictCandidates.find(
+        (candidate) => candidate.path === targetPath && candidate.writable,
+      );
+      if (!candidate || !job.snapshot.conflictSourcePath)
+        throw new ApplicationError(applicationErrorCodes.providerConflict);
+      job.pendingTargets.set(
+        job.snapshot.conflictSourcePath,
+        providerPathFromText(job.request.destinationPath, candidate.path),
+      );
+      job.conflictResolutions.set(candidate.path, policy);
+    }
     if (applyToAll) job.snapshot = { ...job.snapshot, conflictPolicy: policy };
     else job.conflictResolutions.set(job.snapshot.conflictPath, policy);
     void this.retry(id, true);
@@ -435,7 +462,15 @@ export class TransferEngine {
     const key = localPath(requested);
     const cached = job.targets.get(key);
     if (cached) return cached;
-    const existing = await tryStat(job.request.destination, requested);
+    const googleNew =
+      requested.provider === 'google' && !parseGooglePath(requested.path).segments.at(-1)?.id;
+    const candidates =
+      googleNew && job.request.destination.conflictCandidates
+        ? await job.request.destination.conflictCandidates(requested, {
+            signal: job.controller.signal,
+          })
+        : undefined;
+    const existing = candidates ? candidates[0] : await tryStat(job.request.destination, requested);
     if (!existing) {
       job.conflictResolutions.delete(key);
       job.pendingTargets.delete(localPath(sourcePath));
@@ -448,11 +483,19 @@ export class TransferEngine {
       job.pendingTargets.delete(localPath(sourcePath));
       return undefined;
     }
-    if (policy === 'ask') {
+    if (policy === 'ask' || (candidates && candidates.length > 1 && policy === 'overwrite')) {
       job.snapshot = {
         ...job.snapshot,
         state: 'requiring-review',
         conflictPath: key,
+        conflictCandidates:
+          candidates && candidates.length > 1
+            ? candidates.map((item) => ({
+                path: localPath(item.path),
+                name: item.name,
+                writable: item.kind === 'file' && item.google?.canWrite === true,
+              }))
+            : undefined,
         conflictSourcePath: localPath(sourcePath),
       };
       job.pendingTargets.set(localPath(sourcePath), requested);
@@ -467,13 +510,18 @@ export class TransferEngine {
         throw new ApplicationError(applicationErrorCodes.providerConflict);
       job.conflictResolutions.delete(key);
       job.pendingTargets.delete(localPath(sourcePath));
-      job.targets.set(key, requested);
-      job.overwriteTargets.add(key);
-      return requested;
+      const resolved = existing.path.provider === 'google' ? existing.path : requested;
+      job.targets.set(key, resolved);
+      job.overwriteTargets.add(localPath(resolved));
+      return resolved;
     }
     for (let index = 1; index <= 10000; index += 1) {
       const candidate = siblingPath(requested, `${nameOf(requested)} (${index})`);
-      if (!(await tryStat(job.request.destination, candidate))) {
+      if (
+        !(candidate.provider === 'google' && job.request.destination.conflictCandidates
+          ? (await job.request.destination.conflictCandidates(candidate)).length
+          : await tryStat(job.request.destination, candidate))
+      ) {
         job.conflictResolutions.delete(key);
         job.pendingTargets.delete(localPath(sourcePath));
         job.targets.set(key, candidate);
@@ -544,7 +592,7 @@ export class TransferEngine {
       childPath(createLocalProviderPath(dirname(requested.path)), basename(requested.path));
     if (requested.provider === 's3' && entry.kind === 'directory')
       requested = createS3ProviderPath(requested.bucket, s3Prefix(requested.key));
-    const target = await this.target(job, sourcePath, requested, entry);
+    let target = await this.target(job, sourcePath, requested, entry);
     if (target === undefined) {
       job.completed.set(key, entry.kind === 'file' ? entry.size : 0n);
       return;
@@ -552,12 +600,110 @@ export class TransferEngine {
     if (entry.kind === 'directory') {
       if (!(await tryStat(destination, target)))
         await destination.createDirectory(target, { signal: job.controller.signal });
+      if (target.provider === 'google') {
+        target = (await destination.stat(target, { signal: job.controller.signal })).path;
+        job.targets.set(localPath(requested), target);
+      }
       for (const child of await source.list(sourcePath, { signal: job.controller.signal }))
         await this.copy(job, child.path, childPath(target, child.name));
       return;
     }
     if (entry.kind !== 'file')
       throw new ApplicationError(applicationErrorCodes.providerUnsupported);
+    if (destination.kind === 'google') {
+      const partial = job.partials.get(key);
+      const previous =
+        partial && localPath(partial.temporary) === localPath(target) ? partial : undefined;
+      let offset = 0;
+      if (job.resume && previous) {
+        if (
+          previous.sourceSize !== entry.size ||
+          previous.modifiedAt !== entry.modifiedAt ||
+          previous.versionTag !== entry.versionTag ||
+          !source.capabilities.resumeRead ||
+          (sourcePath.provider === 'google' && parseGooglePath(sourcePath.path).exportMimeType)
+        )
+          throw new ApplicationError(applicationErrorCodes.unsafeResume);
+        if (!destination.resumeWriteOffset)
+          throw new ApplicationError(applicationErrorCodes.unsafeResume);
+        offset = await destination.resumeWriteOffset(target, {
+          expectedSize: entry.size,
+          overwrite: true,
+          signal: job.controller.signal,
+        });
+        this.progress(job, BigInt(offset));
+      }
+      job.partials.set(key, {
+        temporary: target,
+        sourceSize: entry.size,
+        modifiedAt: entry.modifiedAt,
+        versionTag: entry.versionTag,
+      });
+      const existing = await tryStat(destination, target);
+      const reader = (
+        await source.openRead(sourcePath, {
+          offset,
+          ...(entry.versionTag ? { versionTag: entry.versionTag } : {}),
+          signal: job.controller.signal,
+        })
+      ).getReader();
+      const writer = await destination
+        .openWrite(target, {
+          overwrite: job.overwriteTargets.has(localPath(target)) && existing !== undefined,
+          expectedSize: entry.size,
+          ...(job.resume && previous ? { offset } : {}),
+          onProgress: (bytes) => this.progress(job, BigInt(bytes)),
+          ...(existing?.versionTag ? { versionTag: existing.versionTag } : {}),
+          signal: job.controller.signal,
+        })
+        .then((stream) => stream.getWriter())
+        .catch(async (error: unknown) => {
+          await reader.cancel();
+          throw error;
+        });
+      try {
+        while (true) {
+          this.check(job);
+          const part = await reader.read();
+          if (part.done) break;
+          await writer.write(part.value);
+        }
+        const current = await source.stat(sourcePath, { signal: job.controller.signal });
+        if (
+          current.size !== entry.size ||
+          current.modifiedAt !== entry.modifiedAt ||
+          current.versionTag !== entry.versionTag
+        )
+          throw new ApplicationError(applicationErrorCodes.unsafeResume);
+        this.check(job);
+        job.publishing = true;
+        this.persist();
+        try {
+          await writer.close();
+        } catch (error) {
+          if (
+            error instanceof Error &&
+            'code' in error &&
+            error.code === applicationErrorCodes.unsafeResume
+          ) {
+            job.publishing = false;
+            throw error;
+          }
+          this.pauseForConflict(job, sourcePath, target, error);
+        }
+        job.publishing = false;
+        job.completed.set(key, entry.size);
+        job.partials.delete(key);
+      } catch (error) {
+        await writer.abort().catch(() => undefined);
+        throw error;
+      } finally {
+        await reader.cancel().catch(() => undefined);
+        reader.releaseLock();
+        writer.releaseLock();
+      }
+      return;
+    }
     if (destination.kind === 's3') {
       const existing = await tryStat(destination, target);
       const reader = (
@@ -641,6 +787,7 @@ export class TransferEngine {
         partial.modifiedAt !== entry.modifiedAt ||
         partial.versionTag !== entry.versionTag ||
         !source.capabilities.resumeRead ||
+        (sourcePath.provider === 'google' && !!parseGooglePath(sourcePath.path).exportMimeType) ||
         !destination.capabilities.resumeWrite
       )
         throw new ApplicationError(applicationErrorCodes.unsafeResume);

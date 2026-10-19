@@ -20,6 +20,22 @@ Compose-проекта `openscp-integration`. Сгенерированный к�
 
 ## Только фиктивные credentials
 
+T33 использует `tests/fixtures/google-fixture.ts`: desktop OAuth/PKCE с Bearer, ID-дерево
+с одинаковыми именами, capabilities, native export и resumable sessions. Unit/Electron без
+реального Google-аккаунта; cross-provider SFTP/FTP/S3 требуют Docker.
+
+```sh
+pnpm exec vitest run google
+pnpm exec vitest run --config vitest.integration.config.ts tests/integration/google-transfers.test.ts
+pnpm build
+pnpm exec playwright test tests/e2e/google-transfer.spec.ts
+```
+
+Проверяются точный ID при замене, запрет native overwrite/shortcut traversal, права, корзина,
+потоковые файлы, отмена/resume с проверкой offset и источника, истечение сессии, quota/rate,
+refresh/отзыв, clone/import, Electron restart и явный export PDF.
+Реальный smoke и публичная OAuth verification: [чеклист Google](../user/google.md).
+
 T32 использует `tests/fixtures/yandex-fixture.ts` с фиктивным Client ID и токенами на случайном
 loopback-порту. Реальный браузер/аккаунт для этих проверок не нужен. Модульные и Electron-тесты
 работают без Docker; переносы Яндекс ↔ SFTP/FTP/S3 требуют контейнеров ниже:

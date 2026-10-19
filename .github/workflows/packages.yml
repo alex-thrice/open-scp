@@ -12,6 +12,8 @@ jobs:
   packages:
     name: Package and install on ${{ matrix.os }}
     env:
+      OPENSCP_GOOGLE_CLIENT_ID: ${{ vars.OPENSCP_GOOGLE_CLIENT_ID }}
+      OPENSCP_GOOGLE_CLIENT_SECRET: ${{ secrets.OPENSCP_GOOGLE_CLIENT_SECRET }}
       OPENSCP_YANDEX_CLIENT_ID: ${{ vars.OPENSCP_YANDEX_CLIENT_ID }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30

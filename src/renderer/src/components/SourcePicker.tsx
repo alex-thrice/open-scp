@@ -10,7 +10,7 @@ interface SourceItem {
   readonly id: string;
   readonly name: string;
   readonly detail: string;
-  readonly kind: 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
+  readonly kind: 'google' | 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
   readonly image: string | undefined;
 }
 
@@ -116,8 +116,8 @@ export const SourcePicker = ({
               ? item.host
               : item.kind === 'mailru'
                 ? item.username
-                : item.kind === 'yandex'
-                  ? (item.accountName ?? t('yandex.name'))
+                : item.kind === 'yandex' || item.kind === 'google'
+                  ? (item.accountName ?? t(item.kind === 'google' ? 'google.name' : 'yandex.name'))
                   : item.bucket || item.endpoint || item.region,
           kind: item.kind,
           image: undefined,
