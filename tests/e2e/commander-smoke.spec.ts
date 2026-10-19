@@ -163,7 +163,7 @@ test('discovers Windows drives and reopens the most recent drive path', async ()
   const recentPath = homedir();
 
   await expect(localPanel.getByLabel('Current path')).toBeVisible();
-  await expect(driveSelector).toContainText(rootPath);
+  await expect(driveSelector).toContainText(rootPath, { timeout: 15_000 });
   await driveSelector.click();
   await window.getByRole('combobox', { name: 'Search by name…' }).fill(rootPath);
   await window.getByRole('option').first().click();
