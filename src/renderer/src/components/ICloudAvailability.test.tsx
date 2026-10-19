@@ -75,7 +75,7 @@ describe('iCloud availability in connection selectors', () => {
       <ConnectionEditor
         snapshot={snapshot}
         profile={profile}
-        run={vi.fn()}
+        run={vi.fn(async () => undefined)}
         onClose={vi.fn()}
         errorKey={null}
       />,

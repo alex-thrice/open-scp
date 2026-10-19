@@ -9,6 +9,8 @@ import { WorkspaceService } from '../../src/main/sessions/workspace-service';
 import { workspaceRequestSchema, workspaceSnapshotSchema } from '../../src/shared/ipc/workspace';
 import { startICloudFixture } from '../fixtures/icloud-harness';
 import { join } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import { workspaceResultSchema } from '../../src/shared/ipc/workspace';
 
 const setup = () => {
   const database = openDatabase(':memory:');
@@ -121,6 +123,51 @@ describe('iCloud workspace profiles', () => {
     expect(data.store.getSetting('rclone-path')).toBe('');
   });
 
+  it('configures a new account, refreshes sources and saves no Apple credentials in profiles', async () => {
+    const id = randomUUID();
+    const started = await service.execute({
+      action: 'start-icloud-configuration',
+      id,
+      remote: 'new_account',
+      appleId: 'workspace-canary@example.invalid',
+      password: 'password-canary',
+    });
+    expect(started.icloudConfiguration).toMatchObject({
+      status: 'question',
+      kind: 'verification-code',
+    });
+    expect(workspaceResultSchema.safeParse(started).success).toBe(true);
+    await expect(
+      service.execute({ action: 'set-rclone-path', path: join(fixture.root, 'other.exe') }),
+    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
+    expect(data.store.list()).toHaveLength(0);
+    const complete = await service.execute({
+      action: 'continue-icloud-configuration',
+      id,
+      answer: '123456',
+    });
+    expect(complete.icloudConfiguration).toEqual({ id, status: 'complete' });
+    expect(complete.snapshot.icloudRemotes).toContain('new_account');
+    await service.execute({
+      action: 'save-icloud-profile',
+      profile: { ...draft, remote: 'new_account' },
+    });
+    expect(exportProfiles(data.store)).not.toMatch(/workspace-canary|password-canary|123456/u);
+    expect(JSON.stringify(service.snapshot())).not.toMatch(
+      /workspace-canary|password-canary|123456/u,
+    );
+    expect(
+      workspaceRequestSchema.safeParse({
+        action: 'start-icloud-configuration',
+        id,
+        remote: 'icloud',
+        appleId: 'test@example.invalid',
+        password: 'test',
+        executable: 'other.exe',
+      }).success,
+    ).toBe(false);
+  });
+
   it('connects both panes, runs filesystem operations and restores the last directory', async () => {
     const saved = await service.execute({ action: 'save-icloud-profile', profile: draft });
     const profileId = saved.savedProfileId ?? '';
@@ -147,7 +194,27 @@ describe('iCloud workspace profiles', () => {
   });
 
   it('rejects command, remote and executable injection across IPC and import', () => {
-    for (const remote of [':local:', 'icloud:', '--config', 'x,y=z', 'x\ny', '../x', ''])
+    for (const remote of ['user+tag@example.invalid', 'Рабочий диск', 'profile.name', '9account'])
+      expect(
+        workspaceRequestSchema.safeParse({
+          action: 'save-icloud-profile',
+          profile: { ...draft, remote },
+        }).success,
+      ).toBe(true);
+    for (const remote of [
+      ':local:',
+      'icloud:',
+      '--config',
+      'x,y=z',
+      'x\ny',
+      '../x',
+      '',
+      ' name',
+      'name ',
+      'a',
+      'user!mail@example.invalid',
+      'x'.repeat(321),
+    ])
       expect(
         workspaceRequestSchema.safeParse({
           action: 'save-icloud-profile',

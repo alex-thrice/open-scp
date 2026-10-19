@@ -41,6 +41,7 @@ import { ICloudConnection } from '../providers/icloud/icloud-connection';
 import { ICloudProvider } from '../providers/icloud/icloud-provider';
 import { createRcloneLauncher, type RcloneLauncher } from '../providers/icloud/rclone-process';
 import { discoverICloudAvailability } from '../providers/icloud/icloud-availability';
+import { ICloudConfiguration } from '../providers/icloud/icloud-configuration';
 import { GoogleProvider } from '../providers/google/google-provider';
 import { GoogleConnection } from '../providers/google/google-connection';
 import {
@@ -210,6 +211,7 @@ export class WorkspaceService {
   private rcloneAvailable: boolean;
   private icloudRemotes: readonly string[];
   private icloudAvailabilityVersion = 0;
+  private readonly icloudConfiguration: ICloudConfiguration;
   private readonly google: GoogleAuthorization;
   private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
@@ -245,6 +247,10 @@ export class WorkspaceService {
   ) {
     this.rcloneAvailable = externalActions.rcloneAvailable ?? false;
     this.icloudRemotes = externalActions.icloudRemotes ?? [];
+    this.icloudConfiguration = new ICloudConfiguration((profile) => {
+      const path = this.store.getSetting('rclone-path');
+      return this.externalActions.icloudLaunch ?? createRcloneLauncher(profile, () => path);
+    });
     this.google = new GoogleAuthorization(
       store,
       credentials,
@@ -463,6 +469,7 @@ export class WorkspaceService {
     return this.store.getSetting('remember-paths') !== 'false';
   }
   public dispose(): void {
+    this.icloudConfiguration.dispose();
     this.yandex.dispose();
     this.google.dispose();
     for (const edit of this.profileEdits.values()) edit.rollback();
@@ -978,6 +985,7 @@ export class WorkspaceService {
     let savedProfileId: string | undefined;
     let profileEditId: string | undefined;
     let connectionTest: WorkspaceResult['connectionTest'];
+    let icloudConfiguration: WorkspaceResult['icloudConfiguration'];
     switch (request.action) {
       case 'begin-profile-edit': {
         if (
@@ -1059,6 +1067,7 @@ export class WorkspaceService {
         if (request.path && !isAbsolute(request.path))
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
         if (
+          this.icloudConfiguration.active ||
           [...this.sessions].some(
             ([workspaceId, provider]) =>
               provider.kind === 'icloud' &&
@@ -1072,6 +1081,23 @@ export class WorkspaceService {
         break;
       }
       case 'refresh-rclone':
+        await this.refreshICloudAvailability();
+        break;
+      case 'start-icloud-configuration':
+        icloudConfiguration = await this.icloudConfiguration.start(
+          request.id,
+          request.remote,
+          request.appleId,
+          request.password,
+        );
+        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        break;
+      case 'continue-icloud-configuration':
+        icloudConfiguration = await this.icloudConfiguration.continue(request.id, request.answer);
+        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        break;
+      case 'cancel-icloud-configuration':
+        await this.icloudConfiguration.cancel(request.id);
         await this.refreshICloudAvailability();
         break;
       case 'set-editor-path':
@@ -1885,6 +1911,7 @@ export class WorkspaceService {
       ...(savedProfileId ? { savedProfileId } : {}),
       ...(profileEditId ? { profileEditId } : {}),
       ...(connectionTest ? { connectionTest } : {}),
+      ...(icloudConfiguration ? { icloudConfiguration } : {}),
     };
   }
 }

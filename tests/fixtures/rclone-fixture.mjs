@@ -1,13 +1,21 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdir, readFile, readdir, rename, rm, rmdir, stat } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
 import { dirname, join, relative, resolve, sep, basename } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import process from 'node:process';
+import { Buffer } from 'node:buffer';
 import { setTimeout } from 'node:timers/promises';
 
 const root = resolve(process.env.OPENSCP_RCLONE_FIXTURE_ROOT);
 const [command, ...args] = process.argv.slice(2);
 const operands = args.filter((argument) => !argument.startsWith('--'));
+const configPath = join(root, 'gui-config.json');
+let configured = {};
+try {
+  configured = JSON.parse(await readFile(configPath, 'utf8'));
+} catch {
+  /* Конфигурация создаётся по требованию. */
+}
 let behavior = {};
 try {
   behavior = JSON.parse(await readFile(join(root, 'behavior.json'), 'utf8'));
@@ -43,16 +51,76 @@ const entry = async (path, entryPath) => {
   };
 };
 try {
-  if (command === 'version') {
+  if (command === 'obscure') {
+    const chunks = [];
+    for await (const chunk of process.stdin) chunks.push(chunk);
+    process.stdout.write(
+      `fixture_012345678901234567890123_${Buffer.concat(chunks).toString('base64url')}\n`,
+    );
+  } else if (command === 'config') {
+    const [operation, remote] = operands;
+    const respond = (state, name, extra = {}) =>
+      process.stdout.write(
+        JSON.stringify({
+          State: state,
+          Error: '',
+          Option: name ? { Name: name, ...extra } : null,
+        }),
+      );
+    const result = process.env.RCLONE_RESULT ?? '';
+    if (operation === 'delete') {
+      configured = Object.fromEntries(
+        Object.entries(configured).filter(([name]) => name !== remote),
+      );
+      await writeFile(configPath, JSON.stringify(configured));
+    } else if (operation === 'create') {
+      configured[remote] = { type: 'iclouddrive' };
+      await writeFile(configPath, JSON.stringify(configured));
+      respond('service', 'service');
+    } else if (operation === 'update') {
+      const state = process.env.RCLONE_STATE;
+      if (state === 'service') respond('apple', 'apple_id');
+      else if (state === 'apple') {
+        configured[remote].apple_id = result;
+        respond('password', 'password');
+      } else if (state === 'password') {
+        configured[remote].password = result;
+        if (behavior.setupDelay) await setTimeout(behavior.setupDelay);
+        respond('advanced', 'config_fs_advanced');
+      } else if (state === 'advanced') respond('2fa', 'config_2fa');
+      else if (state === '2fa' && result === 'sms')
+        respond('phone', 'config_2fa_phone', {
+          Examples: [
+            { Value: '1_sms', Help: '+1 ••••12' },
+            { Value: '2_sms', Help: '+1 ••••34' },
+          ],
+        });
+      else if (state === 'phone') respond('sms', 'config_2fa_sms');
+      else if (['2fa', 'sms'].includes(state) && result === '123456') respond('');
+      else {
+        process.stdout.write(
+          JSON.stringify({
+            State: state,
+            Option: { Name: state === 'sms' ? 'config_2fa_sms' : 'config_2fa' },
+            Error: 'secret-error-canary',
+          }),
+        );
+      }
+      await writeFile(configPath, JSON.stringify(configured));
+    }
+  } else if (command === 'version') {
     process.stdout.write(behavior.versionOutput ?? 'rclone v1.75.2\n');
   } else if (command === 'listremotes') {
-    const remotes = behavior.remotes ?? {
-      icloud: behavior.remoteType ?? 'iclouddrive',
-      second: 'iclouddrive',
+    const remotes = {
+      ...(behavior.remotes ?? {
+        icloud: behavior.remoteType ?? 'iclouddrive',
+        second: 'iclouddrive',
+      }),
+      ...Object.fromEntries(Object.entries(configured).map(([name, value]) => [name, value.type])),
     };
     process.stdout.write(
       Object.entries(remotes)
-        .map(([name, type]) => `${name}: ${type}\n`)
+        .map(([name, type]) => (args.includes('--long') ? `${name}: ${type}\n` : `${name}:\n`))
         .join(''),
     );
   } else if (command === 'lsjson') {
@@ -61,9 +129,14 @@ try {
       process.exit(0);
     }
     const path = pathFor(operands[0]);
-    const result = args.includes('--stat')
-      ? await entry(path, basename(path))
-      : await Promise.all((await readdir(path)).map((name) => entry(join(path, name), name)));
+    let result;
+    if (args.includes('--stat')) {
+      const item = await entry(path, basename(path));
+      result = item.IsDir ? { ...item, Name: '', Path: '' } : item;
+    } else
+      result = await Promise.all(
+        (await readdir(path)).map((name) => entry(join(path, name), name)),
+      );
     process.stdout.write(JSON.stringify(result));
   } else if (command === 'mkdir') {
     await mkdir(pathFor(operands[0]), { recursive: true });

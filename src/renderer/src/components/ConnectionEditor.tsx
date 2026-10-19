@@ -131,6 +131,7 @@ export const ConnectionEditor = ({
   );
   return kind === 'icloud' ? (
     <ICloudConnectionForm
+      icloudRemotes={snapshot.icloudRemotes ?? []}
       initialName={nameDraft}
       profile={profile?.kind === 'icloud' ? profile : undefined}
       run={execute}

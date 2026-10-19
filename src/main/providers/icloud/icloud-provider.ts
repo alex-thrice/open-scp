@@ -82,7 +82,10 @@ export class ICloudProvider implements FileSystemProvider {
     const parsed = entrySchema.safeParse(value);
     if (!parsed.success) throw icloudFailure('ioError', operation);
     const item = parsed.data;
-    if ((!item.IsDir && item.Size < 0) || (path !== '/' && posix.basename(path) !== item.Name))
+    // lsjson --stat возвращает пустые Name и Path для корня запрошенного каталога.
+    const name =
+      item.IsDir && item.Name === '' && item.Path === '' ? posix.basename(path) : item.Name;
+    if ((!item.IsDir && item.Size < 0) || (path !== '/' && posix.basename(path) !== name))
       throw icloudFailure('ioError', operation);
     const modifiedAt =
       item.ModTime && Number.isFinite(Date.parse(item.ModTime))
@@ -90,7 +93,7 @@ export class ICloudProvider implements FileSystemProvider {
         : undefined;
     return {
       kind: item.IsDir ? 'directory' : 'file',
-      name: path === '/' ? '/' : item.Name,
+      name: path === '/' ? '/' : name,
       path: createRemoteProviderPath('icloud', path),
       size: BigInt(Math.max(0, item.Size)),
       ...(modifiedAt ? { modifiedAt } : {}),

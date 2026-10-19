@@ -1199,7 +1199,7 @@ describe('App', () => {
     expect(screen.queryByLabelText('Password')).toBeNull();
     fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'icloud' } });
     expect(screen.getByLabelText('Connection name in rclone')).toBeTruthy();
-    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.getByLabelText('Apple Account password')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '← All connections' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();

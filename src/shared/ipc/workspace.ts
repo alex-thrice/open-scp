@@ -4,7 +4,11 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
-import { icloudProfileDraftSchema, icloudRemoteSchema } from '@shared/models/icloud-profile';
+import {
+  icloudConfigurationResultSchema,
+  icloudProfileDraftSchema,
+  icloudRemoteSchema,
+} from '@shared/models/icloud-profile';
 import { googleProfileDraftSchema } from '@shared/models/google-profile';
 import { googleEntrySchema } from '@shared/models/google-entry';
 import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
@@ -51,6 +55,23 @@ export const profileDraftSchema = z.strictObject({
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('save-icloud-profile'), profile: icloudProfileDraftSchema }),
+  z.strictObject({
+    action: z.literal('start-icloud-configuration'),
+    id,
+    remote: icloudRemoteSchema,
+    appleId: z.string().trim().email().max(320),
+    password: z
+      .string()
+      .min(1)
+      .max(4096)
+      .regex(/^[^\r\n\0]+$/u),
+  }),
+  z.strictObject({
+    action: z.literal('continue-icloud-configuration'),
+    id,
+    answer: z.string().trim().min(1).max(128),
+  }),
+  z.strictObject({ action: z.literal('cancel-icloud-configuration'), id }),
   z.strictObject({ action: z.literal('save-google-profile'), profile: googleProfileDraftSchema }),
   z.strictObject({ action: z.literal('authorize-google-profile'), profileId: id }),
   z.strictObject({ action: z.literal('cancel-google-authorization'), profileId: id }),
@@ -388,6 +409,7 @@ export const workspaceSnapshotSchema = z.strictObject({
 });
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export const workspaceResultSchema = z.strictObject({
+  icloudConfiguration: icloudConfigurationResultSchema.optional(),
   connectionTest: z
     .discriminatedUnion('status', [
       z.strictObject({ status: z.literal('success') }),

@@ -13,11 +13,15 @@ export const startICloudFixture = async () => {
   await mkdir(join(root, 'icloud'));
   await mkdir(join(root, 'second'));
   const children = new Set<ChildProcessWithoutNullStreams>();
-  const launch: RcloneLauncher = (args) => {
+  const launch: RcloneLauncher = (args, input) => {
     const child = spawn(process.execPath, [resolve('tests/fixtures/rclone-fixture.mjs'), ...args], {
       windowsHide: true,
       stdio: 'pipe',
-      env: { ...process.env, OPENSCP_RCLONE_FIXTURE_ROOT: root },
+      env: {
+        ...process.env,
+        OPENSCP_RCLONE_FIXTURE_ROOT: root,
+        ...(input ? { RCLONE_STATE: input.state, RCLONE_RESULT: input.result } : {}),
+      },
     });
     children.add(child);
     child.once('close', () => children.delete(child));

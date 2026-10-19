@@ -10,6 +10,8 @@ import {
 } from '@playwright/test';
 import { nativeKeyringLaunchOptions } from './electron-launch';
 import type { DesktopApi } from '../../src/shared/desktop-api';
+import { ipcRequestChannels } from '../../src/shared/ipc/channels';
+import type { WorkspaceSnapshot } from '../../src/shared/ipc/workspace';
 
 const archive = JSON.stringify({
   version: 1,
@@ -146,12 +148,13 @@ test('rclone settings immediately update availability and survive restart withou
     await window.getByRole('button', { name: 'Connections', exact: true }).click();
     await window.getByRole('button', { name: 'Connection', exact: true }).click();
     await window.getByLabel('Connection type').selectOption('icloud');
-    await window.getByLabel('Profile name', { exact: true }).fill('Pending iCloud');
-    await window.getByLabel('Connection name in rclone').fill('pending');
-    await window.getByRole('button', { name: 'Save profile', exact: true }).click();
+    await window.getByLabel('Account setup', { exact: true }).selectOption('existing');
+    await expect(window.getByLabel('Connection name in rclone')).toBeDisabled();
+    await expect(window.getByRole('button', { name: 'Save profile', exact: true })).toBeDisabled();
     await expect(
-      window.getByRole('button', { name: 'Edit: Pending iCloud', exact: true }),
-    ).toBeVisible();
+      window.getByRole('button', { name: 'Refresh connections', exact: true }),
+    ).toBeEnabled();
+    await window.getByRole('button', { name: 'Cancel', exact: true }).click();
     await window
       .getByRole('dialog', { name: 'Connections', exact: true })
       .getByRole('button', { name: 'Close', exact: true })
@@ -168,6 +171,17 @@ test('rclone settings immediately update availability and survive restart withou
     await window.screenshot({ path: resolve('tests/fixtures/runtime/rclone-settings.png') });
     await window.getByRole('button', { name: 'Done', exact: true }).click();
     await expectSource(window, true);
+    await window.getByRole('button', { name: 'Connections', exact: true }).click();
+    await window.getByRole('button', { name: 'Connection', exact: true }).click();
+    await window.getByLabel('Connection type').selectOption('icloud');
+    await window.getByLabel('Account setup', { exact: true }).selectOption('existing');
+    await expect(window.getByLabel('Connection name in rclone')).toBeEnabled();
+    await window.getByLabel('Connection name in rclone').selectOption('icloud');
+    await window.getByLabel('Profile name', { exact: true }).fill('Existing iCloud');
+    await window.getByRole('button', { name: 'Save profile', exact: true }).click();
+    await expect(
+      window.getByRole('button', { name: 'Edit: Existing iCloud', exact: true }),
+    ).toBeVisible();
     await application.close();
     await writeFile(config, '[other]\ntype = local\n');
     application = await launch();
@@ -183,6 +197,146 @@ test('rclone settings immediately update availability and survive restart withou
     window = await application.firstWindow();
     await expectCreation(window, true);
     await expectSource(window, true);
+  } finally {
+    await application?.close();
+    await rm(root, { recursive: true, force: true });
+    await rm(userData, { recursive: true, force: true });
+  }
+});
+
+test('iCloud sign-in form handles simulated 2FA, SMS selection, saving and cancellation', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'openscp-icloud-wizard-'));
+  const userData = await mkdtemp(join(tmpdir(), 'openscp-icloud-wizard-user-'));
+  const packagedPath = process.env.OPENSCP_PACKAGED_EXE;
+  let application: ElectronApplication | undefined;
+  try {
+    application = await electron.launch({
+      ...nativeKeyringLaunchOptions(packagedPath),
+      args: [
+        '--disable-gpu',
+        '--in-process-gpu',
+        '--no-sandbox',
+        `--user-data-dir=${userData}`,
+        ...(packagedPath ? [] : [resolve('out/main/index.js')]),
+      ],
+      env: {
+        ...process.env,
+        OPENSCP_DISABLE_HARDWARE_ACCELERATION: '1',
+        OPENSCP_LOCAL_ROOT: root,
+        OPENSCP_RCLONE_PATH: join(root, 'missing-rclone.exe'),
+      },
+    });
+    const page = await application.firstWindow();
+    const snapshot = await page.evaluate(async () => {
+      const response = await (Reflect.get(globalThis, 'desktop') as DesktopApi).workspace({
+        action: 'snapshot',
+      });
+      if (!response.ok) throw new Error(response.error.code);
+      return response.data.snapshot;
+    });
+    await application.evaluate(
+      ({ ipcMain }, { channel, snapshot }) => {
+        const state: WorkspaceSnapshot = { ...snapshot, rcloneAvailable: true, icloudRemotes: [] };
+        let remote = '';
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel, (_event, request) => {
+          const payload = request.payload;
+          const data: Record<string, unknown> = {
+            snapshot: state,
+            listing: null,
+            privateKeyPath: null,
+          };
+          if (payload.action === 'start-icloud-configuration') {
+            remote = payload.remote;
+            data.icloudConfiguration = {
+              id: payload.id,
+              status: 'question',
+              kind: 'verification-code',
+              choices: [],
+              retry: false,
+            };
+          } else if (payload.action === 'continue-icloud-configuration') {
+            data.icloudConfiguration =
+              payload.answer === '123456'
+                ? { id: payload.id, status: 'complete' }
+                : {
+                    id: payload.id,
+                    status: 'question',
+                    kind:
+                      payload.answer === 'sms'
+                        ? 'phone'
+                        : payload.answer === '1_sms'
+                          ? 'sms-code'
+                          : 'verification-code',
+                    choices:
+                      payload.answer === 'sms' ? [{ value: '1_sms', label: '+1 ••••12' }] : [],
+                    retry: payload.answer === '000000',
+                  };
+            if (payload.answer === '123456') state.icloudRemotes = [remote];
+          } else if (payload.action === 'begin-profile-edit')
+            data.profileEditId = 'b13670f7-c900-41d8-a6b0-c4b1f7f961ba';
+          else if (payload.action === 'save-icloud-profile') {
+            state.profiles = [...state.profiles, { ...payload.profile, kind: 'icloud' }];
+            data.savedProfileId = payload.profile.id;
+          }
+          return { correlationId: request.correlationId, ok: true, data };
+        });
+      },
+      { channel: ipcRequestChannels.workspace, snapshot },
+    );
+    await page.getByRole('button', { name: 'Connections', exact: true }).click();
+    await page.getByRole('button', { name: 'Connection', exact: true }).click();
+    await page.getByLabel('Connection type').selectOption('icloud');
+    await page.getByLabel('Profile name', { exact: true }).fill('GUI Apple account');
+    await expect(page.getByLabel('Connection name in rclone')).toBeDisabled();
+    await page.getByLabel('Apple Account email').fill('gui+tag@example.invalid');
+    await expect(page.getByLabel('Connection name in rclone')).toHaveValue(
+      'gui+tag@example.invalid',
+    );
+    await page.getByLabel('Apple Account password').fill('gui-password-canary');
+    await page
+      .getByRole('dialog')
+      .screenshot({ path: test.info().outputPath('icloud-account-form.png') });
+    await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+    await expect(page.getByLabel('Verification code')).toBeFocused();
+    await page.getByLabel('Verification code').fill('000000');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page.getByRole('alert')).toContainText('The answer was not accepted');
+    await page.getByRole('button', { name: 'Send code by SMS', exact: true }).click();
+    await expect(page.getByLabel('Trusted phone number')).toHaveValue('1_sms');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(page.getByRole('status')).toContainText('sent by SMS');
+    await page
+      .getByRole('dialog')
+      .screenshot({ path: test.info().outputPath('icloud-verification.png') });
+    await page.getByLabel('Verification code').fill('123456');
+    await page.getByRole('button', { name: 'Continue', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Edit: GUI Apple account', exact: true }),
+    ).toBeVisible();
+    await page.getByRole('button', { name: 'Edit: GUI Apple account', exact: true }).click();
+    await expect(page.getByLabel('Connection name in rclone')).toBeEnabled();
+    await expect(
+      page.getByRole('combobox', { name: 'Connection name in rclone', exact: true }),
+    ).toHaveValue('gui+tag@example.invalid');
+    await page
+      .getByRole('dialog')
+      .screenshot({ path: test.info().outputPath('icloud-existing-connections.png') });
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await page.getByRole('button', { name: 'Connection', exact: true }).click();
+    await page.getByLabel('Connection type').selectOption('icloud');
+    await page.getByLabel('Profile name', { exact: true }).fill('Cancelled account');
+    await page.getByLabel('Apple Account email').fill('cancelled@example.invalid');
+    await page.getByLabel('Apple Account password').fill('cancel-password-canary');
+    await page.getByRole('button', { name: 'Save profile', exact: true }).click();
+    await expect(page.getByLabel('Verification code')).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Edit: Cancelled account', exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('button', { name: 'Edit: GUI Apple account', exact: true }),
+    ).toBeVisible();
   } finally {
     await application?.close();
     await rm(root, { recursive: true, force: true });

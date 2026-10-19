@@ -17,7 +17,7 @@ export const resources = {
           'Choose the rclone executable or its folder. Leave the path empty for automatic detection. Saving this setting immediately refreshes availability and the connection list.',
         ready: 'rclone is ready. Configured iCloud connections: {{count}}.',
         noRemotes:
-          'rclone is ready. You can create an iCloud profile. Configure your Apple account using rclone config before connecting.',
+          'rclone is ready. You can create an iCloud profile and sign in to your Apple account in the connection form.',
         unavailable:
           'rclone was not found or could not be started. Select its executable or the folder containing it.',
         check: 'Check rclone',
@@ -26,9 +26,36 @@ export const resources = {
         savePath: 'Save rclone setting',
         remote: 'Connection name in rclone',
         setupHint:
-          'Install rclone and connect your Apple account using rclone config before adding this profile. Sign-in and two-factor authentication are handled by rclone.',
-        remoteHint:
-          'Enter the configured iCloud Drive connection name without a colon. Use a separate connection name for each Apple account.',
+          'Sign in here to create a new iCloud connection, or use a connection already configured in rclone.',
+        remoteFromEmail: 'Filled from Apple Account email',
+        remoteFromEmailHint:
+          'The new rclone connection will use your Apple Account email as its name.',
+        existingRemoteHint:
+          'Choose an iCloud Drive connection from this computer. Refresh the list after changing the rclone configuration elsewhere.',
+        loadingRemotes: 'Loading connections…',
+        noExistingRemotes: 'No configured iCloud connections found',
+        remoteUnavailable: 'unavailable',
+        refreshRemotes: 'Refresh connections',
+        emailRemoteInvalid:
+          'This email contains characters that rclone does not allow in connection names.',
+        setupMode: 'Account setup',
+        newAccount: 'Sign in to a new Apple account',
+        existingRemote: 'Use an existing rclone connection',
+        appleId: 'Apple Account email',
+        password: 'Apple Account password',
+        passwordHint:
+          'Use your regular Apple Account password. rclone stores the account configuration on this computer; OpenSCP profiles and exports do not contain your password.',
+        verificationCode: 'Verification code',
+        codeHint: 'Approve the sign-in on your Apple device and enter the verification code.',
+        smsCodeHint: 'Enter the verification code sent by SMS.',
+        choosePhone: 'Choose the trusted phone number that should receive the verification code.',
+        phone: 'Trusted phone number',
+        sendSms: 'Send code by SMS',
+        continue: 'Continue',
+        signingIn: 'Signing in…',
+        cancelSetup: 'Cancel sign-in',
+        setupComplete: 'The Apple account is configured in rclone.',
+        retryCode: 'The answer was not accepted. Check it and try again.',
       },
       google: {
         name: 'Google Drive',
@@ -296,9 +323,12 @@ export const resources = {
           unavailable:
             'rclone could not be started. Install it and select its executable in Settings → Advanced → iCloud Drive / rclone, or add it to PATH.',
           configuration:
-            'The selected rclone connection is missing or is not an iCloud Drive connection. Check the name and configure it using rclone config.',
+            'The rclone configuration could not be read or updated. Check the connection name, configuration password and rclone version.',
           authentication:
-            'Sign in to iCloud again using rclone config reconnect, complete two-factor authentication, then reconnect this panel.',
+            'iCloud sign-in failed. Check the account password or verification code. You may also need to approve web access on your Apple device.',
+          remoteExists:
+            'A rclone connection with this email already exists. Select “Use an existing rclone connection”.',
+          setupExpired: 'This sign-in session has expired. Cancel it and start again.',
           timeout: 'The iCloud operation timed out. Check the connection and try again.',
         },
         oauth: {
@@ -466,7 +496,7 @@ export const resources = {
           'Укажите файл rclone или папку с программой. Пустой путь включает автоматический поиск. При сохранении доступность и список подключений обновляются сразу.',
         ready: 'rclone найден. Настроенных подключений iCloud: {{count}}.',
         noRemotes:
-          'rclone найден. Можно создать профиль iCloud. Для подключения настройте Apple Account через rclone config.',
+          'rclone найден. Можно создать профиль iCloud и войти в Apple Account в форме подключения.',
         unavailable: 'rclone не найден или не запускается. Укажите файл программы или папку с ним.',
         check: 'Проверить rclone',
         executablePath: 'Путь к rclone',
@@ -474,9 +504,35 @@ export const resources = {
         savePath: 'Сохранить настройку rclone',
         remote: 'Имя подключения в rclone',
         setupHint:
-          'Установите rclone и подключите Apple Account через rclone config перед добавлением профиля. Вход и двухфакторную аутентификацию выполняет rclone.',
-        remoteHint:
-          'Укажите имя настроенного подключения iCloud Drive без двоеточия. Для каждого Apple Account используйте отдельное имя подключения.',
+          'Войдите здесь для создания нового подключения iCloud или используйте уже настроенное подключение rclone.',
+        remoteFromEmail: 'Заполняется из email Apple Account',
+        remoteFromEmailHint: 'Имя нового подключения rclone будет совпадать с email Apple Account.',
+        existingRemoteHint:
+          'Выберите подключение iCloud Drive на этом компьютере. Обновите список после изменения конфигурации rclone вне приложения.',
+        loadingRemotes: 'Загрузка подключений…',
+        noExistingRemotes: 'Настроенные подключения iCloud не найдены',
+        remoteUnavailable: 'недоступно',
+        refreshRemotes: 'Обновить подключения',
+        emailRemoteInvalid:
+          'В email есть символы, которые rclone не допускает в имени подключения.',
+        setupMode: 'Настройка аккаунта',
+        newAccount: 'Войти в новый Apple Account',
+        existingRemote: 'Использовать готовое подключение rclone',
+        appleId: 'Email Apple Account',
+        password: 'Пароль Apple Account',
+        passwordHint:
+          'Используйте обычный пароль Apple Account. rclone хранит конфигурацию аккаунта на этом компьютере; в профили и экспорт OpenSCP пароль не попадает.',
+        verificationCode: 'Код подтверждения',
+        codeHint: 'Разрешите вход на устройстве Apple и введите код подтверждения.',
+        smsCodeHint: 'Введите код подтверждения из SMS.',
+        choosePhone: 'Выберите доверенный номер телефона для получения кода подтверждения.',
+        phone: 'Доверенный номер телефона',
+        sendSms: 'Отправить код по SMS',
+        continue: 'Продолжить',
+        signingIn: 'Выполняется вход…',
+        cancelSetup: 'Отменить вход',
+        setupComplete: 'Apple Account настроен в rclone.',
+        retryCode: 'Ответ не принят. Проверьте его и повторите попытку.',
       },
       google: {
         name: 'Google Диск',
@@ -744,9 +800,12 @@ export const resources = {
           unavailable:
             'Не удалось запустить rclone. Установите его и укажите путь в Настройки → Дополнительно → iCloud Drive / rclone либо добавьте программу в PATH.',
           configuration:
-            'Подключение rclone не найдено или имеет тип, отличный от iCloud Drive. Проверьте имя и настройте подключение через rclone config.',
+            'Не удалось прочитать или обновить конфигурацию rclone. Проверьте имя подключения, пароль конфигурации и версию rclone.',
           authentication:
-            'Повторно войдите в iCloud через rclone config reconnect, подтвердите двухфакторную аутентификацию и переподключите панель.',
+            'Не удалось войти в iCloud. Проверьте пароль аккаунта или код подтверждения. Может потребоваться разрешить веб-доступ на устройстве Apple.',
+          remoteExists:
+            'Подключение rclone с таким email уже существует. Выберите «Использовать готовое подключение rclone».',
+          setupExpired: 'Время сеанса входа истекло. Отмените его и начните заново.',
           timeout:
             'Время ожидания операции iCloud истекло. Проверьте соединение и повторите попытку.',
         },

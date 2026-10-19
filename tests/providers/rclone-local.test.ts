@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
@@ -30,6 +30,8 @@ it.skipIf(!process.env.OPENSCP_TEST_RCLONE_BINARY)(
       await runner.run(['mkdir', `${remote}.directory`], 'create-directory');
       expect(await runner.json(['lsjson', '--stat', `${remote}.directory`], 'stat')).toMatchObject({
         IsDir: true,
+        Name: '',
+        Path: '',
       });
       expect(await runner.json(['lsjson', `${remote}.directory`], 'list')).toEqual([]);
       await runner.run(
@@ -48,6 +50,57 @@ it.skipIf(!process.env.OPENSCP_TEST_RCLONE_BINARY)(
       await runner.run(['moveto', remote, `${remote}.renamed`, '--immutable'], 'rename');
       expect(await readFile(join(root, 'file.txt.renamed'), 'utf8')).toBe('payload');
       await runner.run(['deletefile', `${remote}.renamed`], 'delete');
+      const password = 'base64PasswordCanary01234567890';
+      const obscured = (
+        await runner.output(['obscure', '-'], 'connect', undefined, undefined, password)
+      ).trim();
+      interface Question {
+        State: string;
+        Option?: { Name: string; DefaultStr?: string };
+      }
+      let question = (await runner.json(
+        ['config', 'create', 'gui_local_probe', 'sftp', '--all', '--non-interactive', '--obscure'],
+        'connect',
+      )) as Question;
+      let usedPassword = false;
+      for (let count = 0; question.State && count < 30; count++) {
+        const option = question.Option;
+        const result =
+          option?.Name === 'host'
+            ? '127.0.0.1'
+            : option?.Name === 'user'
+              ? 'local-test'
+              : option?.Name === 'pass'
+                ? obscured
+                : option?.Name === 'config_fs_advanced'
+                  ? 'false'
+                  : (option?.DefaultStr ?? '');
+        usedPassword ||= option?.Name === 'pass';
+        question = (await runner.json(
+          [
+            'config',
+            'update',
+            'gui_local_probe',
+            '--all',
+            '--non-interactive',
+            '--continue',
+            '--obscure',
+          ],
+          'connect',
+          undefined,
+          { state: question.State, result },
+        )) as Question;
+      }
+      expect(question.State).toBe('');
+      expect(usedPassword).toBe(true);
+      const saved = await readFile(config, 'utf8');
+      expect(saved).not.toContain(password);
+      expect(saved).toContain(`pass = ${obscured}`);
+      await appendFile(
+        config,
+        '\n[user+tag@example.invalid]\ntype = iclouddrive\n\n[Рабочий диск]\ntype = iclouddrive\n',
+      );
+      expect(await runner.icloudRemotes()).toEqual(['user+tag@example.invalid', 'Рабочий диск']);
     } finally {
       await runner.close();
       vi.unstubAllEnvs();

@@ -20,13 +20,16 @@ describe('startup iCloud availability', () => {
         work: 'iclouddrive',
         other: 'sftp',
         invalid: 'iclouddrive-extra',
-        'not supported': 'iclouddrive',
+        'Name with spaces': 'iclouddrive',
+        'user+tag@example.invalid': 'iclouddrive',
+        'Рабочий диск': 'iclouddrive',
+        'invalid:name': 'iclouddrive',
       },
     });
     const launch = vi.fn(fixture.launch);
     expect(await discoverICloudAvailability(launch)).toEqual({
       available: true,
-      remotes: ['personal', 'work'],
+      remotes: ['personal', 'work', 'Name with spaces', 'user+tag@example.invalid', 'Рабочий диск'],
     });
     expect(launch).toHaveBeenCalledTimes(2);
     expect(launch.mock.calls.map(([args]) => args[0])).toEqual(['version', 'listremotes']);

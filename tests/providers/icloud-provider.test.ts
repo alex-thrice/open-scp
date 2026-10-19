@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ICloudConnection } from '../../src/main/providers/icloud/icloud-connection';
@@ -103,6 +103,33 @@ describe('iCloud rclone process integration', () => {
     });
     await fixture.behavior({ invalidJson: true });
     await expect(provider.list(path('/'))).rejects.toMatchObject({ code: 'PROVIDER_IO_ERROR' });
+  });
+
+  it('opens nested directories when rclone stat returns an empty name for the directory root', async () => {
+    await mkdir(join(fixture.root, 'icloud', 'Documents', 'Вложенная папка'), { recursive: true });
+    await writeFile(
+      join(fixture.root, 'icloud', 'Documents', 'Вложенная папка', 'file.txt'),
+      'content',
+    );
+    await provider.connect();
+    expect(await provider.list(path('/'))).toMatchObject([
+      { name: 'Documents', kind: 'directory' },
+    ]);
+    expect(await provider.stat(path('/Documents'))).toMatchObject({
+      name: 'Documents',
+      kind: 'directory',
+      path: path('/Documents'),
+    });
+    expect(await provider.list(path('/Documents'))).toMatchObject([
+      { name: 'Вложенная папка', kind: 'directory' },
+    ]);
+    expect(await provider.list(path('/Documents/Вложенная папка'))).toMatchObject([
+      { name: 'file.txt', kind: 'file', path: path('/Documents/Вложенная папка/file.txt') },
+    ]);
+    expect(await provider.stat(path('/Documents/Вложенная папка'))).toMatchObject({
+      name: 'Вложенная папка',
+      kind: 'directory',
+    });
   });
 
   it('stages writes, protects existing files on cancellation and checks destination versions', async () => {

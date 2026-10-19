@@ -8,11 +8,19 @@ import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from '../../ipc/application-error';
 import { icloudRemoteSchema } from '@shared/models/icloud-profile';
 
-export type RcloneLauncher = (args: readonly string[]) => ChildProcessWithoutNullStreams;
+export interface RcloneConfigurationInput {
+  readonly state: string;
+  readonly result: string;
+}
+
+export type RcloneLauncher = (
+  args: readonly string[],
+  input?: RcloneConfigurationInput,
+) => ChildProcessWithoutNullStreams;
 
 export const createRcloneLauncher =
   (profile: ICloudConnectionProfile, configuredPath?: () => string | undefined): RcloneLauncher =>
-  (args) => {
+  (args, input) => {
     let executable = configuredPath?.() || process.env.OPENSCP_RCLONE_PATH || 'rclone';
     if (executable !== 'rclone' && !isAbsolute(executable))
       throw new ApplicationError(applicationErrorCodes.rcloneUnavailable);
@@ -25,6 +33,10 @@ export const createRcloneLauncher =
       ),
     );
     env[`RCLONE_CONFIG_${profile.remote.toUpperCase()}_SERVICE`] = 'drive';
+    if (input) {
+      env.RCLONE_STATE = input.state;
+      env.RCLONE_RESULT = input.result;
+    }
     return spawn(executable, [...args], { shell: false, windowsHide: true, stdio: 'pipe', env });
   };
 
@@ -44,7 +56,7 @@ const exitFailure = (code: number | null, stderr: string, operation: ProviderOpe
   if (/i\/o timeout|connection timed out|context deadline exceeded/iu.test(stderr))
     return new ApplicationError(applicationErrorCodes.rcloneTimeout);
   if (
-    /trust token expired|reauth|requires? 2fa|two.factor|authentication failed|failed to authenticate|invalid credentials|login required|sign.?in failed|PCS cookie|\b(?:401|421)\b/iu.test(
+    /trust token expired|reauth|requires? 2fa|two.factor|validate2FACode|ValidateSMSCode|incorrect password|authentication failed|failed to authenticate|invalid credentials|login required|sign.?in failed|PCS cookie|\b(?:401|421)\b/iu.test(
       stderr,
     )
   )
@@ -82,23 +94,27 @@ export class RcloneProcess {
     operation: ProviderOperation,
     signal?: AbortSignal,
     metadata = false,
+    input?: RcloneConfigurationInput,
   ): RcloneCommand {
     if (signal?.aborted) throw icloudFailure('cancelled', operation);
     const timeout = this.profile.timeout ?? 60000;
     let child: ChildProcessWithoutNullStreams;
     try {
-      child = this.launch([
-        ...args,
-        '--ask-password=false',
-        '--log-level=ERROR',
-        '--stats=0',
-        '--retries=1',
-        '--low-level-retries=1',
-        `--contimeout=${timeout}ms`,
-        `--timeout=${timeout}ms`,
-        '--buffer-size=1M',
-        '--multi-thread-streams=0',
-      ]);
+      child = this.launch(
+        [
+          ...args,
+          '--ask-password=false',
+          '--log-level=ERROR',
+          '--stats=0',
+          '--retries=1',
+          '--low-level-retries=1',
+          `--contimeout=${timeout}ms`,
+          `--timeout=${timeout}ms`,
+          '--buffer-size=1M',
+          '--multi-thread-streams=0',
+        ],
+        input,
+      );
     } catch {
       throw new ApplicationError(applicationErrorCodes.rcloneUnavailable);
     }
@@ -147,9 +163,11 @@ export class RcloneProcess {
     args: readonly string[],
     operation: ProviderOperation,
     signal?: AbortSignal,
+    input?: RcloneConfigurationInput,
+    stdin?: string,
   ): Promise<string> {
-    const command = this.start(args, operation, signal, true);
-    command.child.stdin.end();
+    const command = this.start(args, operation, signal, true, input);
+    command.child.stdin.end(stdin);
     const chunks: Buffer[] = [];
     let size = 0;
     try {
@@ -175,8 +193,9 @@ export class RcloneProcess {
     args: readonly string[],
     operation: ProviderOperation,
     signal?: AbortSignal,
+    input?: RcloneConfigurationInput,
   ): Promise<unknown> {
-    const output = await this.output(args, operation, signal);
+    const output = await this.output(args, operation, signal, input);
     try {
       return JSON.parse(output) as unknown;
     } catch {
@@ -189,10 +208,10 @@ export class RcloneProcess {
     return [
       ...new Set(
         output.split(/\r?\n/u).flatMap((line) => {
-          const [name, type] = line.trim().split(/\s+/u);
-          if (type !== 'iclouddrive' || !name?.endsWith(':')) return [];
-          const remote = name.slice(0, -1);
-          return icloudRemoteSchema.safeParse(remote).success ? [remote] : [];
+          const match = /^(.*):\s+iclouddrive\s*$/u.exec(line);
+          if (!match) return [];
+          const remote = icloudRemoteSchema.safeParse(match[1]);
+          return remote.success ? [remote.data] : [];
         }),
       ),
     ];

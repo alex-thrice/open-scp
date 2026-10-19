@@ -936,6 +936,20 @@ small {
   display: grid;
   gap: 14px;
 }
+.icloud-profile-fields,
+.icloud-verification {
+  display: grid;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.icloud-profile-fields input:disabled,
+.icloud-profile-fields select:disabled {
+  background: var(--raised);
+  color: var(--muted);
+}
 .native-dialog label {
   display: grid;
   gap: 6px;
