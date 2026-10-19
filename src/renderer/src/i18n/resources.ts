@@ -9,6 +9,19 @@ export const resources = {
       ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
+      yandex: {
+        name: 'Yandex Disk',
+        new: 'New Yandex Disk',
+        signedOut: 'Not signed in to Yandex',
+        signIn: 'Sign in to Yandex',
+        signOut: 'Sign out',
+        cancelLogin: 'Cancel sign-in',
+        waiting: 'Complete sign-in in your browser.',
+        connectedAs: 'Yandex account: {{account}}',
+        authorizationTitle: 'Yandex Disk sign-in',
+        loginHint:
+          'Sign in in your system browser to access this Disk. Your Yandex password is never entered in OpenSCP.',
+      },
       mailru: {
         name: 'Mail.ru Cloud',
         profile: 'Mail.ru Cloud connection',
@@ -237,6 +250,16 @@ export const resources = {
         refresh: 'Refresh drives',
       },
       errors: {
+        oauth: {
+          required: 'Sign in again to access this Disk.',
+          configuration:
+            'Yandex sign-in is not configured for this build. The application owner must configure the OAuth client.',
+          callbackUnavailable:
+            'The local sign-in address is unavailable. Close another OpenSCP instance and try again.',
+          timeout: 'Sign-in timed out. Please try again.',
+          accountMismatch:
+            'A different Yandex account was selected. Use the linked account, or sign out before linking another account.',
+        },
         mailru: {
           webdavAccessDenied:
             'Mail.ru denied WebDAV access. Check the email and use an app password with “Full access to Cloud”. Regular and VK ID passwords cannot be used here.',
@@ -384,6 +407,19 @@ export const resources = {
         tagline: 'Кроссплатформенный файловый клиент',
       },
       common: { notAvailable: '—' },
+      yandex: {
+        name: 'Яндекс Диск',
+        new: 'Новый Яндекс Диск',
+        signedOut: 'Вход в Яндекс не выполнен',
+        signIn: 'Войти в Яндекс',
+        signOut: 'Выйти',
+        cancelLogin: 'Отменить вход',
+        waiting: 'Завершите вход в браузере.',
+        connectedAs: 'Аккаунт Яндекса: {{account}}',
+        authorizationTitle: 'Вход в Яндекс Диск',
+        loginHint:
+          'Войдите через системный браузер, чтобы открыть этот Диск. Пароль Яндекса в OpenSCP вводить не нужно.',
+      },
       ftp: {
         profile: 'Профиль FTP',
         new: 'Новый FTP',
@@ -624,6 +660,16 @@ export const resources = {
         mailru: {
           webdavAccessDenied:
             'Mail.ru отказал в доступе по WebDAV. Проверьте email и используйте пароль приложения с правом «Полный доступ к Облаку». Обычный пароль и пароль VK ID здесь не подходят.',
+        },
+        oauth: {
+          required: 'Войдите повторно, чтобы открыть этот Диск.',
+          configuration:
+            'Вход в Яндекс пока не настроен для этой сборки. Владелец приложения должен настроить OAuth-клиент.',
+          callbackUnavailable:
+            'Локальный адрес входа недоступен. Закройте другой экземпляр OpenSCP и повторите вход.',
+          timeout: 'Время ожидания входа истекло. Повторите попытку.',
+          accountMismatch:
+            'Выбран другой аккаунт Яндекса. Войдите в связанный аккаунт или сначала выйдите, чтобы подключить другой.',
         },
         s3: {
           endpoint: 'Неверный endpoint S3 или регион. Проверьте профиль.',

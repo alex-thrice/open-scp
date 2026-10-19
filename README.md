@@ -6,7 +6,7 @@
 
 Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict
 TypeScript. The application includes local drive browsing, independent workspaces, encrypted
-connection profiles, SFTP, FTP, S3 and Mail.ru Cloud browsing/file operations, and a shared streaming transfer queue
+connection profiles, SFTP, FTP, S3, Mail.ru Cloud and Yandex Disk browsing/file operations, and a shared streaming transfer queue
 for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. It also includes customizable Commander
 shortcuts, profile management, GitHub updates and live English/Russian localization.
 
@@ -185,3 +185,13 @@ Passwords use safeStorage and are excluded from exports. Interrupted Mail.ru tra
 from zero; a partial temporary file may remain. Real-account acceptance is deferred to the owner;
 automated tests use a disposable WebDAV server. See the [setup and acceptance checklist](docs/user/mailru.md)
 and [protocol semantics](docs/architecture/mailru.md).
+
+## Yandex Disk
+
+Select **Connections → Connection → Yandex Disk** and sign in through the system browser.
+OAuth credentials use safeStorage; cloning/importing a profile requires a separate sign-in.
+Both panels support browsing and shared streaming transfers with Local/Mail.ru/SFTP/FTP/S3.
+Set `OPENSCP_YANDEX_CLIENT_ID` in a Git-ignored `.env.local` or GitHub Actions repository
+variable when building. The value is excluded from sources; real-service acceptance remains
+pending. See [registration and setup](docs/user/yandex.md) and
+[OAuth/REST semantics](docs/architecture/yandex.md).

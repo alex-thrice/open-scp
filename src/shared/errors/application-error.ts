@@ -1,4 +1,9 @@
 export const applicationErrorCodes = {
+  oauthRequired: 'OAUTH_REQUIRED',
+  oauthConfiguration: 'OAUTH_CONFIGURATION',
+  oauthCallbackUnavailable: 'OAUTH_CALLBACK_UNAVAILABLE',
+  oauthTimeout: 'OAUTH_TIMEOUT',
+  oauthAccountMismatch: 'OAUTH_ACCOUNT_MISMATCH',
   s3Endpoint: 'S3_ENDPOINT',
   s3Dns: 'S3_DNS',
   s3Tls: 'S3_TLS',
@@ -46,6 +51,26 @@ export class ApplicationError<Code extends string = string> extends Error {
 }
 
 const safeErrors = {
+  [applicationErrorCodes.oauthRequired]: {
+    code: applicationErrorCodes.oauthRequired,
+    messageKey: 'errors.oauth.required',
+  },
+  [applicationErrorCodes.oauthConfiguration]: {
+    code: applicationErrorCodes.oauthConfiguration,
+    messageKey: 'errors.oauth.configuration',
+  },
+  [applicationErrorCodes.oauthCallbackUnavailable]: {
+    code: applicationErrorCodes.oauthCallbackUnavailable,
+    messageKey: 'errors.oauth.callbackUnavailable',
+  },
+  [applicationErrorCodes.oauthTimeout]: {
+    code: applicationErrorCodes.oauthTimeout,
+    messageKey: 'errors.oauth.timeout',
+  },
+  [applicationErrorCodes.oauthAccountMismatch]: {
+    code: applicationErrorCodes.oauthAccountMismatch,
+    messageKey: 'errors.oauth.accountMismatch',
+  },
   [applicationErrorCodes.mailruWebdavAccessDenied]: {
     code: applicationErrorCodes.mailruWebdavAccessDenied,
     messageKey: 'errors.mailru.webdavAccessDenied',

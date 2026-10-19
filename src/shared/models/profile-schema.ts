@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { ConnectionProfile } from './connection-profile';
 import { mailruPathSchema } from './mailru-profile';
+import { yandexPathSchema } from './yandex-profile';
 
 const secretReference = z.strictObject({
   id: z.string().uuid(),
@@ -8,6 +9,16 @@ const secretReference = z.strictObject({
 });
 export const connectionProfileSchema = z
   .discriminatedUnion('kind', [
+    z.strictObject({
+      id: z.string().uuid(),
+      name: z.string().trim().min(1).max(200),
+      kind: z.literal('yandex'),
+      initialDirectory: yandexPathSchema.optional(),
+      timeout: z.number().int().min(1000).max(120000).optional(),
+      accountId: z.string().min(1).max(200).optional(),
+      accountName: z.string().min(1).max(320).optional(),
+      authentication: z.strictObject({ method: z.literal('oauth'), secret: secretReference }),
+    }),
     z.strictObject({
       id: z.string().uuid(),
       name: z.string().trim().min(1).max(200),
@@ -85,6 +96,19 @@ export const connectionProfileSchema = z
     }),
   ])
   .transform((profile): ConnectionProfile => {
+    if (profile.kind === 'yandex')
+      return {
+        id: profile.id,
+        name: profile.name,
+        kind: profile.kind,
+        authentication: profile.authentication,
+        ...(profile.initialDirectory === undefined
+          ? {}
+          : { initialDirectory: profile.initialDirectory }),
+        ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
+        ...(profile.accountId === undefined ? {} : { accountId: profile.accountId }),
+        ...(profile.accountName === undefined ? {} : { accountName: profile.accountName }),
+      };
     if (profile.kind === 'mailru')
       return {
         id: profile.id,

@@ -934,6 +934,17 @@ small {
   display: grid;
   gap: 6px;
 }
+.oauth-account {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--raised);
+}
+.oauth-account p {
+  margin: 0;
+}
 .field-label-with-hint {
   display: flex;
   align-items: center;
@@ -1401,13 +1412,4 @@ kbd {
   .spinner {
     animation-duration: 2s;
   }
-}
-
-.source-icon[data-kind='mailru'] {
-  color: #d97706;
-  background: #fff4df;
-}
-:root[data-theme='dark'] .source-icon[data-kind='mailru'] {
-  color: #ffd080;
-  background: #45331b;
 }

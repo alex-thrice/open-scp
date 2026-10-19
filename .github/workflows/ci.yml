@@ -16,6 +16,8 @@ concurrency:
 jobs:
   verify:
     name: Verify on ${{ matrix.os }}
+    env:
+      OPENSCP_YANDEX_CLIENT_ID: ${{ vars.OPENSCP_YANDEX_CLIENT_ID }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:

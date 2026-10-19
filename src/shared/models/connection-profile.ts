@@ -69,4 +69,17 @@ export interface MailruConnectionProfile extends BaseConnectionProfile {
 }
 
 export type ConnectionProfile =
-  FtpConnectionProfile | MailruConnectionProfile | S3ConnectionProfile | SftpConnectionProfile;
+  | FtpConnectionProfile
+  | MailruConnectionProfile
+  | S3ConnectionProfile
+  | SftpConnectionProfile
+  | YandexConnectionProfile;
+
+export interface YandexConnectionProfile extends BaseConnectionProfile {
+  readonly kind: 'yandex';
+  readonly initialDirectory?: string;
+  readonly timeout?: number;
+  readonly accountId?: string;
+  readonly accountName?: string;
+  readonly authentication: { readonly method: 'oauth'; readonly secret: SecretReference };
+}

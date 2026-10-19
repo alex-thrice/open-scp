@@ -5,7 +5,7 @@ export type PaneSide = 'left' | 'right';
 export interface PaneLocation {
   readonly path: string;
   readonly title: string;
-  readonly kind: 'ftp' | 'local' | 'mailru' | 'sftp' | 's3';
+  readonly kind: 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
   readonly ready: boolean;
   readonly writable: boolean;
 }
@@ -26,14 +26,16 @@ export const workspaceIds = (workspaceId: string): readonly string[] => [
 export const workspaceOf = (id: string): string => id.replace(/:(left|right)$/u, '');
 export const protocolIcon = (kind: PaneLocation['kind']): IconName =>
   kind === 'mailru'
-    ? 'Cloud'
-    : kind === 's3'
-      ? 'Database'
-      : kind === 'sftp'
-        ? 'ShieldCheck'
-        : kind === 'ftp'
-          ? 'Plug'
-          : 'HardDrive';
+    ? 'MailruCloud'
+    : kind === 'yandex'
+      ? 'YandexDisk'
+      : kind === 's3'
+        ? 'Database'
+        : kind === 'sftp'
+          ? 'ShieldCheck'
+          : kind === 'ftp'
+            ? 'Plug'
+            : 'HardDrive';
 export const directoryName = (path: string): string =>
   path
     .replace(/[\\/]+$/u, '')

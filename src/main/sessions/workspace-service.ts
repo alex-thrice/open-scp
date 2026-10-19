@@ -11,6 +11,7 @@ import type {
   MailruConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
+  YandexConnectionProfile,
 } from '@shared/models/connection-profile';
 import type {
   WorkspaceRequest,
@@ -35,6 +36,12 @@ import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connect
 import { FtpProvider } from '../providers/ftp/ftp-provider';
 import { MailruConnection } from '../providers/mailru/mailru-connection';
 import { MailruProvider } from '../providers/mailru/mailru-provider';
+import { YandexProvider } from '../providers/yandex/yandex-provider';
+import { YandexConnection } from '../providers/yandex/yandex-connection';
+import {
+  YandexAuthorization,
+  type YandexConfiguration,
+} from '../providers/yandex/yandex-authorization';
 import { profileSecretReference } from '@shared/models/profile-credentials';
 import { LocalProvider } from '../providers/local/local-provider';
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
@@ -63,6 +70,7 @@ import {
 } from '@shared/models/application-update';
 
 export interface WorkspaceExternalActions {
+  readonly yandex?: YandexConfiguration;
   readonly mailruEndpoint?: string;
   readonly dragDirectory?: string;
   readonly checkForUpdates?: () => Promise<void>;
@@ -79,7 +87,7 @@ export interface WorkspaceExternalActions {
   readonly updateState?: () => UpdateState;
 }
 
-type RemoteProvider = FtpProvider | MailruProvider | S3Provider | SftpProvider;
+type RemoteProvider = FtpProvider | MailruProvider | S3Provider | SftpProvider | YandexProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -163,12 +171,14 @@ const readRecentPaths = (value: string | undefined): string[] => {
 };
 
 export class WorkspaceService {
+  private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
   public readonly externalDrags: ExternalDragService;
   private readonly externalEdits: ExternalEditService;
   private readonly sessions = new Map<string, RemoteProvider>();
   private readonly mutating = new Set<string>();
   private readonly currentPaths = new Map<string, string>();
+  private readonly currentPathProfiles = new Map<string, string>();
   private readonly pathFallbacks = new Map<string, boolean>();
   private readonly pendingPasswords = new Map<string, string>();
   private readonly profileTests = new Map<string, RemoteProvider>();
@@ -189,6 +199,16 @@ export class WorkspaceService {
     private readonly changeLanguage?: (language: 'en' | 'ru') => void,
     private readonly externalActions: WorkspaceExternalActions = {},
   ) {
+    this.yandex = new YandexAuthorization(
+      store,
+      credentials,
+      externalActions.yandex ?? {
+        clientId: '',
+        openBrowser: async () => {
+          throw new ApplicationError(applicationErrorCodes.oauthConfiguration);
+        },
+      },
+    );
     this.externalDrags = new ExternalDragService(
       externalActions.dragDirectory ?? join(tmpdir(), 'openscp-drag-files'),
     );
@@ -321,6 +341,8 @@ export class WorkspaceService {
             ),
         ),
       profiles: [...this.store.list()],
+      yandexOAuthConfigured: this.yandex.configured,
+      yandexAuthorizations: this.yandex.snapshots(),
       language: language === 'en' || language === 'ru' ? language : null,
       sessions: [...this.sessions].map(([workspaceId, provider]) => ({
         workspaceId,
@@ -330,7 +352,8 @@ export class WorkspaceService {
         state: provider.connectionState,
         ...(provider instanceof SftpProvider ||
         provider instanceof FtpProvider ||
-        provider instanceof MailruProvider
+        provider instanceof MailruProvider ||
+        provider instanceof YandexProvider
           ? {
               connectionStage: provider.connection.stage,
               connectionErrorKey: provider.connection.failureCode
@@ -342,6 +365,9 @@ export class WorkspaceService {
                   provider.connection.failureCode === applicationErrorCodes.authenticationFailed ||
                   provider.connection.failureCode ===
                     applicationErrorCodes.mailruWebdavAccessDenied),
+              authorizationRequired:
+                provider instanceof YandexProvider &&
+                provider.connection.failureCode === applicationErrorCodes.oauthRequired,
               pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
               ...(provider instanceof FtpProvider ? { insecure: true } : {}),
             }
@@ -373,6 +399,7 @@ export class WorkspaceService {
     return this.store.getSetting('remember-paths') !== 'false';
   }
   public dispose(): void {
+    this.yandex.dispose();
     for (const provider of this.profileTests.values()) void provider.disconnect();
     this.profileTests.clear();
     this.pendingTestHosts.clear();
@@ -420,6 +447,10 @@ export class WorkspaceService {
     );
   }
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
+    if (profile.kind === 'yandex')
+      return new YandexProvider(
+        new YandexConnection(profile, this.yandex.vault, this.externalActions.yandex?.apiEndpoint),
+      );
     if (profile.kind === 's3') return this.s3Provider(profile);
     if (profile.kind === 'ftp') return this.ftpProvider(profile, workspaceId);
     if (profile.kind === 'mailru')
@@ -620,7 +651,13 @@ export class WorkspaceService {
     const profile = provider.connection.profile;
     const preferredPath = posix.resolve(
       '/',
-      requested ?? this.recentPaths(profile.id)[0] ?? profile.initialDirectory ?? '/',
+      requested ??
+        (this.currentPathProfiles.get(workspaceId) === profile.id
+          ? this.currentPaths.get(workspaceId)
+          : undefined) ??
+        this.recentPaths(profile.id)[0] ??
+        profile.initialDirectory ??
+        '/',
     );
     const candidates = [preferredPath];
     if (requested === null) {
@@ -724,11 +761,13 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
         request.action === 'save-mailru-profile' ||
         request.action === 'save-ftp-profile') &&
       request.profile.id &&
       (this.profileTests.has(request.profile.id) ||
+        this.yandex.isAuthorizing(request.profile.id) ||
         [...this.sessions].some(
           ([id, provider]) =>
             this.profile(provider).id === request.profile.id &&
@@ -738,6 +777,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
         request.action === 'save-mailru-profile' ||
         request.action === 'save-ftp-profile') &&
@@ -948,10 +988,11 @@ export class WorkspaceService {
         if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
         const reference = profileSecretReference(profile);
         if (
-          reference &&
-          !this.store.database
-            .prepare('SELECT id FROM credentials WHERE id = ? AND profile_id = ?')
-            .get(reference.id, profile.id)
+          profile.kind === 'yandex' ||
+          (reference &&
+            !this.store.database
+              .prepare('SELECT id FROM credentials WHERE id = ? AND profile_id = ?')
+              .get(reference.id, profile.id))
         ) {
           const existingIds = new Set(this.store.list().map((item) => item.id));
           importProfiles(
@@ -998,6 +1039,7 @@ export class WorkspaceService {
         this.pendingPasswords.delete(request.workspaceId);
         this.sessions.delete(request.workspaceId);
         this.currentPaths.delete(request.workspaceId);
+        this.currentPathProfiles.delete(request.workspaceId);
         break;
       }
       case 'local-operation': {
@@ -1043,6 +1085,49 @@ export class WorkspaceService {
         connectionTest = await this.testProfile(request.profileId, request.trustFingerprint);
         break;
       }
+      case 'save-yandex-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'yandex')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        const profile: YandexConnectionProfile = {
+          ...(previous?.kind === 'yandex' ? previous : {}),
+          ...draft,
+          id: draft.id ?? randomUUID(),
+          kind: 'yandex',
+          authentication:
+            previous?.kind === 'yandex'
+              ? previous.authentication
+              : { method: 'oauth', secret: { id: randomUUID(), storage: 'safe-storage' } },
+        };
+        savedProfileId = this.store.save(profile).id;
+        break;
+      }
+      case 'authorize-yandex-profile':
+      case 'forget-yandex-authorization': {
+        if (
+          [...this.sessions].some(
+            ([id, provider]) =>
+              this.profile(provider).id === request.profileId &&
+              (this.hasActiveTransfers(id) || this.mutating.has(id)),
+          ) ||
+          this.profileTests.has(request.profileId)
+        )
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        if (request.action === 'authorize-yandex-profile') this.yandex.authorize(request.profileId);
+        else {
+          for (const [id, provider] of this.sessions)
+            if (this.profile(provider).id === request.profileId) {
+              await provider.disconnect();
+              this.sessions.delete(id);
+            }
+          this.yandex.forget(request.profileId);
+        }
+        break;
+      }
+      case 'cancel-yandex-authorization':
+        this.yandex.cancel(request.profileId);
+        break;
       case 'save-s3-profile': {
         const draft = request.profile;
         if (draft.id && this.journal(draft.id).list().length)
@@ -1184,6 +1269,7 @@ export class WorkspaceService {
         break;
       }
       case 'delete-profile': {
+        this.yandex.cancel(request.profileId);
         if (this.profileTests.has(request.profileId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         this.pendingTestHosts.delete(request.profileId);
@@ -1222,10 +1308,12 @@ export class WorkspaceService {
         if (
           !(provider instanceof SftpProvider) &&
           !(provider instanceof FtpProvider) &&
-          !(provider instanceof MailruProvider)
+          !(provider instanceof MailruProvider) &&
+          !(provider instanceof YandexProvider)
         )
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.delete(request.workspaceId);
+        if (provider instanceof YandexProvider) this.yandex.cancel(provider.connection.profile.id);
         await provider.disconnect();
         break;
       }
@@ -1278,6 +1366,10 @@ export class WorkspaceService {
       case 'list':
         listing = await this.listing(request.workspaceId, request.path);
         this.currentPaths.set(request.workspaceId, listing.currentPath);
+        this.currentPathProfiles.set(
+          request.workspaceId,
+          this.profile(this.session(request.workspaceId)).id,
+        );
         if (this.shouldRememberPaths()) {
           const profileId = this.profile(this.session(request.workspaceId)).id;
           const currentPath = listing.currentPath;

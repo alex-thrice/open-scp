@@ -4,6 +4,7 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
+import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
 import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
 import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
 import { transferSettingsSchema } from '@shared/models/transfer-settings';
@@ -144,6 +145,10 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('copy'), workspaceId: id, path, destinationPath: path }),
   z.strictObject({ action: z.literal('cleanup-multipart'), profileId: id }),
   z.strictObject({ action: z.literal('snapshot') }),
+  z.strictObject({ action: z.literal('save-yandex-profile'), profile: yandexProfileDraftSchema }),
+  z.strictObject({ action: z.literal('authorize-yandex-profile'), profileId: id }),
+  z.strictObject({ action: z.literal('cancel-yandex-authorization'), profileId: id }),
+  z.strictObject({ action: z.literal('forget-yandex-authorization'), profileId: id }),
   z.strictObject({
     action: z.literal('test-profile'),
     profileId: id,
@@ -245,12 +250,23 @@ export const workspaceSnapshotSchema = z.strictObject({
     .array(z.strictObject({ profileId: id, count: z.number().int().nonnegative() }))
     .optional(),
   profiles: z.array(connectionProfileSchema),
+  yandexOAuthConfigured: z.boolean().optional(),
+  yandexAuthorizations: z
+    .array(
+      z.strictObject({
+        profileId: id,
+        authorized: z.boolean(),
+        state: z.enum(['waiting', 'exchanging', 'authorized', 'failed', 'cancelled', 'signed-out']),
+        errorKey: z.string().nullable(),
+      }),
+    )
+    .optional(),
   language: z.enum(['en', 'ru']).nullable(),
   sessions: z.array(
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['ftp', 'mailru', 'sftp', 's3']).optional(),
+      kind: z.enum(['ftp', 'mailru', 'sftp', 's3', 'yandex']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z
@@ -271,6 +287,7 @@ export const workspaceSnapshotSchema = z.strictObject({
         .optional(),
       connectionErrorKey: z.string().nullable().optional(),
       passwordRequired: z.boolean().optional(),
+      authorizationRequired: z.boolean().optional(),
       insecure: z.boolean().optional(),
       pathFallback: z.boolean().optional(),
       hostKey: z.strictObject({ fingerprint: z.string(), changed: z.boolean() }).nullable(),

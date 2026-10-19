@@ -56,6 +56,11 @@ permissions, checksum и server-side copy не объявляются. Подр�
 
 ## Lifecycle и ошибки
 
+Яндекс Диск добавлен видом `yandex` через REST/OAuth и абсолютные пути внутри `disk:/`.
+Поддерживаются настоящие каталоги, потоки и асинхронные move/delete с ожиданием результата.
+Resume, атомарность rename, POSIX permissions, симлинки, checksum и server-side copy
+не объявляются. Подробнее: [семантика Яндекс Диска](yandex.md).
+
 Состояния соединения: `disconnected → connecting → connected → disconnecting → disconnected`.
 Ошибка подключения переводит провайдер в `failed`; повторное подключение является явной
 операцией.

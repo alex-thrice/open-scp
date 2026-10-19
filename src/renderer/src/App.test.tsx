@@ -1052,7 +1052,7 @@ describe('App', () => {
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud']);
+    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud', 'Yandex Disk']);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();
@@ -1065,6 +1065,13 @@ describe('App', () => {
     expect(screen.getByLabelText('App password')).toBeTruthy();
     expect(screen.queryByLabelText('Host')).toBeNull();
     expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'yandex' } });
+    expect(screen.getByText('Not signed in to Yandex')).toBeTruthy();
+    expect(
+      (screen.getByRole('button', { name: 'Sign in to Yandex' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.queryByLabelText('Host')).toBeNull();
+    expect(screen.queryByLabelText('Password')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: '← All connections' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();
   });

@@ -141,6 +141,20 @@ test('packaged application starts with secure IPC and encrypted profile persiste
     if (process.platform === 'darwin')
       expect(updateState?.automaticUpdateSupported).toBe(process.env.OPENSCP_SIGNED_BUILD === '1');
     expect(await window.evaluate(() => 'require' in window || 'process' in window)).toBe(false);
+    const yandexConfigured =
+      (await request(window, { action: 'snapshot' })).snapshot.yandexOAuthConfigured === true;
+    if (process.env.OPENSCP_EXPECT_YANDEX_OAUTH !== undefined)
+      expect(yandexConfigured).toBe(process.env.OPENSCP_EXPECT_YANDEX_OAUTH === '1');
+    const yandexForm = await newConnection(window, 'yandex');
+    const yandexSignIn = yandexForm.getByRole('button', { name: 'Sign in to Yandex', exact: true });
+    if (yandexConfigured) await expect(yandexSignIn).toBeEnabled();
+    else await expect(yandexSignIn).toBeDisabled();
+    await yandexForm.getByRole('button', { name: '← All connections', exact: true }).click();
+    await window
+      .getByRole('dialog', { name: 'Connections', exact: true })
+      .getByRole('button', { name: 'Close', exact: true })
+      .last()
+      .click();
     const form = await newConnection(window, 'sftp');
     await form.getByLabel('Profile name').fill('Disposable packaged profile');
     await form.getByLabel('Host', { exact: true }).fill('127.0.0.1');

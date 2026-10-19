@@ -11,6 +11,8 @@ permissions:
 jobs:
   packages:
     name: Package and install on ${{ matrix.os }}
+    env:
+      OPENSCP_YANDEX_CLIENT_ID: ${{ vars.OPENSCP_YANDEX_CLIENT_ID }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:

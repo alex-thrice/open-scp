@@ -20,6 +20,21 @@ Compose-проекта `openscp-integration`. Сгенерированный к�
 
 ## Только фиктивные credentials
 
+T32 использует `tests/fixtures/yandex-fixture.ts` с фиктивным Client ID и токенами на случайном
+loopback-порту. Реальный браузер/аккаунт для этих проверок не нужен. Модульные и Electron-тесты
+работают без Docker; переносы Яндекс ↔ SFTP/FTP/S3 требуют контейнеров ниже:
+
+```sh
+pnpm exec vitest run yandex
+pnpm exec vitest run --config vitest.integration.config.ts tests/integration/yandex-transfers.test.ts
+pnpm build
+pnpm exec playwright test tests/e2e/yandex-transfer.spec.ts
+```
+
+Проверяются PKCE/state, отмена, callback replay, refresh, разделение аккаунтов, пагинация,
+асинхронные операции, signed URLs без Authorization, 32-МиБ roundtrip, конфликты и рестарт.
+Реальная приёмка: [чеклист Яндекс Диска](../user/yandex.md).
+
 T31 использует также `tests/fixtures/webdav-fixture.ts`: сервер на случайном loopback-порту
 с фиктивными `fixture@example.test` / `webdav-fixture-password-only`. Сервер создаётся и
 закрывается самими тестами. Contract/protocol и Electron-сценарий не требуют Docker;

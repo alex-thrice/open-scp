@@ -12,6 +12,7 @@ import {
 } from './CommanderSurface';
 import { Dialog } from './Dialog';
 import { MailruPasswordLabel } from './MailruPasswordLabel';
+import { YandexAuthorizationControls } from './YandexAuthorizationControls';
 import { Icon } from './Icon';
 import { SourcePicker } from './SourcePicker';
 import { VirtualFileList } from './VirtualFileList';
@@ -86,6 +87,30 @@ export const FilePane = ({
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
+  const yandexAuthorization = snapshot.yandexAuthorizations?.find(
+    (entry) => entry.profileId === session?.profileId,
+  );
+  const reauthorizing = useRef(false);
+  useEffect(() => {
+    if (
+      session?.authorizationRequired &&
+      yandexAuthorization?.authorized &&
+      !reauthorizing.current
+    ) {
+      reauthorizing.current = true;
+      void run({ action: 'connect', workspaceId: paneId, profileId: session.profileId }).finally(
+        () => {
+          reauthorizing.current = false;
+        },
+      );
+    }
+  }, [
+    session?.authorizationRequired,
+    session?.profileId,
+    yandexAuthorization?.authorized,
+    paneId,
+    run,
+  ]);
   const ready = kind === 'local' || session?.state === 'connected';
   const isS3 = kind === 's3';
   const [listing, setListing] = useState<LocalDirectoryListing | null>(null);
@@ -427,7 +452,7 @@ export const FilePane = ({
           <span className="source-state">
             {kind === 'local'
               ? t('ui.local')
-              : `${kind === 'mailru' ? t('mailru.name') : kind.toUpperCase()} · ${t(
+              : `${kind === 'mailru' ? t('mailru.name') : kind === 'yandex' ? t('yandex.name') : kind.toUpperCase()} · ${t(
                   session?.connectionStage
                     ? `connections.stages.${session.connectionStage}`
                     : `connections.states.${session?.state}`,
@@ -628,6 +653,29 @@ export const FilePane = ({
           </span>
         </footer>
       </CommanderSurface>
+      {session?.authorizationRequired ? (
+        <Dialog
+          title={t('yandex.authorizationTitle')}
+          onClose={() => {
+            void run({ action: 'cancel-yandex-authorization', profileId: session.profileId });
+            void run({ action: 'cancel-connect', workspaceId: paneId });
+          }}
+          notice={
+            yandexAuthorization?.errorKey ? (
+              <p role="alert" className="connection-feedback connection-feedback--error">
+                {t(yandexAuthorization.errorKey)}
+              </p>
+            ) : null
+          }
+        >
+          <p>{t('yandex.loginHint')}</p>
+          <YandexAuthorizationControls
+            profileId={session.profileId}
+            snapshot={snapshot}
+            run={run}
+          />
+        </Dialog>
+      ) : null}
       {session?.passwordRequired ? (
         <Dialog
           title={t('connections.passwordPromptTitle')}

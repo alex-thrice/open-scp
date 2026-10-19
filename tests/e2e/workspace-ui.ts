@@ -17,7 +17,10 @@ export const expectSourceIndicatorAtEnd = async (panel: Locator) => {
   expect(geometry.indicatorWidth).toBe(14);
 };
 
-export const newConnection = async (page: Page, kind: 'ftp' | 'mailru' | 'sftp' | 's3') => {
+export const newConnection = async (
+  page: Page,
+  kind: 'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex',
+) => {
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByRole('button', { name: 'Connection', exact: true }).click();
   const form = page.getByRole('dialog', { name: 'Connections', exact: true });

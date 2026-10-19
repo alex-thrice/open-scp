@@ -1,4 +1,6 @@
 import { createElement } from 'react';
+import mailruCloudIcon from '../assets/providers/mailru-cloud.svg';
+import yandexDiskIcon from '../assets/providers/yandex-disk.svg';
 
 // Иконки Lucide, лицензия ISC: см. LICENSE.lucide в этой папке.
 const icons = {
@@ -857,29 +859,45 @@ const icons = {
   ],
 } as const;
 
-export type IconName = keyof typeof icons;
+const brandIcons = { MailruCloud: mailruCloudIcon, YandexDisk: yandexDiskIcon } as const;
+export type IconName = keyof typeof icons | keyof typeof brandIcons;
 export const Icon = ({
   name,
   className = '',
 }: {
   readonly name: IconName;
   readonly className?: string;
-}) => (
-  <svg
-    data-icon={name}
-    className={`icon ${className}`}
-    width="18"
-    height="18"
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth="1.7"
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden="true"
-  >
-    {icons[name].map(([tag, attributes], index) =>
-      createElement(tag, { ...attributes, key: index }),
-    )}
-  </svg>
-);
+}) => {
+  if (name === 'MailruCloud' || name === 'YandexDisk')
+    return (
+      <img
+        data-icon={name}
+        className={`icon ${className}`}
+        src={brandIcons[name]}
+        width="18"
+        height="18"
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+      />
+    );
+  return (
+    <svg
+      data-icon={name}
+      className={`icon ${className}`}
+      width="18"
+      height="18"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {icons[name].map(([tag, attributes], index) =>
+        createElement(tag, { ...attributes, key: index }),
+      )}
+    </svg>
+  );
+};

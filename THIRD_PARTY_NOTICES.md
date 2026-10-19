@@ -50,6 +50,23 @@ runtime components under their respective terms, including LGPL components;
 those components are not relicensed under MIT. Redistributors must honor their
 applicable notice and source/relinking requirements as well.
 
+## Service icons
+
+The Yandex Disk and Mail.ru Cloud SVG icons identify the connected services. These are
+third-party brand assets, not OpenSCP artwork, and are not relicensed under OpenSCP's MIT
+license. Their original colors and geometry are preserved. Service names and logos belong
+to their respective owners; their use does not imply endorsement or affiliation.
+
+- `src/renderer/src/assets/providers/yandex-disk.svg`: Yandex Disk icon served by the
+  [official Disk page](https://disk.yandex.ru/) as its "Disk icon"
+  ([original SVG](https://avatars.mds.yandex.net/get-bunker/50064/fe31efb1fee947c1314c285e1f43f3194dfd71fd/orig)).
+- `src/renderer/src/assets/providers/mailru-cloud.svg`: service icon from the
+  [official Mail.ru Cloud page](https://cloud.mail.ru/)
+  ([original SVG](https://cloud.imgsmail.ru/cloud.mail.ru/hashes/img/54cbc3d30f0b1da1d208.svg)).
+
+Sources retrieved on 2026-10-19. The SVG files are stored locally and bundled; displaying
+the icons does not load images from either provider's servers.
+
 ## Independent implementation and test tools
 
 OpenSCP does not include WinSCP code, translations or artwork. The reference

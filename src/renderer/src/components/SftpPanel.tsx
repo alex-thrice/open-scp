@@ -11,6 +11,7 @@ import { S3ConnectionForm } from './S3ConnectionForm';
 import { ConnectionForm } from './ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
 import { MailruConnectionForm } from './MailruConnectionForm';
+import { YandexConnectionForm } from './YandexConnectionForm';
 import { PathBreadcrumbs } from './PathBreadcrumbs';
 import { VirtualFileList } from './VirtualFileList';
 import type { WorkspaceRunner } from './useWorkspaceService';
@@ -41,7 +42,7 @@ export const SftpPanel = ({
   const [profileId, setProfileId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isNew, setIsNew] = useState(false);
-  const [newKind, setNewKind] = useState<'ftp' | 'mailru' | 'sftp' | 's3'>('sftp');
+  const [newKind, setNewKind] = useState<'ftp' | 'mailru' | 'sftp' | 's3' | 'yandex'>('sftp');
   const [operation, setOperation] = useState<'mkdir' | 'rename' | 'copy' | 'delete' | null>(null);
   const [deletion, setDeletion] = useState<WorkspaceResult['deletion']>();
   const [listing, setListing] = useState<RemoteDirectoryListing | null>(null);
@@ -315,6 +316,15 @@ export const SftpPanel = ({
           {t('mailru.new')}
         </button>
         <button
+          onClick={() => {
+            setIsNew(true);
+            setNewKind('yandex');
+            setIsEditing(true);
+          }}
+        >
+          {t('yandex.new')}
+        </button>
+        <button
           disabled={!selectedProfile}
           onClick={() => {
             setIsNew(false);
@@ -512,6 +522,14 @@ export const SftpPanel = ({
             profile={!isNew && selectedProfile?.kind === 's3' ? selectedProfile : undefined}
             run={run}
             onClose={() => setIsEditing(false)}
+          />
+        ) : (isNew ? newKind === 'yandex' : selectedProfile?.kind === 'yandex') ? (
+          <YandexConnectionForm
+            profile={!isNew && selectedProfile?.kind === 'yandex' ? selectedProfile : undefined}
+            snapshot={snapshot}
+            run={run}
+            onClose={() => setIsEditing(false)}
+            errorKey={errorKey}
           />
         ) : (isNew ? newKind === 'mailru' : selectedProfile?.kind === 'mailru') ? (
           <MailruConnectionForm

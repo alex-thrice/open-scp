@@ -38,6 +38,7 @@ import { openSshTerminal } from './external/ssh-terminal';
 import { normalizeMacApplicationPath, openEditor } from './external/editor';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
+import { createYandexConfiguration } from './oauth/yandex-configuration';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
 import { loadAutoUpdater, UpdateService } from './updates/update-service';
 import { hasRequiredMacUpdateSignature } from './updates/mac-update-signature';
@@ -329,6 +330,7 @@ app.whenReady().then(async () => {
     applyApplicationLanguage,
     {
       dragDirectory: join(app.getPath('userData'), 'drag-files'),
+      yandex: createYandexConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
       ...(!app.isPackaged &&
       process.env.OPENSCP_WEBDAV_FIXTURE === '1' &&
       process.env.OPENSCP_TEST_MAILRU_ENDPOINT
