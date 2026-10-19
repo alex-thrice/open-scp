@@ -1168,7 +1168,15 @@ describe('App', () => {
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud', 'Yandex Disk', 'Google Drive']);
+    ).toEqual([
+      'SFTP',
+      'S3',
+      'FTP',
+      'Mail.ru Cloud',
+      'Yandex Disk',
+      'Google Drive',
+      'iCloud Drive',
+    ]);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();
@@ -1188,6 +1196,10 @@ describe('App', () => {
     ).toBe(true);
     expect(screen.queryByLabelText('Host')).toBeNull();
     expect(screen.queryByLabelText('Password')).toBeNull();
+    fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'icloud' } });
+    expect(screen.getByLabelText('Connection name in rclone')).toBeTruthy();
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: '← All connections' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();
   });

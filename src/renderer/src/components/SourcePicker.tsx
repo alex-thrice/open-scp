@@ -10,7 +10,7 @@ interface SourceItem {
   readonly id: string;
   readonly name: string;
   readonly detail: string;
-  readonly kind: 'google' | 'ftp' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
+  readonly kind: 'google' | 'ftp' | 'icloud' | 'local' | 'mailru' | 'sftp' | 's3' | 'yandex';
   readonly image: string | undefined;
 }
 
@@ -114,11 +114,14 @@ export const SourcePicker = ({
           detail:
             item.kind === 'sftp' || item.kind === 'ftp'
               ? item.host
-              : item.kind === 'mailru'
-                ? item.username
-                : item.kind === 'yandex' || item.kind === 'google'
-                  ? (item.accountName ?? t(item.kind === 'google' ? 'google.name' : 'yandex.name'))
-                  : item.bucket || item.endpoint || item.region,
+              : item.kind === 'icloud'
+                ? `${item.remote}:`
+                : item.kind === 'mailru'
+                  ? item.username
+                  : item.kind === 'yandex' || item.kind === 'google'
+                    ? (item.accountName ??
+                      t(item.kind === 'google' ? 'google.name' : 'yandex.name'))
+                    : item.bucket || item.endpoint || item.region,
           kind: item.kind,
           image: undefined,
         })),
@@ -282,9 +285,11 @@ export const SourcePicker = ({
                           <span className="protocol-label">
                             {item.kind === 'local'
                               ? t('ui.local')
-                              : item.kind === 'mailru'
-                                ? t('mailru.name')
-                                : item.kind.toUpperCase()}
+                              : item.kind === 'icloud'
+                                ? t('icloud.name')
+                                : item.kind === 'mailru'
+                                  ? t('mailru.name')
+                                  : item.kind.toUpperCase()}
                           </span>
                         </button>
                       );

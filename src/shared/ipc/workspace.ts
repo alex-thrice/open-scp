@@ -4,6 +4,7 @@ import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
 import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
+import { icloudProfileDraftSchema } from '@shared/models/icloud-profile';
 import { googleProfileDraftSchema } from '@shared/models/google-profile';
 import { googleEntrySchema } from '@shared/models/google-entry';
 import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
@@ -49,6 +50,7 @@ export const profileDraftSchema = z.strictObject({
 });
 export type ProfileDraft = z.infer<typeof profileDraftSchema>;
 export const workspaceRequestSchema = z.discriminatedUnion('action', [
+  z.strictObject({ action: z.literal('save-icloud-profile'), profile: icloudProfileDraftSchema }),
   z.strictObject({ action: z.literal('save-google-profile'), profile: googleProfileDraftSchema }),
   z.strictObject({ action: z.literal('authorize-google-profile'), profileId: id }),
   z.strictObject({ action: z.literal('cancel-google-authorization'), profileId: id }),
@@ -293,7 +295,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['ftp', 'google', 'mailru', 'sftp', 's3', 'yandex']).optional(),
+      kind: z.enum(['ftp', 'google', 'icloud', 'mailru', 'sftp', 's3', 'yandex']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z

@@ -6,6 +6,7 @@ import { ConnectionForm } from './ConnectionForm';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
 import { MailruConnectionForm } from './MailruConnectionForm';
+import { ICloudConnectionForm } from './ICloudConnectionForm';
 import { GoogleConnectionForm } from './GoogleConnectionForm';
 import { YandexConnectionForm } from './YandexConnectionForm';
 import type { WorkspaceRunner } from './useWorkspaceService';
@@ -65,6 +66,7 @@ export const ConnectionEditor = ({
     try {
       if (
         request.action === 'save-profile' ||
+        request.action === 'save-icloud-profile' ||
         request.action === 'save-s3-profile' ||
         request.action === 'save-ftp-profile' ||
         request.action === 'save-mailru-profile' ||
@@ -120,11 +122,23 @@ export const ConnectionEditor = ({
           <option value="mailru">{t('mailru.name')}</option>
           <option value="yandex">{t('yandex.name')}</option>
           <option value="google">{t('google.name')}</option>
+          <option value="icloud">{t('icloud.name')}</option>
         </select>
       </label>
     </>
   );
-  return kind === 'google' ? (
+  return kind === 'icloud' ? (
+    <ICloudConnectionForm
+      initialName={nameDraft}
+      profile={profile?.kind === 'icloud' ? profile : undefined}
+      run={execute}
+      onClose={() => void finish('cancel')}
+      onConfirm={() => void finish('ok')}
+      errorKey={errorKey}
+      editorControls={editorControls}
+      afterSave={afterSave}
+    />
+  ) : kind === 'google' ? (
     <GoogleConnectionForm
       initialName={nameDraft}
       profile={profile?.kind === 'google' ? profile : undefined}

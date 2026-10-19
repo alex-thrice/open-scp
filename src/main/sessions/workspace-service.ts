@@ -37,6 +37,9 @@ import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connect
 import { FtpProvider } from '../providers/ftp/ftp-provider';
 import { MailruConnection } from '../providers/mailru/mailru-connection';
 import { MailruProvider } from '../providers/mailru/mailru-provider';
+import { ICloudConnection } from '../providers/icloud/icloud-connection';
+import { ICloudProvider } from '../providers/icloud/icloud-provider';
+import type { RcloneLauncher } from '../providers/icloud/rclone-process';
 import { GoogleProvider } from '../providers/google/google-provider';
 import { GoogleConnection } from '../providers/google/google-connection';
 import {
@@ -90,6 +93,7 @@ const sourcePathGoogleName = (path: string) =>
   path.startsWith(googleRootPath) ? googlePathName(path) : posix.basename(path);
 
 export interface WorkspaceExternalActions {
+  readonly icloudLaunch?: RcloneLauncher;
   readonly google?: GoogleConfiguration;
   readonly yandex?: YandexConfiguration;
   readonly mailruEndpoint?: string;
@@ -109,7 +113,13 @@ export interface WorkspaceExternalActions {
 }
 
 type RemoteProvider =
-  GoogleProvider | FtpProvider | MailruProvider | S3Provider | SftpProvider | YandexProvider;
+  | GoogleProvider
+  | FtpProvider
+  | ICloudProvider
+  | MailruProvider
+  | S3Provider
+  | SftpProvider
+  | YandexProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -392,6 +402,7 @@ export class WorkspaceService {
         ...(provider instanceof SftpProvider ||
         provider instanceof FtpProvider ||
         provider instanceof MailruProvider ||
+        provider instanceof ICloudProvider ||
         provider instanceof YandexProvider ||
         provider instanceof GoogleProvider
           ? {
@@ -400,6 +411,7 @@ export class WorkspaceService {
                 ? getSafeApplicationError(provider.connection.failureCode).messageKey
                 : null,
               passwordRequired:
+                !(provider instanceof ICloudProvider) &&
                 provider.connection.profile.authentication.method === 'password' &&
                 (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
                   provider.connection.failureCode === applicationErrorCodes.authenticationFailed ||
@@ -490,6 +502,8 @@ export class WorkspaceService {
     );
   }
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
+    if (profile.kind === 'icloud')
+      return new ICloudProvider(new ICloudConnection(profile, this.externalActions.icloudLaunch));
     if (profile.kind === 'google')
       return new GoogleProvider(
         new GoogleConnection(profile, this.google.vault, this.externalActions.google?.apiEndpoint),
@@ -879,6 +893,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-icloud-profile' ||
         request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
@@ -897,6 +912,7 @@ export class WorkspaceService {
       throw new ApplicationError(applicationErrorCodes.providerConflict);
     if (
       (request.action === 'save-profile' ||
+        request.action === 'save-icloud-profile' ||
         request.action === 'save-google-profile' ||
         request.action === 'save-yandex-profile' ||
         request.action === 'save-s3-profile' ||
@@ -1354,6 +1370,18 @@ export class WorkspaceService {
           profile,
           JSON.stringify({ secretAccessKey, ...(sessionToken ? { sessionToken } : {}) }),
         ).id;
+        break;
+      }
+      case 'save-icloud-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'icloud')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        savedProfileId = this.store.save({
+          ...draft,
+          id: draft.id ?? randomUUID(),
+          kind: 'icloud',
+        }).id;
         break;
       }
       case 'save-mailru-profile': {

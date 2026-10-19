@@ -3,6 +3,7 @@ import type { ConnectionProfile } from './connection-profile';
 import { mailruPathSchema } from './mailru-profile';
 import { googleDirectoryPathSchema } from './google-path';
 import { yandexPathSchema } from './yandex-profile';
+import { icloudProfileDraftSchema } from './icloud-profile';
 
 const secretReference = z.strictObject({
   id: z.string().uuid(),
@@ -10,6 +11,12 @@ const secretReference = z.strictObject({
 });
 export const connectionProfileSchema = z
   .discriminatedUnion('kind', [
+    icloudProfileDraftSchema.omit({ id: true }).extend({
+      id: z.string().uuid(),
+      kind: z.literal('icloud'),
+      initialDirectory: icloudProfileDraftSchema.shape.initialDirectory.optional(),
+      timeout: icloudProfileDraftSchema.shape.timeout.optional(),
+    }),
     z.strictObject({
       id: z.string().uuid(),
       name: z.string().trim().min(1).max(200),
@@ -107,6 +114,17 @@ export const connectionProfileSchema = z
     }),
   ])
   .transform((profile): ConnectionProfile => {
+    if (profile.kind === 'icloud')
+      return {
+        id: profile.id,
+        name: profile.name,
+        kind: profile.kind,
+        remote: profile.remote,
+        ...(profile.initialDirectory === undefined
+          ? {}
+          : { initialDirectory: profile.initialDirectory }),
+        ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
+      };
     if (profile.kind === 'yandex' || profile.kind === 'google')
       return {
         id: profile.id,

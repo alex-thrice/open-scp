@@ -25,6 +25,7 @@ export class Diagnostics {
         node: process.versions.node,
         language: snapshot.language,
         profileCounts: {
+          icloud: snapshot.profiles.filter((item) => item.kind === 'icloud').length,
           google: snapshot.profiles.filter((item) => item.kind === 'google').length,
           yandex: snapshot.profiles.filter((item) => item.kind === 'yandex').length,
           ftp: snapshot.profiles.filter((item) => item.kind === 'ftp').length,

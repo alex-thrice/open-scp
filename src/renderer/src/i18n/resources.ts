@@ -9,6 +9,15 @@ export const resources = {
       ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
+      icloud: {
+        name: 'iCloud Drive',
+        profile: 'iCloud Drive connection',
+        remote: 'Connection name in rclone',
+        setupHint:
+          'Install rclone and connect your Apple account using rclone config before adding this profile. Sign-in and two-factor authentication are handled by rclone.',
+        remoteHint:
+          'Enter the configured iCloud Drive connection name without a colon. Use a separate connection name for each Apple account.',
+      },
       google: {
         name: 'Google Drive',
         new: 'New Google Drive',
@@ -271,6 +280,15 @@ export const resources = {
         refresh: 'Refresh drives',
       },
       errors: {
+        icloud: {
+          unavailable:
+            'rclone could not be started. Install rclone and add it to PATH, or set OPENSCP_RCLONE_PATH to its full executable path before starting OpenSCP.',
+          configuration:
+            'The selected rclone connection is missing or is not an iCloud Drive connection. Check the name and configure it using rclone config.',
+          authentication:
+            'Sign in to iCloud again using rclone config reconnect, complete two-factor authentication, then reconnect this panel.',
+          timeout: 'The iCloud operation timed out. Check the connection and try again.',
+        },
         oauth: {
           required: 'Sign in again to access this Disk.',
           configuration:
@@ -428,6 +446,15 @@ export const resources = {
         tagline: 'Кроссплатформенный файловый клиент',
       },
       common: { notAvailable: '—' },
+      icloud: {
+        name: 'iCloud Drive',
+        profile: 'Подключение iCloud Drive',
+        remote: 'Имя подключения в rclone',
+        setupHint:
+          'Установите rclone и подключите Apple Account через rclone config перед добавлением профиля. Вход и двухфакторную аутентификацию выполняет rclone.',
+        remoteHint:
+          'Укажите имя настроенного подключения iCloud Drive без двоеточия. Для каждого Apple Account используйте отдельное имя подключения.',
+      },
       google: {
         name: 'Google Диск',
         new: 'Новый Google Диск',
@@ -690,6 +717,16 @@ export const resources = {
         refresh: 'Обновить список дисков',
       },
       errors: {
+        icloud: {
+          unavailable:
+            'Не удалось запустить rclone. Установите его и добавьте в PATH либо задайте полный путь к программе в OPENSCP_RCLONE_PATH перед запуском OpenSCP.',
+          configuration:
+            'Подключение rclone не найдено или имеет тип, отличный от iCloud Drive. Проверьте имя и настройте подключение через rclone config.',
+          authentication:
+            'Повторно войдите в iCloud через rclone config reconnect, подтвердите двухфакторную аутентификацию и переподключите панель.',
+          timeout:
+            'Время ожидания операции iCloud истекло. Проверьте соединение и повторите попытку.',
+        },
         security: {
           unavailable: 'Безопасное хранилище ОС недоступно. Сохранение секретов запрещено.',
           credentialRequired:
