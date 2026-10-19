@@ -264,10 +264,14 @@ export const ProfileLibrary = ({
                         <small>
                           {item.kind === 'sftp' || item.kind === 'ftp'
                             ? `${item.username}@${item.host}`
-                            : item.bucket || item.endpoint || item.region}
+                            : item.kind === 'mailru'
+                              ? item.username
+                              : item.bucket || item.endpoint || item.region}
                         </small>
                       </button>
-                      <span className="protocol-label">{item.kind.toUpperCase()}</span>
+                      <span className="protocol-label">
+                        {item.kind === 'mailru' ? t('mailru.name') : item.kind.toUpperCase()}
+                      </span>
                       <button
                         className="icon-button"
                         disabled={busy}

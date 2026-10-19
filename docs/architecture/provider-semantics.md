@@ -47,6 +47,13 @@ delete. S3Provider реализует составную операцию в mai
 Transfer Engine для S3 upload использует условную multipart-финализацию, а не эмулирует rename.
 Подробные условия и совместимые расширения контрактов: `s3.md`.
 
+## Облако Mail.ru
+
+Облако Mail.ru добавлено отдельным видом `mailru` поверх WebDAV. Оно использует абсолютный
+путь внутри аккаунта, настоящие каталоги и общую очередь. Resume, атомарность rename,
+permissions, checksum и server-side copy не объявляются. Подробности, защищённая публикация
+через MOVE и границы проверки сервиса описаны в [семантике Mail.ru](mailru.md).
+
 ## Lifecycle и ошибки
 
 Состояния соединения: `disconnected → connecting → connected → disconnecting → disconnected`.

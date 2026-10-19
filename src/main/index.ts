@@ -329,6 +329,11 @@ app.whenReady().then(async () => {
     applyApplicationLanguage,
     {
       dragDirectory: join(app.getPath('userData'), 'drag-files'),
+      ...(!app.isPackaged &&
+      process.env.OPENSCP_WEBDAV_FIXTURE === '1' &&
+      process.env.OPENSCP_TEST_MAILRU_ENDPOINT
+        ? { mailruEndpoint: process.env.OPENSCP_TEST_MAILRU_ENDPOINT }
+        : {}),
       checkForUpdates: () => updateService.check(),
       downloadUpdate: () => updateService.download(),
       installUpdate: async () => {

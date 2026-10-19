@@ -10,6 +10,7 @@ import { parseS3Path, s3Child } from '@shared/models/s3-path';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { ConnectionForm } from './ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
+import { MailruConnectionForm } from './MailruConnectionForm';
 import { PathBreadcrumbs } from './PathBreadcrumbs';
 import { VirtualFileList } from './VirtualFileList';
 import type { WorkspaceRunner } from './useWorkspaceService';
@@ -40,7 +41,7 @@ export const SftpPanel = ({
   const [profileId, setProfileId] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [isNew, setIsNew] = useState(false);
-  const [newKind, setNewKind] = useState<'ftp' | 'sftp' | 's3'>('sftp');
+  const [newKind, setNewKind] = useState<'ftp' | 'mailru' | 'sftp' | 's3'>('sftp');
   const [operation, setOperation] = useState<'mkdir' | 'rename' | 'copy' | 'delete' | null>(null);
   const [deletion, setDeletion] = useState<WorkspaceResult['deletion']>();
   const [listing, setListing] = useState<RemoteDirectoryListing | null>(null);
@@ -305,6 +306,15 @@ export const SftpPanel = ({
           {t('ftp.new')}
         </button>
         <button
+          onClick={() => {
+            setIsNew(true);
+            setNewKind('mailru');
+            setIsEditing(true);
+          }}
+        >
+          {t('mailru.new')}
+        </button>
+        <button
           disabled={!selectedProfile}
           onClick={() => {
             setIsNew(false);
@@ -502,6 +512,13 @@ export const SftpPanel = ({
             profile={!isNew && selectedProfile?.kind === 's3' ? selectedProfile : undefined}
             run={run}
             onClose={() => setIsEditing(false)}
+          />
+        ) : (isNew ? newKind === 'mailru' : selectedProfile?.kind === 'mailru') ? (
+          <MailruConnectionForm
+            profile={!isNew && selectedProfile?.kind === 'mailru' ? selectedProfile : undefined}
+            run={run}
+            onClose={() => setIsEditing(false)}
+            errorKey={errorKey}
           />
         ) : (isNew ? newKind === 'ftp' : selectedProfile?.kind === 'ftp') ? (
           <FtpConnectionForm

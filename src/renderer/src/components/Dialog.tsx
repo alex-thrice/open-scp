@@ -7,11 +7,13 @@ export const Dialog = ({
   onClose,
   children,
   footer,
+  notice,
 }: {
   readonly title: string;
   readonly onClose: () => void;
   readonly children: ReactNode;
   readonly footer?: ReactNode;
+  readonly notice?: ReactNode;
 }) => {
   const reference = useRef<HTMLDialogElement>(null);
   const { t } = useTranslation();
@@ -56,6 +58,7 @@ export const Dialog = ({
         {invalid ? <p role="alert">{t('library.validation')}</p> : null}
         {children}
       </div>
+      {notice ? <div className="dialog-notice">{notice}</div> : null}
       {footer ? <div className="dialog-actions dialog-footer">{footer}</div> : null}
     </dialog>
   );

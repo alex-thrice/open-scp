@@ -1052,7 +1052,7 @@ describe('App', () => {
       within(type)
         .getAllByRole('option')
         .map((item) => item.textContent),
-    ).toEqual(['SFTP', 'S3', 'FTP']);
+    ).toEqual(['SFTP', 'S3', 'FTP', 'Mail.ru Cloud']);
     fireEvent.change(type, { target: { value: 's3' } });
     expect(screen.getByText('S3-compatible storage')).toBeTruthy();
     expect(screen.getByLabelText('Secret access key')).toBeTruthy();
@@ -1060,7 +1060,12 @@ describe('App', () => {
     fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'ftp' } });
     expect(screen.getByText(/Unencrypted FTP sends the password/u)).toBeTruthy();
     expect((screen.getByLabelText('Port') as HTMLInputElement).value).toBe('21');
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    fireEvent.change(screen.getByLabelText('Connection type'), { target: { value: 'mailru' } });
+    expect(screen.getByLabelText('Mail account email')).toBeTruthy();
+    expect(screen.getByLabelText('App password')).toBeTruthy();
+    expect(screen.queryByLabelText('Host')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Test connection' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: '← All connections' }));
     expect(screen.getByText('Saved profiles')).toBeTruthy();
   });
 

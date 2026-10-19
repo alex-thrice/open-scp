@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import type { Appearance, WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
@@ -11,6 +11,7 @@ import {
   type FileCommand,
 } from './CommanderSurface';
 import { Dialog } from './Dialog';
+import { MailruPasswordLabel } from './MailruPasswordLabel';
 import { Icon } from './Icon';
 import { SourcePicker } from './SourcePicker';
 import { VirtualFileList } from './VirtualFileList';
@@ -81,6 +82,7 @@ export const FilePane = ({
   readonly onLocation: (side: PaneSide, location: PaneLocation) => void;
 }) => {
   const { t } = useTranslation();
+  const passwordId = useId();
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
@@ -425,7 +427,7 @@ export const FilePane = ({
           <span className="source-state">
             {kind === 'local'
               ? t('ui.local')
-              : `${kind.toUpperCase()} · ${t(
+              : `${kind === 'mailru' ? t('mailru.name') : kind.toUpperCase()} · ${t(
                   session?.connectionStage
                     ? `connections.stages.${session.connectionStage}`
                     : `connections.states.${session?.state}`,
@@ -653,9 +655,14 @@ export const FilePane = ({
               }).finally(() => setPasswordBusy(false));
             }}
           >
-            <label>
-              {t('connections.password')}
+            <div className="form-field">
+              {kind === 'mailru' ? (
+                <MailruPasswordLabel inputId={passwordId} />
+              ) : (
+                <label htmlFor={passwordId}>{t('connections.password')}</label>
+              )}
               <input
+                id={passwordId}
                 autoFocus
                 autoComplete="current-password"
                 disabled={passwordBusy}
@@ -664,7 +671,7 @@ export const FilePane = ({
                 required
                 type="password"
               />
-            </label>
+            </div>
             <label className="checkbox-label">
               <input disabled={passwordBusy} name="save" type="checkbox" />
               <span>{t('connections.savePassword')}</span>

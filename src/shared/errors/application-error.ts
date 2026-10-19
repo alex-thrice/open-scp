@@ -9,6 +9,7 @@ export const applicationErrorCodes = {
   hostKeyUnknown: 'HOST_KEY_UNKNOWN',
   hostKeyChanged: 'HOST_KEY_CHANGED',
   authenticationFailed: 'AUTHENTICATION_FAILED',
+  mailruWebdavAccessDenied: 'MAILRU_WEBDAV_ACCESS_DENIED',
   connectionFailed: 'CONNECTION_FAILED',
   externalApplicationFailed: 'EXTERNAL_APPLICATION_FAILED',
   externalApplicationUnavailable: 'EXTERNAL_APPLICATION_UNAVAILABLE',
@@ -25,6 +26,8 @@ export const applicationErrorCodes = {
   providerNotConnected: 'PROVIDER_NOT_CONNECTED',
   providerNotFound: 'PROVIDER_NOT_FOUND',
   providerUnsupported: 'PROVIDER_UNSUPPORTED',
+  providerQuotaExceeded: 'PROVIDER_QUOTA_EXCEEDED',
+  providerRateLimited: 'PROVIDER_RATE_LIMITED',
 } as const;
 
 export type ApplicationErrorCode =
@@ -43,6 +46,18 @@ export class ApplicationError<Code extends string = string> extends Error {
 }
 
 const safeErrors = {
+  [applicationErrorCodes.mailruWebdavAccessDenied]: {
+    code: applicationErrorCodes.mailruWebdavAccessDenied,
+    messageKey: 'errors.mailru.webdavAccessDenied',
+  },
+  [applicationErrorCodes.providerQuotaExceeded]: {
+    code: applicationErrorCodes.providerQuotaExceeded,
+    messageKey: 'errors.provider.quotaExceeded',
+  },
+  [applicationErrorCodes.providerRateLimited]: {
+    code: applicationErrorCodes.providerRateLimited,
+    messageKey: 'errors.provider.rateLimited',
+  },
   [applicationErrorCodes.s3Endpoint]: {
     code: applicationErrorCodes.s3Endpoint,
     messageKey: 'errors.s3.endpoint',

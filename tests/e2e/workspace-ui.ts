@@ -17,11 +17,13 @@ export const expectSourceIndicatorAtEnd = async (panel: Locator) => {
   expect(geometry.indicatorWidth).toBe(14);
 };
 
-export const newConnection = async (page: Page, kind: 'ftp' | 'sftp' | 's3') => {
+export const newConnection = async (page: Page, kind: 'ftp' | 'mailru' | 'sftp' | 's3') => {
   await page.getByRole('button', { name: 'Connections', exact: true }).click();
   await page.getByRole('button', { name: 'Connection', exact: true }).click();
   const form = page.getByRole('dialog', { name: 'Connections', exact: true });
   await form.getByLabel('Connection type').selectOption(kind);
+  if (kind === 'mailru')
+    return page.getByRole('dialog', { name: 'Mail.ru Cloud connection', exact: true });
   if (kind === 'sftp') {
     await form.getByLabel('Authentication').selectOption('password');
     await form.getByText('Advanced', { exact: true }).click();
@@ -31,8 +33,9 @@ export const newConnection = async (page: Page, kind: 'ftp' | 'sftp' | 's3') => 
 
 export const finishProfile = async (page: Page, form: Locator) => {
   await form.getByRole('button', { name: 'Save profile', exact: true }).click();
-  await expect(form.getByText('Saved profiles', { exact: true })).toBeVisible();
-  await form.getByRole('button', { name: 'Close', exact: true }).last().click();
+  const library = page.getByRole('dialog', { name: 'Connections', exact: true });
+  await expect(library.getByText('Saved profiles', { exact: true })).toBeVisible();
+  await library.getByRole('button', { name: 'Close', exact: true }).last().click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 };
 

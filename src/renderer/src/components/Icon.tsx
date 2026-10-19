@@ -2,6 +2,7 @@ import { createElement } from 'react';
 
 // Иконки Lucide, лицензия ISC: см. LICENSE.lucide в этой папке.
 const icons = {
+  Cloud: [['path', { d: 'M7 18a5 5 0 1 1 1-9.9A6 6 0 0 1 20 10a4 4 0 0 1-2 8Z' }]],
   FolderSync: [
     [
       'path',

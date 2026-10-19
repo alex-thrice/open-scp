@@ -1,4 +1,4 @@
-# Интеграционное окружение OpenSSH, FTP и MinIO
+# Интеграционное окружение OpenSSH, FTP, MinIO и WebDAV
 
 Требования: Docker с Linux containers / Docker Compose v2, Node.js и pnpm из настроек проекта,
 `ssh-keygen` в PATH. Все порты публикуются только на `127.0.0.1`. Не используйте это окружение
@@ -19,6 +19,19 @@ Compose-проекта `openscp-integration`. Сгенерированный к�
 игнорируемом `tests/fixtures/runtime/`; его можно использовать повторно.
 
 ## Только фиктивные credentials
+
+T31 использует также `tests/fixtures/webdav-fixture.ts`: сервер на случайном loopback-порту
+с фиктивными `fixture@example.test` / `webdav-fixture-password-only`. Сервер создаётся и
+закрывается самими тестами. Contract/protocol и Electron-сценарий не требуют Docker;
+передачи Mail.ru ↔ SFTP/S3/FTP требуют контейнеров ниже. Реальные credentials Mail.ru не
+используются. Ручная приёмка: [чеклист аккаунта Mail.ru](../user/mailru.md).
+
+```sh
+pnpm exec vitest run tests/providers/mailru-provider.contract.test.ts tests/providers/mailru-provider.test.ts tests/main/mailru-profile.test.ts
+pnpm exec vitest run --config vitest.integration.config.ts tests/integration/mailru-transfers.test.ts
+pnpm build
+pnpm exec playwright test tests/e2e/mailru-transfer.spec.ts
+```
 
 | Сервис  | Адрес                    | Пользователь / ключ   | Тестовый пароль / секрет             |
 | ------- | ------------------------ | --------------------- | ------------------------------------ |
@@ -114,6 +127,15 @@ Live AWS credentials не требуются и не использовалис�
   остаются в тех же suites.
 
 Команды: `pnpm test`, `pnpm test:integration`, `pnpm test:e2e:integration`.
+
+## Проверка подключения профилей
+
+Общая проверка подключения в редакторе покрыта
+`tests/integration/profile-connection-tests.test.ts`: FTP и S3, начальные каталоги,
+неверные credentials, SSH-подтверждение, изменённый/подменённый ключ, изменение профиля,
+зашифрованный приватный SSH-ключ и сохранность панельной сессии. Electron-сценарий
+`tests/e2e/connection-check.spec.ts` проверяет SFTP/FTP/S3, исправление пароля и возврат к
+списку; Mail.ru покрыт `tests/e2e/mailru-transfer.spec.ts`.
 
 ## Проверки T14–T17
 

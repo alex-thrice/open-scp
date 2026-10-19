@@ -1,4 +1,9 @@
-export type ProviderKind = 'ftp' | 'local' | 's3' | 'sftp';
+export type ProviderKind = 'ftp' | 'local' | 'mailru' | 's3' | 'sftp';
+
+export interface MailruProviderPath {
+  readonly path: string;
+  readonly provider: 'mailru';
+}
 
 export interface FtpProviderPath {
   readonly path: string;
@@ -21,7 +26,18 @@ export interface S3ProviderPath {
   readonly provider: 's3';
 }
 
-export type ProviderPath = FtpProviderPath | LocalProviderPath | S3ProviderPath | SftpProviderPath;
+export type ProviderPath =
+  FtpProviderPath | LocalProviderPath | MailruProviderPath | S3ProviderPath | SftpProviderPath;
+
+export const createMailruProviderPath = (path: string): MailruProviderPath => ({
+  path,
+  provider: 'mailru',
+});
+
+export const createRemoteProviderPath = (
+  provider: 'ftp' | 'mailru' | 'sftp',
+  path: string,
+): FtpProviderPath | MailruProviderPath | SftpProviderPath => ({ provider, path });
 
 export const createFtpProviderPath = (path: string): FtpProviderPath => ({
   path,

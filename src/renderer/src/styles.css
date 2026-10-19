@@ -13,6 +13,8 @@
   --selected: #e9f0ff;
   --danger: #bd394a;
   --danger-soft: #fff1f2;
+  --success: #2f6d43;
+  --success-soft: #edf8ef;
   --shadow: 0 16px 48px #24334b24;
   font-family:
     'Segoe UI',
@@ -41,6 +43,8 @@
   --selected: #2c4062;
   --danger: #ff9ba7;
   --danger-soft: #422933;
+  --success: #a6deb6;
+  --success-soft: #243b2c;
   --shadow: 0 16px 48px #0006;
 }
 * {
@@ -879,6 +883,29 @@ small {
   padding: 24px;
   scrollbar-width: thin;
 }
+.dialog-notice {
+  flex-shrink: 0;
+  padding: 0 24px 14px;
+}
+.connection-feedback {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid;
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.connection-feedback--success {
+  color: var(--success);
+  background: var(--success-soft);
+  border-color: color-mix(in srgb, var(--success) 20%, var(--success-soft));
+}
+.connection-feedback--error {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: color-mix(in srgb, var(--danger) 20%, var(--danger-soft));
+}
 .native-dialog > .dialog-footer {
   flex-shrink: 0;
   margin: 0;
@@ -902,6 +929,53 @@ small {
   gap: 6px;
   align-items: center;
   font-size: 12px;
+}
+.form-field {
+  display: grid;
+  gap: 6px;
+}
+.field-label-with-hint {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.field-hint {
+  display: inline-flex;
+}
+.field-hint-trigger {
+  width: 20px;
+  height: 20px;
+  min-height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--accent);
+  background: transparent;
+  font-size: 19px;
+  font-weight: 700;
+  line-height: 1;
+}
+.field-hint-content {
+  position: fixed;
+  inset: auto;
+  width: min(420px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  overflow: auto;
+  margin: 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+  white-space: normal;
+}
+.field-hint-content:popover-open {
+  display: grid;
+  gap: 10px;
 }
 .native-dialog label:has(input[type='checkbox']) {
   display: flex;
@@ -1327,4 +1401,13 @@ kbd {
   .spinner {
     animation-duration: 2s;
   }
+}
+
+.source-icon[data-kind='mailru'] {
+  color: #d97706;
+  background: #fff4df;
+}
+:root[data-theme='dark'] .source-icon[data-kind='mailru'] {
+  color: #ffd080;
+  background: #45331b;
 }

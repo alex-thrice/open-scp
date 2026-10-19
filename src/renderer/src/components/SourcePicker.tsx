@@ -10,7 +10,7 @@ interface SourceItem {
   readonly id: string;
   readonly name: string;
   readonly detail: string;
-  readonly kind: 'ftp' | 'local' | 'sftp' | 's3';
+  readonly kind: 'ftp' | 'local' | 'mailru' | 'sftp' | 's3';
   readonly image: string | undefined;
 }
 
@@ -114,7 +114,9 @@ export const SourcePicker = ({
           detail:
             item.kind === 'sftp' || item.kind === 'ftp'
               ? item.host
-              : item.bucket || item.endpoint || item.region,
+              : item.kind === 'mailru'
+                ? item.username
+                : item.bucket || item.endpoint || item.region,
           kind: item.kind,
           image: undefined,
         })),
@@ -276,7 +278,11 @@ export const SourcePicker = ({
                             <small>{item.detail}</small>
                           </span>
                           <span className="protocol-label">
-                            {item.kind === 'local' ? t('ui.local') : item.kind.toUpperCase()}
+                            {item.kind === 'local'
+                              ? t('ui.local')
+                              : item.kind === 'mailru'
+                                ? t('mailru.name')
+                                : item.kind.toUpperCase()}
                           </span>
                         </button>
                       );

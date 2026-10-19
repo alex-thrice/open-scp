@@ -9,6 +9,18 @@ export const resources = {
       ui: designResources.en,
       app: { desktop: 'Desktop', name: 'OpenSCP', tagline: 'Cross-platform file client' },
       common: { notAvailable: '—' },
+      mailru: {
+        name: 'Mail.ru Cloud',
+        profile: 'Mail.ru Cloud connection',
+        new: 'New Mail.ru Cloud',
+        email: 'Mail account email',
+        appPassword: 'App password',
+        passwordHelp: 'How to create a Mail.ru app password',
+        passwordHint:
+          'In Mail, open Settings → All settings → Security → App passwords. Create a password for OpenSCP and select “Full access to Cloud”. Enter the email of that Mail account and the generated password here.',
+        vkIdHint:
+          'If you sign in to Mail with VK ID, use VK ID to open the account settings in your browser. Regular and VK ID passwords do not work for this connection.',
+      },
       ftp: {
         profile: 'FTP profile',
         new: 'New FTP',
@@ -67,6 +79,9 @@ export const resources = {
         timeout: 'Timeout (ms)',
         keepalive: 'Keepalive interval (ms)',
         save: 'Save profile',
+        test: 'Test connection',
+        testSucceeded: 'Connection successful. The initial location is accessible.',
+        trustAndTest: 'Trust this key and test connection',
         cancel: 'Cancel',
         connect: 'Connect / test',
         disconnect: 'Disconnect',
@@ -222,6 +237,10 @@ export const resources = {
         refresh: 'Refresh drives',
       },
       errors: {
+        mailru: {
+          webdavAccessDenied:
+            'Mail.ru denied WebDAV access. Check the email and use an app password with “Full access to Cloud”. Regular and VK ID passwords cannot be used here.',
+        },
         s3: {
           endpoint: 'Invalid S3 endpoint or region. Check the profile.',
           dns: 'S3 hostname could not be resolved.',
@@ -257,6 +276,8 @@ export const resources = {
           notConnected: 'The connection is not available. Reconnect and try again.',
           notFound: 'The requested file or directory no longer exists.',
           unsupported: 'This provider does not support this operation safely.',
+          quotaExceeded: 'Cloud storage is full. Free some space and retry.',
+          rateLimited: 'The cloud service is limiting requests. Wait and retry.',
         },
         external: {
           failed: 'The external application could not be opened.',
@@ -369,6 +390,18 @@ export const resources = {
         insecureWarning:
           'Незашифрованный FTP передаёт пароль, имена и содержимое файлов без шифрования. Используйте его только с доверенными сервером и сетью.',
       },
+      mailru: {
+        name: 'Облако Mail.ru',
+        profile: 'Подключение Облака Mail.ru',
+        new: 'Новое Облако Mail.ru',
+        email: 'Email аккаунта Mail',
+        appPassword: 'Пароль приложения',
+        passwordHelp: 'Как создать пароль приложения Mail.ru',
+        passwordHint:
+          'В Почте Mail откройте Настройки → Все настройки → Безопасность → Пароли для внешних приложений. Создайте пароль для OpenSCP и выберите «Полный доступ к Облаку». Здесь укажите email этого аккаунта Mail и полученный пароль.',
+        vkIdHint:
+          'Если входите в Mail через VK ID, откройте настройки аккаунта через VK ID в браузере. Обычный пароль и пароль VK ID для этого подключения не подходят.',
+      },
       s3: {
         profile: 'Профиль S3',
         selector: 'Профиль подключения',
@@ -421,6 +454,9 @@ export const resources = {
         timeout: 'Тайм-аут (мс)',
         keepalive: 'Интервал keepalive (мс)',
         save: 'Сохранить профиль',
+        test: 'Проверить подключение',
+        testSucceeded: 'Подключение успешно. Начальное расположение доступно.',
+        trustAndTest: 'Доверять ключу и проверить подключение',
         cancel: 'Отмена',
         connect: 'Подключить / проверить',
         disconnect: 'Отключить',
@@ -585,6 +621,10 @@ export const resources = {
           authenticationFailed: 'Ошибка аутентификации. Проверьте учётные данные.',
           connectionFailed: 'Не удалось подключиться. Проверьте адрес, порт и сеть.',
         },
+        mailru: {
+          webdavAccessDenied:
+            'Mail.ru отказал в доступе по WebDAV. Проверьте email и используйте пароль приложения с правом «Полный доступ к Облаку». Обычный пароль и пароль VK ID здесь не подходят.',
+        },
         s3: {
           endpoint: 'Неверный endpoint S3 или регион. Проверьте профиль.',
           dns: 'Не удалось определить IP-адрес сервера S3.',
@@ -612,6 +652,10 @@ export const resources = {
           notConnected: 'Соединение недоступно. Подключитесь повторно.',
           notFound: 'Запрошенный файл или каталог больше не существует.',
           unsupported: 'Провайдер не поддерживает безопасное выполнение этой операции.',
+          quotaExceeded:
+            'В облачном хранилище закончилось место. Освободите его и повторите операцию.',
+          rateLimited:
+            'Облачный сервис ограничил частоту запросов. Подождите и повторите операцию.',
         },
         external: {
           failed: 'Не удалось открыть внешнее приложение.',

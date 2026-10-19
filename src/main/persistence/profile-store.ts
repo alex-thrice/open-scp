@@ -2,6 +2,10 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ConnectionProfile } from '@shared/models/connection-profile';
 import { connectionProfileSchema } from '@shared/models/profile-schema';
+import {
+  profileSecretReference,
+  withProfileSecretReference,
+} from '@shared/models/profile-credentials';
 import { CredentialService } from '../security/credential-service';
 import { ApplicationError } from '../ipc/application-error';
 import { applicationErrorCodes } from '@shared/errors/application-error';
@@ -25,16 +29,7 @@ export class ProfileStore {
     const secretId = randomUUID();
     if (ciphertext !== undefined) {
       const reference = { id: secretId, storage: 'safe-storage' as const };
-      if (validated.kind === 'ftp') {
-        validated = { ...validated, authentication: { method: 'password', secret: reference } };
-      } else if (validated.kind === 'sftp' && validated.authentication.method === 'password') {
-        validated = { ...validated, authentication: { method: 'password', secret: reference } };
-      } else if (validated.kind === 'sftp' && validated.authentication.method === 'private-key') {
-        validated = {
-          ...validated,
-          authentication: { ...validated.authentication, passphrase: reference },
-        };
-      } else if (validated.kind === 's3') validated = { ...validated, secret: reference };
+      validated = withProfileSecretReference(validated, reference);
     }
     this.database.exec('BEGIN IMMEDIATE');
     try {
@@ -43,16 +38,7 @@ export class ProfileStore {
           'INSERT INTO profiles (id, metadata) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata',
         )
         .run(validated.id, JSON.stringify(validated));
-      const references =
-        validated.kind === 's3'
-          ? [validated.secret?.id]
-          : validated.kind === 'ftp'
-            ? [validated.authentication.secret.id]
-            : validated.authentication.method === 'agent'
-              ? []
-              : validated.authentication.method === 'password'
-                ? [validated.authentication.secret.id]
-                : [validated.authentication.passphrase?.id];
+      const references = [profileSecretReference(validated)?.id];
       for (const reference of references) {
         if (reference === undefined || (ciphertext !== undefined && reference === secretId))
           continue;
@@ -82,16 +68,7 @@ export class ProfileStore {
 
   public replaceCredential(profileId: string, credentialId: string, value: string): void {
     const profile = this.list().find((item) => item.id === profileId);
-    const reference =
-      profile?.kind === 's3'
-        ? profile.secret
-        : profile?.kind === 'ftp'
-          ? profile.authentication.secret
-          : profile?.authentication.method === 'password'
-            ? profile.authentication.secret
-            : profile?.authentication.method === 'private-key'
-              ? profile.authentication.passphrase
-              : undefined;
+    const reference = profile ? profileSecretReference(profile) : undefined;
     if (reference?.id !== credentialId)
       throw new ApplicationError(applicationErrorCodes.credentialRequired);
     const owner = this.database

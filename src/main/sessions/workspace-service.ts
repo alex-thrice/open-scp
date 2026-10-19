@@ -8,6 +8,7 @@ import { basename, dirname, isAbsolute, join, posix, relative, resolve, sep } fr
 import type {
   ConnectionProfile,
   FtpConnectionProfile,
+  MailruConnectionProfile,
   S3ConnectionProfile,
   SftpConnectionProfile,
 } from '@shared/models/connection-profile';
@@ -19,8 +20,7 @@ import type {
 } from '@shared/ipc/workspace';
 import {
   createLocalProviderPath,
-  createFtpProviderPath,
-  createSftpProviderPath,
+  createRemoteProviderPath,
   createS3ProviderPath,
 } from '@shared/models/provider-path';
 import { formatS3Path, parseS3Path, s3Prefix, s3Name } from '@shared/models/s3-path';
@@ -33,6 +33,9 @@ import { SftpConnection, type SftpCredentials } from '../providers/sftp/sftp-con
 import { SftpProvider } from '../providers/sftp/sftp-provider';
 import { FtpConnection, type FtpCredentials } from '../providers/ftp/ftp-connection';
 import { FtpProvider } from '../providers/ftp/ftp-provider';
+import { MailruConnection } from '../providers/mailru/mailru-connection';
+import { MailruProvider } from '../providers/mailru/mailru-provider';
+import { profileSecretReference } from '@shared/models/profile-credentials';
 import { LocalProvider } from '../providers/local/local-provider';
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
 import type { LocalDrive } from '@shared/ipc/contracts';
@@ -60,6 +63,7 @@ import {
 } from '@shared/models/application-update';
 
 export interface WorkspaceExternalActions {
+  readonly mailruEndpoint?: string;
   readonly dragDirectory?: string;
   readonly checkForUpdates?: () => Promise<void>;
   readonly downloadUpdate?: () => Promise<void>;
@@ -75,7 +79,7 @@ export interface WorkspaceExternalActions {
   readonly updateState?: () => UpdateState;
 }
 
-type RemoteProvider = FtpProvider | S3Provider | SftpProvider;
+type RemoteProvider = FtpProvider | MailruProvider | S3Provider | SftpProvider;
 
 const readAppearance = (value: string | undefined) => {
   try {
@@ -167,6 +171,11 @@ export class WorkspaceService {
   private readonly currentPaths = new Map<string, string>();
   private readonly pathFallbacks = new Map<string, boolean>();
   private readonly pendingPasswords = new Map<string, string>();
+  private readonly profileTests = new Map<string, RemoteProvider>();
+  private readonly pendingTestHosts = new Map<
+    string,
+    { readonly profile: SftpConnectionProfile; readonly fingerprint: string }
+  >();
   private readonly diagnostics = new Diagnostics();
   public constructor(
     private readonly store: ProfileStore,
@@ -319,7 +328,9 @@ export class WorkspaceService {
         name: this.profile(provider).name,
         kind: provider.kind,
         state: provider.connectionState,
-        ...(provider instanceof SftpProvider || provider instanceof FtpProvider
+        ...(provider instanceof SftpProvider ||
+        provider instanceof FtpProvider ||
+        provider instanceof MailruProvider
           ? {
               connectionStage: provider.connection.stage,
               connectionErrorKey: provider.connection.failureCode
@@ -328,7 +339,9 @@ export class WorkspaceService {
               passwordRequired:
                 provider.connection.profile.authentication.method === 'password' &&
                 (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
-                  provider.connection.failureCode === applicationErrorCodes.authenticationFailed),
+                  provider.connection.failureCode === applicationErrorCodes.authenticationFailed ||
+                  provider.connection.failureCode ===
+                    applicationErrorCodes.mailruWebdavAccessDenied),
               pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
               ...(provider instanceof FtpProvider ? { insecure: true } : {}),
             }
@@ -360,6 +373,9 @@ export class WorkspaceService {
     return this.store.getSetting('remember-paths') !== 'false';
   }
   public dispose(): void {
+    for (const provider of this.profileTests.values()) void provider.disconnect();
+    this.profileTests.clear();
+    this.pendingTestHosts.clear();
     this.pendingPasswords.clear();
     this.externalEdits.dispose();
     this.externalDrags.dispose();
@@ -406,22 +422,93 @@ export class WorkspaceService {
   private remoteProvider(profile: ConnectionProfile, workspaceId?: string): RemoteProvider {
     if (profile.kind === 's3') return this.s3Provider(profile);
     if (profile.kind === 'ftp') return this.ftpProvider(profile, workspaceId);
+    if (profile.kind === 'mailru')
+      return new MailruProvider(
+        new MailruConnection(
+          profile,
+          () => this.ftpCredentialsFor(profile, workspaceId),
+          this.externalActions.mailruEndpoint,
+        ),
+      );
     return new SftpProvider(
       new SftpConnection(profile, () => this.credentialsFor(profile, workspaceId), this.store),
       () => readTransferSettings(this.store.getSetting('transfer-settings-v1')),
     );
   }
   private remotePath(provider: RemoteProvider, path: string) {
-    if (provider instanceof FtpProvider) return createFtpProviderPath(path);
-    if (provider instanceof SftpProvider) return createSftpProviderPath(path);
+    if (provider.kind !== 's3') return createRemoteProviderPath(provider.kind, path);
     try {
       return parseS3Path(path);
     } catch {
       throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
     }
   }
+  private async testProfile(
+    profileId: string,
+    trustFingerprint?: string,
+  ): Promise<WorkspaceResult['connectionTest']> {
+    if (this.profileTests.has(profileId))
+      throw new ApplicationError(applicationErrorCodes.providerConflict);
+    const profile = this.store.list().find((item) => item.id === profileId);
+    if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
+    const pending = this.pendingTestHosts.get(profileId);
+    this.pendingTestHosts.delete(profileId);
+    if (trustFingerprint) {
+      if (
+        profile.kind !== 'sftp' ||
+        !pending ||
+        pending.fingerprint !== trustFingerprint ||
+        JSON.stringify(pending.profile) !== JSON.stringify(profile)
+      )
+        throw new ApplicationError(applicationErrorCodes.hostKeyChanged);
+      const trusted = this.store.getHostKey(profile.host, profile.port);
+      if (trusted !== undefined && trusted !== trustFingerprint)
+        throw new ApplicationError(applicationErrorCodes.hostKeyChanged);
+      this.store.trustHost(profile.host, profile.port, trustFingerprint);
+    }
+    const provider = this.remoteProvider(profile);
+    this.profileTests.set(profileId, provider);
+    try {
+      await provider.connect();
+      const initialPath =
+        profile.kind === 's3'
+          ? createS3ProviderPath(
+              profile.bucket ?? '',
+              profile.initialPrefix ? s3Prefix(profile.initialPrefix) : '',
+            )
+          : this.remotePath(provider, profile.initialDirectory ?? '/');
+      if (initialPath.provider !== 's3') {
+        const initial = await provider.stat(initialPath);
+        if (initial.kind !== 'directory')
+          throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
+      }
+      await provider.list(initialPath);
+      return { status: 'success' };
+    } catch (error) {
+      const hostKey = provider instanceof SftpProvider ? provider.connection.hostKey : undefined;
+      if (
+        profile.kind === 'sftp' &&
+        error instanceof ApplicationError &&
+        error.code === applicationErrorCodes.hostKeyUnknown &&
+        hostKey &&
+        !hostKey.changed
+      ) {
+        this.pendingTestHosts.set(profileId, { profile, fingerprint: hostKey.fingerprint });
+        return {
+          status: 'host-key-required',
+          host: profile.host,
+          port: profile.port,
+          fingerprint: hostKey.fingerprint,
+        };
+      }
+      throw error;
+    } finally {
+      await provider.disconnect();
+      this.profileTests.delete(profileId);
+    }
+  }
   private async ftpCredentialsFor(
-    profile: FtpConnectionProfile,
+    profile: FtpConnectionProfile | MailruConnectionProfile,
     workspaceId?: string,
   ): Promise<FtpCredentials> {
     const pendingPassword = workspaceId ? this.pendingPasswords.get(workspaceId) : undefined;
@@ -582,8 +669,7 @@ export class WorkspaceService {
       parentPath: currentPath === '/' ? null : posix.dirname(currentPath),
       entries: entries.map((entry) => ({
         name: entry.name,
-        path:
-          entry.path.provider === 'sftp' || entry.path.provider === 'ftp' ? entry.path.path : '',
+        path: entry.path.provider !== 's3' ? entry.path.path : '',
         kind: entry.kind,
         size: entry.size,
         modifiedAt: entry.modifiedAt ?? null,
@@ -639,15 +725,25 @@ export class WorkspaceService {
     if (
       (request.action === 'save-profile' ||
         request.action === 'save-s3-profile' ||
+        request.action === 'save-mailru-profile' ||
         request.action === 'save-ftp-profile') &&
       request.profile.id &&
-      [...this.sessions].some(
-        ([id, provider]) =>
-          this.profile(provider).id === request.profile.id &&
-          (this.hasActiveTransfers(id) || this.mutating.has(id)),
-      )
+      (this.profileTests.has(request.profile.id) ||
+        [...this.sessions].some(
+          ([id, provider]) =>
+            this.profile(provider).id === request.profile.id &&
+            (this.hasActiveTransfers(id) || this.mutating.has(id)),
+        ))
     )
       throw new ApplicationError(applicationErrorCodes.providerConflict);
+    if (
+      (request.action === 'save-profile' ||
+        request.action === 'save-s3-profile' ||
+        request.action === 'save-mailru-profile' ||
+        request.action === 'save-ftp-profile') &&
+      request.profile.id
+    )
+      this.pendingTestHosts.delete(request.profile.id);
     if (
       workspaceId &&
       (this.mutating.has(workspaceId) || (changesFiles && this.hasActiveTransfers(workspaceId)))
@@ -671,6 +767,7 @@ export class WorkspaceService {
     let document: string | undefined;
     let importSummary: WorkspaceResult['importSummary'];
     let savedProfileId: string | undefined;
+    let connectionTest: WorkspaceResult['connectionTest'];
     switch (request.action) {
       case 'prepare-file-drag': {
         const provider = this.session(request.workspaceId);
@@ -849,16 +946,7 @@ export class WorkspaceService {
       case 'clone-profile': {
         const profile = this.store.list().find((item) => item.id === request.profileId);
         if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
-        const reference =
-          profile.kind === 's3'
-            ? profile.secret
-            : profile.kind === 'ftp'
-              ? profile.authentication.secret
-              : profile.authentication.method === 'password'
-                ? profile.authentication.secret
-                : profile.authentication.method === 'private-key'
-                  ? profile.authentication.passphrase
-                  : undefined;
+        const reference = profileSecretReference(profile);
         if (
           reference &&
           !this.store.database
@@ -951,6 +1039,10 @@ export class WorkspaceService {
       }
       case 'snapshot':
         break;
+      case 'test-profile': {
+        connectionTest = await this.testProfile(request.profileId, request.trustFingerprint);
+        break;
+      }
       case 'save-s3-profile': {
         const draft = request.profile;
         if (draft.id && this.journal(draft.id).list().length)
@@ -983,6 +1075,26 @@ export class WorkspaceService {
           profile,
           JSON.stringify({ secretAccessKey, ...(sessionToken ? { sessionToken } : {}) }),
         ).id;
+        break;
+      }
+      case 'save-mailru-profile': {
+        const draft = request.profile;
+        const previous = this.store.list().find((profile) => profile.id === draft.id);
+        if (previous && previous.kind !== 'mailru')
+          throw new ApplicationError(applicationErrorCodes.invalidIpcPayload);
+        const profile: MailruConnectionProfile = {
+          ...draft,
+          id: draft.id ?? randomUUID(),
+          kind: 'mailru',
+          authentication: {
+            method: 'password',
+            secret:
+              previous?.kind === 'mailru'
+                ? previous.authentication.secret
+                : { id: randomUUID(), storage: 'safe-storage' },
+          },
+        };
+        savedProfileId = this.store.save(profile, request.password).id;
         break;
       }
       case 'save-ftp-profile': {
@@ -1072,6 +1184,9 @@ export class WorkspaceService {
         break;
       }
       case 'delete-profile': {
+        if (this.profileTests.has(request.profileId))
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        this.pendingTestHosts.delete(request.profileId);
         if (this.journal(request.profileId).list().length > 0)
           throw new ApplicationError(applicationErrorCodes.s3Cleanup);
         for (const [workspaceId, provider] of this.sessions)
@@ -1104,7 +1219,11 @@ export class WorkspaceService {
       }
       case 'cancel-connect': {
         const provider = this.session(request.workspaceId);
-        if (!(provider instanceof SftpProvider) && !(provider instanceof FtpProvider))
+        if (
+          !(provider instanceof SftpProvider) &&
+          !(provider instanceof FtpProvider) &&
+          !(provider instanceof MailruProvider)
+        )
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.delete(request.workspaceId);
         await provider.disconnect();
@@ -1113,7 +1232,9 @@ export class WorkspaceService {
       case 'provide-password': {
         const provider = this.session(request.workspaceId);
         const profile =
-          provider instanceof SftpProvider || provider instanceof FtpProvider
+          provider instanceof SftpProvider ||
+          provider instanceof FtpProvider ||
+          provider instanceof MailruProvider
             ? provider.connection.profile
             : undefined;
         if (!profile || profile.authentication.method !== 'password')
@@ -1265,9 +1386,10 @@ export class WorkspaceService {
           destinationPath: isUpload
             ? remoteSource.provider === 's3'
               ? createS3ProviderPath(remoteSource.bucket, `${s3Prefix(remoteSource.key)}${name}`)
-              : remoteSource.provider === 'ftp'
-                ? createFtpProviderPath(posix.join(request.destinationDirectory, name))
-                : createSftpProviderPath(posix.join(request.destinationDirectory, name))
+              : createRemoteProviderPath(
+                  remoteSource.provider,
+                  posix.join(request.destinationDirectory, name),
+                )
             : createLocalProviderPath(join(request.destinationDirectory, name)),
         });
         break;
@@ -1288,9 +1410,10 @@ export class WorkspaceService {
         const destinationPath =
           parent.provider === 's3'
             ? createS3ProviderPath(parent.bucket, `${s3Prefix(parent.key)}${name}`)
-            : parent.provider === 'ftp'
-              ? createFtpProviderPath(posix.join(request.destinationDirectory, name))
-              : createSftpProviderPath(posix.join(request.destinationDirectory, name));
+            : createRemoteProviderPath(
+                parent.provider,
+                posix.join(request.destinationDirectory, name),
+              );
         const sourceProfile = this.profile(source);
         const targetProfile = this.profile(destination);
         const sameServer =
@@ -1300,9 +1423,11 @@ export class WorkspaceService {
             : sourceProfile.kind === 'ftp' && targetProfile.kind === 'ftp'
               ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
                 sourceProfile.port === targetProfile.port
-              : sourceProfile.kind === 's3' &&
-                targetProfile.kind === 's3' &&
-                (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
+              : sourceProfile.kind === 'mailru' && targetProfile.kind === 'mailru'
+                ? sourceProfile.username.toLowerCase() === targetProfile.username.toLowerCase()
+                : sourceProfile.kind === 's3' &&
+                  targetProfile.kind === 's3' &&
+                  (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
         const original =
           sourcePath.provider === 's3'
             ? formatS3Path(sourcePath)
@@ -1363,6 +1488,7 @@ export class WorkspaceService {
       ...(document !== undefined ? { document } : {}),
       ...(importSummary ? { importSummary } : {}),
       ...(savedProfileId ? { savedProfileId } : {}),
+      ...(connectionTest ? { connectionTest } : {}),
     };
   }
 }

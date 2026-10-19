@@ -4,7 +4,7 @@ import { z } from 'zod';
 const payload = z.strictObject({
   workspaceId: z.string().min(1).max(200),
   side: z.enum(['local', 'remote']),
-  kind: z.enum(['ftp', 'local', 's3', 'sftp']),
+  kind: z.enum(['ftp', 'local', 'mailru', 's3', 'sftp']),
   paths: z.array(z.string().min(1).max(32768)).min(1).max(1000),
 });
 export const readFileDrop = (event: DragEvent): z.infer<typeof payload> | undefined => {

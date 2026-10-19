@@ -23,7 +23,7 @@ export interface VirtualFileListProps {
   readonly dragSource?: {
     readonly workspaceId: string;
     readonly side: 'local' | 'remote';
-    readonly kind: 'ftp' | 'local' | 's3' | 'sftp';
+    readonly kind: 'ftp' | 'local' | 'mailru' | 's3' | 'sftp';
   };
 }
 

@@ -6,7 +6,7 @@
 
 Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict
 TypeScript. The application includes local drive browsing, independent workspaces, encrypted
-connection profiles, SFTP and S3 browsing/file operations, and a shared streaming transfer queue
+connection profiles, SFTP, FTP, S3 and Mail.ru Cloud browsing/file operations, and a shared streaming transfer queue
 for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. It also includes customizable Commander
 shortcuts, profile management, GitHub updates and live English/Russian localization.
 
@@ -173,3 +173,15 @@ they are never uploaded automatically. Both application and native menus switch 
 
 See the [Commander guide](docs/user/commander.md) and
 [recovery/security design](docs/architecture/commander-recovery.md) for limitations and details.
+
+## Mail.ru Cloud
+
+Select **Connections → Connection → Mail.ru Cloud**, enter your Mail account email and an
+external app password with WebDAV access. **Test connection** saves the profile and checks
+read access without opening a panel session. Choose the profile in either panel to browse
+and transfer through the shared queue, including Local/SFTP/FTP/S3 endpoints.
+
+Passwords use safeStorage and are excluded from exports. Interrupted Mail.ru transfers restart
+from zero; a partial temporary file may remain. Real-account acceptance is deferred to the owner;
+automated tests use a disposable WebDAV server. See the [setup and acceptance checklist](docs/user/mailru.md)
+and [protocol semantics](docs/architecture/mailru.md).

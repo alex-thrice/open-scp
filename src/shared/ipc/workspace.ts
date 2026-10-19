@@ -3,6 +3,7 @@ import { dragPathsSchema, externalDragSnapshotSchema } from './file-drag';
 import { connectionProfileSchema } from '@shared/models/profile-schema';
 import { s3ProfileDraftSchema } from '@shared/models/s3-profile';
 import { ftpProfileDraftSchema } from '@shared/models/ftp-profile';
+import { mailruProfileDraftSchema } from '@shared/models/mailru-profile';
 import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
 import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
 import { transferSettingsSchema } from '@shared/models/transfer-settings';
@@ -134,10 +135,23 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
     profile: ftpProfileDraftSchema,
     password: z.string().max(65536).optional(),
   }),
+  z.strictObject({
+    action: z.literal('save-mailru-profile'),
+    profile: mailruProfileDraftSchema,
+    password: z.string().max(65536).optional(),
+  }),
   z.strictObject({ action: z.literal('preview-delete'), workspaceId: id, path }),
   z.strictObject({ action: z.literal('copy'), workspaceId: id, path, destinationPath: path }),
   z.strictObject({ action: z.literal('cleanup-multipart'), profileId: id }),
   z.strictObject({ action: z.literal('snapshot') }),
+  z.strictObject({
+    action: z.literal('test-profile'),
+    profileId: id,
+    trustFingerprint: z
+      .string()
+      .regex(/^SHA256:[A-Za-z0-9+/]{43}$/u)
+      .optional(),
+  }),
   z.strictObject({
     action: z.literal('save-profile'),
     profile: profileDraftSchema,
@@ -236,7 +250,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     z.strictObject({
       workspaceId: id,
       profileId: id,
-      kind: z.enum(['ftp', 'sftp', 's3']).optional(),
+      kind: z.enum(['ftp', 'mailru', 'sftp', 's3']).optional(),
       name: z.string(),
       state: z.enum(['connected', 'connecting', 'disconnected', 'disconnecting', 'failed']),
       connectionStage: z
@@ -319,6 +333,17 @@ export const workspaceSnapshotSchema = z.strictObject({
 });
 export type WorkspaceSnapshot = z.infer<typeof workspaceSnapshotSchema>;
 export const workspaceResultSchema = z.strictObject({
+  connectionTest: z
+    .discriminatedUnion('status', [
+      z.strictObject({ status: z.literal('success') }),
+      z.strictObject({
+        status: z.literal('host-key-required'),
+        host: z.string().min(1).max(1024),
+        port: z.number().int().min(1).max(65535),
+        fingerprint: z.string().regex(/^SHA256:[A-Za-z0-9+/]{43}$/u),
+      }),
+    ])
+    .optional(),
   savedProfileId: id.optional(),
   document: z.string().max(2097152).optional(),
   importSummary: z

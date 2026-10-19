@@ -10,6 +10,8 @@ export const providerErrorCodes = {
   notConnected: 'PROVIDER_NOT_CONNECTED',
   notFound: 'PROVIDER_NOT_FOUND',
   unsupported: 'PROVIDER_UNSUPPORTED',
+  quotaExceeded: 'PROVIDER_QUOTA_EXCEEDED',
+  rateLimited: 'PROVIDER_RATE_LIMITED',
 } as const;
 
 export type ProviderErrorCode = (typeof providerErrorCodes)[keyof typeof providerErrorCodes];
@@ -34,6 +36,8 @@ const providerErrorMessageKeys: Record<ProviderErrorCode, string> = {
   [providerErrorCodes.notConnected]: 'errors.provider.notConnected',
   [providerErrorCodes.notFound]: 'errors.provider.notFound',
   [providerErrorCodes.unsupported]: 'errors.provider.unsupported',
+  [providerErrorCodes.quotaExceeded]: 'errors.provider.quotaExceeded',
+  [providerErrorCodes.rateLimited]: 'errors.provider.rateLimited',
 };
 
 export interface ProviderProtocolCause {

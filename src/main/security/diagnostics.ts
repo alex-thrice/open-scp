@@ -26,6 +26,7 @@ export class Diagnostics {
         language: snapshot.language,
         profileCounts: {
           ftp: snapshot.profiles.filter((item) => item.kind === 'ftp').length,
+          mailru: snapshot.profiles.filter((item) => item.kind === 'mailru').length,
           s3: snapshot.profiles.filter((item) => item.kind === 's3').length,
           sftp: snapshot.profiles.filter((item) => item.kind === 'sftp').length,
         },

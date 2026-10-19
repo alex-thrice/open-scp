@@ -5,6 +5,7 @@ import type { WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { ConnectionForm } from './ConnectionForm';
 import { S3ConnectionForm } from './S3ConnectionForm';
 import { FtpConnectionForm } from './FtpConnectionForm';
+import { MailruConnectionForm } from './MailruConnectionForm';
 import type { WorkspaceRunner } from './useWorkspaceService';
 
 export const ConnectionEditor = ({
@@ -21,7 +22,7 @@ export const ConnectionEditor = ({
   readonly errorKey: string | null;
 }) => {
   const { t } = useTranslation();
-  const [kind, setKind] = useState<'ftp' | 'sftp' | 's3'>(profile?.kind ?? 'sftp');
+  const [kind, setKind] = useState<ConnectionProfile['kind']>(profile?.kind ?? 'sftp');
   const [group, setGroup] = useState(profile ? (snapshot.profileGroups?.[profile.id] ?? '') : '');
   const [busy, setBusy] = useState(false);
   const savedId = useRef(profile?.id);
@@ -73,6 +74,7 @@ export const ConnectionEditor = ({
           <option value="sftp">SFTP</option>
           <option value="s3">S3</option>
           <option value="ftp">FTP</option>
+          <option value="mailru">{t('mailru.name')}</option>
         </select>
       </label>
     </>
@@ -80,6 +82,15 @@ export const ConnectionEditor = ({
   return kind === 's3' ? (
     <S3ConnectionForm
       profile={profile?.kind === 's3' ? profile : undefined}
+      run={execute}
+      onClose={onClose}
+      errorKey={errorKey}
+      editorControls={editorControls}
+      afterSave={afterSave}
+    />
+  ) : kind === 'mailru' ? (
+    <MailruConnectionForm
+      profile={profile?.kind === 'mailru' ? profile : undefined}
       run={execute}
       onClose={onClose}
       errorKey={errorKey}

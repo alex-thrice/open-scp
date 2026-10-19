@@ -21,6 +21,7 @@ conditions.
 | ----------------------------------- | -------- | ---------------------------------------- |
 | @aws-sdk/client-s3                  | 3.1126.0 | Apache-2.0                               |
 | basic-ftp                           | 6.2.1    | MIT                                      |
+| @xmldom/xmldom                      | 0.8.15   | MIT                                      |
 | electron-updater                    | 6.8.9    | MIT                                      |
 | i18next                             | 26.4.0   | MIT                                      |
 | react / react-dom                   | 19.2.8   | MIT                                      |

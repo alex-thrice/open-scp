@@ -134,7 +134,7 @@ test('keyboard selection, local file operations, profile library and live Russia
   }
 });
 
-test('multi-file keyboard upload, drag and drop, session streaming, queue restart review and close confirmation', async () => {
+test('multi-file upload, internal drop, session streaming, close confirmation and a session-only queue', async () => {
   test.skip(process.env.OPENSCP_INTEGRATION !== '1', 'Requires disposable OpenSSH and MinIO.');
   test.setTimeout(90000);
   const root = await mkdtemp(join(tmpdir(), 'openscp-product-transfer-'));
@@ -206,9 +206,26 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
     await window.keyboard.press('Shift+ArrowDown');
     await window.keyboard.press('F5');
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
-    await local
-      .getByRole('row', { name: 'drag.txt', exact: true })
-      .dragTo(remote.locator('.commander-surface'));
+    const internalDrop = await window.evaluateHandle(
+      (path) => {
+        const data = new DataTransfer();
+        data.setData(
+          'application/x-openscp',
+          JSON.stringify({
+            workspaceId: 'workspace-1:left',
+            side: 'local',
+            kind: 'local',
+            paths: [path],
+          }),
+        );
+        return data;
+      },
+      join(root, 'drag.txt'),
+    );
+    await remote
+      .locator('.commander-surface')
+      .dispatchEvent('drop', { dataTransfer: internalDrop });
+    await internalDrop.dispose();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(3);
     await writeFile(join(root, 'external.txt'), 'external file fixture');
     await window.evaluate(`(() => {
@@ -251,10 +268,25 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
     await local.getByRole('row', { name: 'a.txt', exact: true }).click();
     await window.keyboard.press('F5');
     await expect(window.getByRole('alertdialog')).toContainText('Destination already exists');
+    await window
+      .locator('.workspace-tab')
+      .first()
+      .getByRole('button', { name: /^Close /u })
+      .click();
+    await expect(window.getByRole('dialog', { name: 'Close tab?' })).toBeVisible();
+    await window.getByRole('button', { name: 'Keep tab open' }).click();
+    await expect(window.locator('#workspace-tab-workspace-1')).toBeVisible();
+    await window
+      .locator('.workspace-tab')
+      .first()
+      .getByRole('button', { name: /^Close /u })
+      .click();
+    await window.getByRole('button', { name: 'Interrupt and close', exact: true }).click();
+    await expect(window.locator('#workspace-tab-workspace-1')).toHaveCount(0);
+    await expect(window.getByText(/^Cancelled ·/u)).toBeVisible();
     await application.close();
     application = await launch();
     window = await application.firstWindow();
-    await expect(window.getByRole('alertdialog')).toContainText('Destination already exists');
     const state = await window.evaluate(async () => {
       const desktop = Reflect.get(globalThis, 'desktop') as DesktopApi;
       const result = await desktop.workspace({ action: 'snapshot' });
@@ -265,24 +297,8 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
           }
         : null;
     });
-    expect(state?.sessions).toBe(0);
-    expect(state?.states).toContain('requiring-review');
-    await window
-      .locator('.workspace-tab')
-      .first()
-      .getByRole('button', { name: /^Close /u })
-      .click();
-    await expect(window.getByRole('dialog', { name: 'Close active session?' })).toBeVisible();
-    await window.getByRole('button', { name: 'Keep session open' }).click();
-    await expect(window.locator('#workspace-tab-workspace-1')).toBeVisible();
-    await window
-      .locator('.workspace-tab')
-      .first()
-      .getByRole('button', { name: /^Close /u })
-      .click();
-    await window.getByRole('button', { name: 'Cancel transfers and close' }).click();
-    await expect(window.locator('#workspace-tab-workspace-1')).toHaveCount(0);
-    await expect(window.getByText(/^Cancelled ·/u)).toBeVisible();
+    expect(state).toEqual({ sessions: 0, states: [] });
+    await expect(window.getByRole('alertdialog')).toHaveCount(0);
     local = window.getByRole('tabpanel').getByTestId('left-panel');
     remote = window.getByRole('tabpanel').getByTestId('right-panel');
     await openConnection(window, 'right', 'Product S3');
@@ -305,6 +321,8 @@ test('multi-file keyboard upload, drag and drop, session streaming, queue restar
         : 0,
     ).toBeGreaterThanOrEqual(70);
   } finally {
+    if (test.info().status !== test.info().expectedStatus)
+      await application?.evaluate(({ app }) => app.exit(0)).catch(() => undefined);
     await application?.close();
     await fixture.delete(createS3ProviderPath('fixture-bucket', prefix), { recursive: true });
     await fixture.disconnect();

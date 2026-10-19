@@ -57,4 +57,16 @@ export interface S3ConnectionProfile extends BaseConnectionProfile {
   readonly secret?: SecretReference;
 }
 
-export type ConnectionProfile = FtpConnectionProfile | S3ConnectionProfile | SftpConnectionProfile;
+export interface MailruConnectionProfile extends BaseConnectionProfile {
+  readonly kind: 'mailru';
+  readonly username: string;
+  readonly initialDirectory?: string;
+  readonly timeout?: number;
+  readonly authentication: {
+    readonly method: 'password';
+    readonly secret: SecretReference;
+  };
+}
+
+export type ConnectionProfile =
+  FtpConnectionProfile | MailruConnectionProfile | S3ConnectionProfile | SftpConnectionProfile;

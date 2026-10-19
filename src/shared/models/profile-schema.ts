@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ConnectionProfile } from './connection-profile';
+import { mailruPathSchema } from './mailru-profile';
 
 const secretReference = z.strictObject({
   id: z.string().uuid(),
@@ -7,6 +8,15 @@ const secretReference = z.strictObject({
 });
 export const connectionProfileSchema = z
   .discriminatedUnion('kind', [
+    z.strictObject({
+      id: z.string().uuid(),
+      name: z.string().trim().min(1).max(200),
+      kind: z.literal('mailru'),
+      username: z.email().max(320),
+      initialDirectory: mailruPathSchema.optional(),
+      timeout: z.number().int().min(1000).max(120000).optional(),
+      authentication: z.strictObject({ method: z.literal('password'), secret: secretReference }),
+    }),
     z.strictObject({
       id: z.string().uuid(),
       name: z.string().trim().min(1).max(200),
@@ -75,6 +85,18 @@ export const connectionProfileSchema = z
     }),
   ])
   .transform((profile): ConnectionProfile => {
+    if (profile.kind === 'mailru')
+      return {
+        id: profile.id,
+        name: profile.name,
+        kind: profile.kind,
+        username: profile.username,
+        authentication: profile.authentication,
+        ...(profile.initialDirectory === undefined
+          ? {}
+          : { initialDirectory: profile.initialDirectory }),
+        ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
+      };
     if (profile.kind === 's3')
       return {
         id: profile.id,

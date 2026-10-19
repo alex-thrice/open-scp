@@ -5,6 +5,7 @@ import type { WorkspaceResult } from '@shared/ipc/workspace';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
 import { Icon } from './Icon';
+import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const FtpConnectionForm = ({
   profile,
@@ -26,9 +27,13 @@ export const FtpConnectionForm = ({
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [invalid, setInvalid] = useState(false);
+  const connectionTest = useProfileConnectionTest(run, errorKey);
+  const isBusy = isSaving || connectionTest.isTesting;
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
+    const shouldTest = connectionTest.isTestSubmission();
+    connectionTest.reset();
     if (!form.checkValidity()) {
       setInvalid(true);
       return;
@@ -39,54 +44,72 @@ export const FtpConnectionForm = ({
     const password = passwordInput.value;
     passwordInput.value = '';
     setIsSaving(true);
-    const result = await run({
-      action: 'save-ftp-profile',
-      profile: {
-        id: profile?.id ?? createdId,
-        name: String(data.get('name')),
-        host: String(data.get('host')),
-        port: Number(data.get('port')),
-        username: String(data.get('username')),
-        initialDirectory: String(data.get('initialDirectory')),
-        timeout: Number(data.get('timeout')),
-      },
-      ...(password ? { password } : {}),
-    });
-    if (result) {
-      if (result.savedProfileId) setCreatedId(result.savedProfileId);
-      if (!afterSave || (await afterSave(result))) onClose();
+    try {
+      const result = await run({
+        action: 'save-ftp-profile',
+        profile: {
+          id: profile?.id ?? createdId,
+          name: String(data.get('name')),
+          host: String(data.get('host')),
+          port: Number(data.get('port')),
+          username: String(data.get('username')),
+          initialDirectory: String(data.get('initialDirectory')),
+          timeout: Number(data.get('timeout')),
+        },
+        ...(password ? { password } : {}),
+      });
+      if (result) {
+        if (result.savedProfileId) setCreatedId(result.savedProfileId);
+        if (afterSave && !(await afterSave(result))) return;
+        if (shouldTest && result.savedProfileId) await connectionTest.test(result.savedProfileId);
+        else onClose();
+      }
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
   return (
     <Dialog
       title={t('ui.connections')}
+      notice={connectionTest.feedback}
       footer={
         <>
-          <button disabled={isSaving} type="button" onClick={onClose}>
+          <button disabled={isBusy} type="button" onClick={onClose}>
             {t('connections.cancel')}
           </button>
-          <button className="primary" disabled={isSaving} type="submit" form={formId}>
+          <button
+            disabled={isBusy}
+            type="button"
+            form={formId}
+            onClick={(event) => connectionTest.submitTest(event.currentTarget.form)}
+          >
+            {t('connections.test')}
+          </button>
+          <button className="primary" disabled={isBusy} type="submit" form={formId}>
             {t('connections.save')}
           </button>
         </>
       }
       onClose={() => {
-        if (!isSaving) onClose();
+        if (!isBusy) onClose();
       }}
     >
       {editorControls ? (
-        <button className="back-button" type="button" disabled={isSaving} onClick={onClose}>
+        <button className="back-button" type="button" disabled={isBusy} onClick={onClose}>
           ← {t('ui.backProfiles')}
         </button>
       ) : null}
-      {errorKey ? <div role="alert">{t(errorKey)}</div> : null}
       {invalid ? <p role="alert">{t('library.validation')}</p> : null}
       <div className="inline-error" role="alert">
         <Icon name="Plug" />
         {t('ftp.insecureWarning')}
       </div>
-      <form id={formId} noValidate onSubmit={(event) => void save(event)}>
+      <form
+        id={formId}
+        noValidate
+        onInput={connectionTest.reset}
+        onSubmit={(event) => void save(event)}
+      >
         <label>
           {t('connections.name')}
           <input autoFocus defaultValue={profile?.name ?? ''} name="name" required />

@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { S3ConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
+import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const S3ConnectionForm = ({
   profile,
@@ -26,9 +27,13 @@ export const S3ConnectionForm = ({
   const [isSaving, setIsSaving] = useState(false);
   const [createdId, setCreatedId] = useState<string | null>(null);
   const [invalid, setInvalid] = useState(false);
+  const connectionTest = useProfileConnectionTest(run, errorKey);
+  const isBusy = isSaving || connectionTest.isTesting;
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const form = event.currentTarget;
+    const shouldTest = connectionTest.isTestSubmission();
+    connectionTest.reset();
     if (!form.checkValidity()) {
       setInvalid(true);
       return;
@@ -42,52 +47,70 @@ export const S3ConnectionForm = ({
     keyInput.value = '';
     tokenInput.value = '';
     setIsSaving(true);
-    const result = await run({
-      action: 'save-s3-profile',
-      profile: {
-        id: profile?.id ?? createdId,
-        name: String(data.get('name')),
-        endpoint: String(data.get('endpoint')).trim(),
-        region: String(data.get('region')),
-        bucket: String(data.get('bucket')).trim(),
-        initialPrefix: String(data.get('initialPrefix')),
-        accessKeyId: String(data.get('accessKeyId')),
-        forcePathStyle: data.get('forcePathStyle') === 'on',
-      },
-      ...(secretAccessKey ? { secretAccessKey } : {}),
-      ...(sessionToken || data.get('clearToken') === 'on' ? { sessionToken } : {}),
-    });
-    if (result) {
-      if (result.savedProfileId) setCreatedId(result.savedProfileId);
-      if (!afterSave || (await afterSave(result))) onClose();
+    try {
+      const result = await run({
+        action: 'save-s3-profile',
+        profile: {
+          id: profile?.id ?? createdId,
+          name: String(data.get('name')),
+          endpoint: String(data.get('endpoint')).trim(),
+          region: String(data.get('region')),
+          bucket: String(data.get('bucket')).trim(),
+          initialPrefix: String(data.get('initialPrefix')),
+          accessKeyId: String(data.get('accessKeyId')),
+          forcePathStyle: data.get('forcePathStyle') === 'on',
+        },
+        ...(secretAccessKey ? { secretAccessKey } : {}),
+        ...(sessionToken || data.get('clearToken') === 'on' ? { sessionToken } : {}),
+      });
+      if (result) {
+        if (result.savedProfileId) setCreatedId(result.savedProfileId);
+        if (afterSave && !(await afterSave(result))) return;
+        if (shouldTest && result.savedProfileId) await connectionTest.test(result.savedProfileId);
+        else onClose();
+      }
+    } finally {
+      setIsSaving(false);
     }
-    setIsSaving(false);
   };
   return (
     <Dialog
       title={t('ui.connections')}
+      notice={connectionTest.feedback}
       footer={
         <>
-          <button disabled={isSaving} type="button" onClick={onClose}>
+          <button disabled={isBusy} type="button" onClick={onClose}>
             {t('connections.cancel')}
           </button>
-          <button className="primary" disabled={isSaving} type="submit" form={formId}>
+          <button
+            disabled={isBusy}
+            type="button"
+            form={formId}
+            onClick={(event) => connectionTest.submitTest(event.currentTarget.form)}
+          >
+            {t('connections.test')}
+          </button>
+          <button className="primary" disabled={isBusy} type="submit" form={formId}>
             {t('connections.save')}
           </button>
         </>
       }
       onClose={() => {
-        if (!isSaving) onClose();
+        if (!isBusy) onClose();
       }}
     >
       {editorControls ? (
-        <button className="back-button" type="button" disabled={isSaving} onClick={onClose}>
+        <button className="back-button" type="button" disabled={isBusy} onClick={onClose}>
           ← {t('ui.backProfiles')}
         </button>
       ) : null}
-      {errorKey ? <div role="alert">{t(errorKey)}</div> : null}
       {invalid ? <p role="alert">{t('library.validation')}</p> : null}
-      <form id={formId} noValidate onSubmit={(event) => void save(event)}>
+      <form
+        id={formId}
+        noValidate
+        onInput={connectionTest.reset}
+        onSubmit={(event) => void save(event)}
+      >
         <label>
           {t('connections.name')}
           <input autoFocus name="name" required defaultValue={profile?.name ?? ''} />

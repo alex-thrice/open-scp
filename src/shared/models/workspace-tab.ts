@@ -1,7 +1,7 @@
 export interface WorkspaceRemoteSessionReference {
   readonly displayName: string;
   readonly profileId: string;
-  readonly provider: 'ftp' | 's3' | 'sftp';
+  readonly provider: 'ftp' | 'mailru' | 's3' | 'sftp';
   readonly sessionId: string;
 }
 
