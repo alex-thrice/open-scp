@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createGoogleHarness, googleFixtureProfile, required } from '../fixtures/google-harness';
 import { googleFixtureEntry } from '../fixtures/google-fixture';
 import { GoogleProvider } from '../../src/main/providers/google/google-provider';
+import { googleChunkSize } from '../../src/main/providers/google/google-upload';
 import { LocalProvider } from '../../src/main/providers/local/local-provider';
 import { TransferEngine } from '../../src/main/transfers/transfer-engine';
 import {
@@ -161,7 +162,7 @@ describe('Google Drive shared queue and workspace', () => {
     }
   });
   it('asks before publishing when a same-name file appears during upload, then restarts to a new name', async () => {
-    await writeFile(join(root, 'race'), Buffer.alloc(2 * 1048576 + 1, 0x37));
+    await writeFile(join(root, 'race'), Buffer.alloc(googleChunkSize + 1, 0x37));
     const competing = googleFixtureEntry('race', 'other client');
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -195,7 +196,7 @@ describe('Google Drive shared queue and workspace', () => {
     Object.defineProperty(local, 'capabilities', {
       value: { ...local.capabilities, resumeRead: false },
     });
-    await writeFile(join(root, 'restart'), Buffer.alloc(2 * 1048576 + 1));
+    await writeFile(join(root, 'restart'), Buffer.alloc(googleChunkSize + 1));
     let id = '';
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -258,7 +259,7 @@ describe('Google Drive shared queue and workspace', () => {
     expect(second.content.toString()).toBe('new');
   });
   it('cancels and resumes a current-run upload using a checked source and server offset', async () => {
-    const content = Buffer.alloc(4 * 1048576 + 11, 0x4a);
+    const content = Buffer.alloc(2 * googleChunkSize + 11, 0x4a);
     await writeFile(join(root, 'resume'), content);
     let id = '';
     harness.fixture.afterChunk = () => {
@@ -279,7 +280,7 @@ describe('Google Drive shared queue and workspace', () => {
     expect(harness.fixture.sessions.size).toBe(1);
   });
   it('refuses resume after source changes and can restart an expired session without duplicating creates', async () => {
-    await writeFile(join(root, 'change'), Buffer.alloc(3 * 1048576));
+    await writeFile(join(root, 'change'), Buffer.alloc(googleChunkSize + 1));
     let id = '';
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
@@ -302,7 +303,7 @@ describe('Google Drive shared queue and workspace', () => {
     ).toHaveLength(1);
   });
   it('detects a changing source before publishing the final chunk', async () => {
-    await writeFile(join(root, 'changing'), Buffer.alloc(3 * 1048576));
+    await writeFile(join(root, 'changing'), Buffer.alloc(googleChunkSize + 1));
     harness.fixture.afterChunk = () => {
       harness.fixture.afterChunk = undefined;
       const entry = required(harness.fixture.accounts.get('one'));

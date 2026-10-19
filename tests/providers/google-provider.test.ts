@@ -14,6 +14,7 @@ import { Readable } from 'node:stream';
 import type { IncomingMessage, ClientRequest } from 'node:http';
 import { HttpClient } from '../../src/main/oauth/http-client';
 import { GoogleApi } from '../../src/main/providers/google/google-api';
+import { googleChunkSize } from '../../src/main/providers/google/google-upload';
 
 describe('Google Drive API provider', () => {
   let harness: Awaited<ReturnType<typeof createGoogleHarness>>;
@@ -289,7 +290,7 @@ describe('Google Drive API provider', () => {
     const folderPath = required(actual.path.provider === 'google' ? actual.path.path : undefined);
     await put(googleChildPath(folderPath, 'empty'), Buffer.alloc(0));
     const address = googleChildPath(folderPath, 'large');
-    const content = Buffer.alloc(5 * 1048576 + 19, 0x5a);
+    const content = Buffer.alloc(3 * googleChunkSize + 19, 0x5a);
     let progress = 0;
     const writer = (
       await provider.openWrite(path(address), {
@@ -300,9 +301,9 @@ describe('Google Drive API provider', () => {
         },
       })
     ).getWriter();
-    await writer.write(content.subarray(0, 3 * 1048576));
+    await writer.write(content.subarray(0, 2 * googleChunkSize + 65536));
     await writer.abort();
-    expect(progress).toBe(2 * 1048576);
+    expect(progress).toBe(2 * googleChunkSize);
     const offset = await provider.resumeWriteOffset(path(address), {
       expectedSize: BigInt(content.length),
       overwrite: false,
@@ -320,10 +321,51 @@ describe('Google Drive API provider', () => {
     const result = await provider.stat(path(address));
     expect(result.size).toBe(BigInt(content.length));
     expect((await read((result.path as { path: string }).path)).equals(content)).toBe(true);
-    expect(Math.max(...harness.fixture.chunkSizes)).toBeLessThanOrEqual(1048576);
+    expect(Math.max(...harness.fixture.chunkSizes)).toBeLessThanOrEqual(googleChunkSize);
     expect(
       harness.fixture.requests.some((request) => request.path === '/drive/v3/files/generateIds'),
     ).toBe(true);
+  });
+  it('preserves unsent bytes after a partial acknowledgement while filling chunks from small source buffers', async () => {
+    const address = googleChildPath(googleRootPath, 'partial-large');
+    const content = Buffer.alloc(2 * googleChunkSize + 17);
+    for (let index = 0; index < content.length; index += 1) content[index] = index % 251;
+    harness.fixture.partialChunkOnce = 262144;
+    let progress = 0;
+    const writer = (
+      await provider.openWrite(path(address), {
+        expectedSize: BigInt(content.length),
+        overwrite: false,
+        onProgress: (bytes) => {
+          progress += bytes;
+        },
+      })
+    ).getWriter();
+    for (let offset = 0; offset < content.length; offset += 65537)
+      await writer.write(content.subarray(offset, offset + 65537));
+    expect((await provider.list(root)).some((entry) => entry.name === 'partial-large')).toBe(false);
+    await writer.close();
+    expect(progress).toBe(content.length);
+    const actual = await provider.stat(path(address));
+    expect((await read((actual.path as { path: string }).path)).equals(content)).toBe(true);
+    expect(harness.fixture.chunkSizes).toEqual([
+      googleChunkSize,
+      googleChunkSize,
+      googleChunkSize - 262144 + 17,
+    ]);
+  });
+  it('holds an exact final chunk until close and discards it on cancellation', async () => {
+    const writer = (
+      await provider.openWrite(path(googleChildPath(googleRootPath, 'cancel-final')), {
+        expectedSize: BigInt(googleChunkSize),
+        overwrite: false,
+      })
+    ).getWriter();
+    await writer.write(Buffer.alloc(googleChunkSize, 0x5a));
+    expect(harness.fixture.chunkSizes).toEqual([]);
+    await writer.abort();
+    expect(harness.fixture.chunkSizes).toEqual([]);
+    expect((await provider.list(root)).some((entry) => entry.name === 'cancel-final')).toBe(false);
   });
   it('rejects forged upload locations and impossible offsets and reports an expired session', async () => {
     const address = path(googleChildPath(googleRootPath, 'file'));
