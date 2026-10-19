@@ -4,6 +4,7 @@ import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
 import { fixtureMailruPassword, startWebDavFixture } from '../fixtures/webdav-fixture';
 import { copySelection, finishProfile, newConnection, openConnection } from './workspace-ui';
+import { nativeKeyringLaunchOptions } from './electron-launch';
 
 test('Mail.ru profile, password correction, shared queue, reconnect and secure persistence', async () => {
   test.setTimeout(90000);
@@ -13,6 +14,7 @@ test('Mail.ru profile, password correction, shared queue, reconnect and secure p
   let application: ElectronApplication | undefined;
   const launch = () =>
     electron.launch({
+      ...nativeKeyringLaunchOptions(),
       args: [
         '--disable-gpu',
         '--in-process-gpu',
