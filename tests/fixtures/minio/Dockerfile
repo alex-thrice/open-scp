@@ -7,10 +7,10 @@ ENV CGO_ENABLED=0 GOTOOLCHAIN=local GOMAXPROCS=2 GOFLAGS=-p=2
 RUN go install -trimpath -ldflags="-s -w" github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb
 RUN go install -trimpath -ldflags="-s -w" github.com/minio/mc@7394ce0dd2a80935aded936b09fa12cbb3cb8096
 RUN mkdir -p /licenses/minio /licenses/mc \
-    && cp /go/pkg/mod/github.com/minio/minio@*/LICENSE /licenses/minio/ \
-    && cp /go/pkg/mod/github.com/minio/minio@*/CREDITS /licenses/minio/ \
-    && cp /go/pkg/mod/github.com/minio/mc@*/LICENSE /licenses/mc/ \
-    && cp /go/pkg/mod/github.com/minio/mc@*/CREDITS /licenses/mc/
+    && minio_source="$(go list -m -f '{{.Dir}}' github.com/minio/minio@07c3a429bfed433e49018cb0f78a52145d4bedeb)" \
+    && cp "$minio_source/LICENSE" "$minio_source/CREDITS" /licenses/minio/ \
+    && mc_source="$(go list -m -f '{{.Dir}}' github.com/minio/mc@7394ce0dd2a80935aded936b09fa12cbb3cb8096)" \
+    && cp "$mc_source/LICENSE" "$mc_source/CREDITS" /licenses/mc/
 
 FROM alpine:3.22.1 AS runtime
 
