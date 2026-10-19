@@ -205,6 +205,10 @@ export class WorkspaceService {
   private readonly pathFallbacks = new Map<string, boolean>();
   private readonly pendingPasswords = new Map<string, string>();
   private readonly profileTests = new Map<string, RemoteProvider>();
+  private readonly profileEdits = new Map<
+    string,
+    { readonly profileId: string; readonly rollback: () => void }
+  >();
   private readonly pendingTestHosts = new Map<
     string,
     { readonly profile: SftpConnectionProfile; readonly fingerprint: string }
@@ -437,6 +441,8 @@ export class WorkspaceService {
   public dispose(): void {
     this.yandex.dispose();
     this.google.dispose();
+    for (const edit of this.profileEdits.values()) edit.rollback();
+    this.profileEdits.clear();
     for (const provider of this.profileTests.values()) void provider.disconnect();
     this.profileTests.clear();
     this.pendingTestHosts.clear();
@@ -922,8 +928,37 @@ export class WorkspaceService {
     let document: string | undefined;
     let importSummary: WorkspaceResult['importSummary'];
     let savedProfileId: string | undefined;
+    let profileEditId: string | undefined;
     let connectionTest: WorkspaceResult['connectionTest'];
     switch (request.action) {
+      case 'begin-profile-edit': {
+        if (
+          this.profileEdits.size >= 16 ||
+          [...this.profileEdits.values()].some((edit) => edit.profileId === request.profileId)
+        )
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        profileEditId = randomUUID();
+        this.profileEdits.set(profileEditId, {
+          profileId: request.profileId,
+          rollback: this.store.createRollbackPoint(request.profileId),
+        });
+        break;
+      }
+      case 'finish-profile-edit': {
+        const edit = this.profileEdits.get(request.editId);
+        if (!edit || this.profileTests.has(edit.profileId))
+          throw new ApplicationError(applicationErrorCodes.providerConflict);
+        if (request.result === 'cancel') {
+          this.google.cancel(edit.profileId);
+          this.yandex.cancel(edit.profileId);
+          this.google.vault.changed(edit.profileId);
+          this.yandex.vault.changed(edit.profileId);
+          this.pendingTestHosts.delete(edit.profileId);
+          edit.rollback();
+        }
+        this.profileEdits.delete(request.editId);
+        break;
+      }
       case 'prepare-file-drag': {
         const provider = this.session(request.workspaceId);
         await this.externalDrags.prepare(
@@ -1766,6 +1801,7 @@ export class WorkspaceService {
       ...(document !== undefined ? { document } : {}),
       ...(importSummary ? { importSummary } : {}),
       ...(savedProfileId ? { savedProfileId } : {}),
+      ...(profileEditId ? { profileEditId } : {}),
       ...(connectionTest ? { connectionTest } : {}),
     };
   }

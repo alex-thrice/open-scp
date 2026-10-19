@@ -18,7 +18,12 @@ export const ExternalEditPrompt = ({
   const isConflict = edit.state === 'conflict';
 
   return (
-    <Dialog title={t('editor.changedTitle')} onClose={() => undefined}>
+    <Dialog
+      title={t('editor.changedTitle')}
+      onClose={() => {
+        void run({ action: 'resolve-external-edit', id: edit.id, resolution: 'discard' });
+      }}
+    >
       <p>{t('editor.changedHint', { name: edit.fileName })}</p>
       <code>{edit.remotePath}</code>
       {edit.state === 'recovered' ? <p className="inline-notice">{t('editor.recovered')}</p> : null}

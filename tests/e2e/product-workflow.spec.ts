@@ -205,6 +205,10 @@ test('multi-file upload, internal drop, session streaming, close confirmation an
     await local.getByRole('row', { name: 'a.txt', exact: true }).focus();
     await window.keyboard.press('Shift+ArrowDown');
     await window.keyboard.press('F5');
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
     const internalDrop = await window.evaluateHandle(
       (path) => {
@@ -226,6 +230,10 @@ test('multi-file upload, internal drop, session streaming, close confirmation an
       .locator('.commander-surface')
       .dispatchEvent('drop', { dataTransfer: internalDrop });
     await internalDrop.dispose();
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(3);
     await writeFile(join(root, 'external.txt'), 'external file fixture');
     await window.evaluate(`(() => {
@@ -251,6 +259,10 @@ test('multi-file upload, internal drop, session streaming, close confirmation an
       return path;
     })()`);
     expect(resolvedFilePath).toBe(join(root, 'external.txt'));
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByText(/^Completed ·/u)).toHaveCount(4);
     await window.getByRole('button', { name: 'New workspace' }).click();
     await openConnection(window, 'right', 'Product SFTP');
@@ -267,6 +279,10 @@ test('multi-file upload, internal drop, session streaming, close confirmation an
     await window.getByRole('tab').first().click();
     await local.getByRole('row', { name: 'a.txt', exact: true }).click();
     await window.keyboard.press('F5');
+    await window
+      .getByRole('dialog', { name: 'Copy', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
     await expect(window.getByRole('alertdialog')).toContainText('Destination already exists');
     await window
       .locator('.workspace-tab')

@@ -11,16 +11,20 @@ export const S3ConnectionForm = ({
   profile,
   run,
   onClose,
+  onConfirm,
   errorKey,
   editorControls,
   afterSave,
+  initialName,
 }: {
   readonly profile: S3ConnectionProfile | undefined;
   readonly run: WorkspaceRunner;
   readonly onClose: () => void;
+  readonly onConfirm?: () => void;
   readonly errorKey: string | null;
   readonly editorControls?: ReactNode;
   readonly afterSave?: (result: WorkspaceResult) => Promise<boolean>;
+  readonly initialName?: string;
 }) => {
   const { t } = useTranslation();
   const formId = useId();
@@ -67,7 +71,7 @@ export const S3ConnectionForm = ({
         if (result.savedProfileId) setCreatedId(result.savedProfileId);
         if (afterSave && !(await afterSave(result))) return;
         if (shouldTest && result.savedProfileId) await connectionTest.test(result.savedProfileId);
-        else onClose();
+        else (onConfirm ?? onClose)();
       }
     } finally {
       setIsSaving(false);
@@ -113,7 +117,12 @@ export const S3ConnectionForm = ({
       >
         <label>
           {t('connections.name')}
-          <input autoFocus name="name" required defaultValue={profile?.name ?? ''} />
+          <input
+            data-dialog-autofocus
+            name="name"
+            required
+            defaultValue={profile?.name ?? initialName ?? ''}
+          />
         </label>
         {editorControls}
         <div className="s3-heading">

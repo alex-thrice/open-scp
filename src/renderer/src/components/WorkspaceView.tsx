@@ -74,18 +74,28 @@ export const WorkspaceView = ({
         onKeyDown={(event) => {
           const shortcut =
             snapshot.keyboardShortcuts?.switchPanel ?? defaultKeyboardShortcuts.switchPanel;
+          const isPanelTab =
+            event.key === 'Tab' && !event.ctrlKey && !event.metaKey && !event.altKey;
           if (
-            !matchesShortcut(event, shortcut) ||
+            (!isPanelTab && !matchesShortcut(event, shortcut)) ||
             (event.target as HTMLElement).closest('dialog, [role="dialog"]')
           )
             return;
           event.preventDefault();
+          event.stopPropagation();
+          const currentPanel = (event.target as HTMLElement).closest<HTMLElement>('.panel');
+          const currentSide =
+            currentPanel?.dataset.testid === 'left-panel'
+              ? 'left'
+              : currentPanel?.dataset.testid === 'right-panel'
+                ? 'right'
+                : activeSide;
           const next = panels.current?.querySelector<HTMLElement>(
-            `[data-testid="${activeSide === 'left' ? 'right' : 'left'}-panel"]`,
+            `[data-testid="${currentSide === 'left' ? 'right' : 'left'}-panel"]`,
           );
           (
             next?.querySelector<HTMLElement>('[data-testid="file-row"][tabindex="0"]') ??
-            next?.querySelector<HTMLElement>('button:not(:disabled)') ??
+            next?.querySelector<HTMLElement>('.commander-surface') ??
             next
           )?.focus();
         }}

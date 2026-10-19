@@ -333,31 +333,42 @@ export const ProfileLibrary = ({
           ) : null}
         </div>
         {removing ? (
-          <section className="inline-form">
+          <Dialog
+            title={t('library.remove')}
+            className="confirmation-dialog"
+            initialFocus='[data-dialog-result="ok"]'
+            onClose={(result) => {
+              if (busy) return;
+              if (result === 'cancel') {
+                setRemoving(null);
+                return;
+              }
+              setBusy(true);
+              void run({ action: 'delete-profile', profileId: removing })
+                .then((response) => {
+                  if (response) setRemoving(null);
+                })
+                .finally(() => setBusy(false));
+            }}
+          >
             <p>
               {t('library.removeWarning')}{' '}
               {snapshot.profiles.find((item) => item.id === removing)?.name}
             </p>
             <div className="dialog-actions">
-              <button disabled={busy} onClick={() => setRemoving(null)}>
+              <button type="button" data-dialog-result="cancel" disabled={busy}>
                 {t('ui.cancel')}
               </button>
-              <button
-                className="destructive"
-                disabled={busy}
-                onClick={() => {
-                  setBusy(true);
-                  void run({ action: 'delete-profile', profileId: removing })
-                    .then((result) => {
-                      if (result) setRemoving(null);
-                    })
-                    .finally(() => setBusy(false));
-                }}
-              >
+              <button className="destructive" disabled={busy} type="button" data-dialog-result="ok">
                 {t('operations.confirm')}
               </button>
             </div>
-          </section>
+            {errorKey ? (
+              <p role="alert" className="inline-error">
+                {t(errorKey)}
+              </p>
+            ) : null}
+          </Dialog>
         ) : null}
         {summary ? <p role="status">{summary}</p> : null}
         {errorKey ? (

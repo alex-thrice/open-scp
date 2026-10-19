@@ -50,14 +50,15 @@ export const openConnection = async (page: Page, side: 'left' | 'right', name: s
 };
 
 export const copySelection = async (page: Page, panel: Locator) => {
-  void page;
   await panel.getByRole('button', { name: /^Copy to /u }).click();
+  await page
+    .getByRole('dialog', { name: 'Copy', exact: true })
+    .getByRole('button', { name: 'Confirm', exact: true })
+    .click();
 };
 
 export const setLanguage = async (page: Page, language: 'ru' | 'en') => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByLabel('Language', { exact: true }).selectOption(language);
-  await page
-    .getByRole('button', { name: language === 'ru' ? 'Готово' : 'Done', exact: true })
-    .click();
+  await page.getByRole('button', { name: /^(Done|Готово)$/u }).click();
 };

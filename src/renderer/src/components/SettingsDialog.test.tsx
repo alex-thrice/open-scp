@@ -48,7 +48,13 @@ describe('transfer preferences', () => {
     rerender(dialog());
     expect(upload.value).toBe('1');
     expect(download.value).toBe('16');
-    fireEvent.click(save);
+    fireEvent.click(screen.getByRole('button', { name: 'Restore WinSCP defaults' }));
+    expect(upload.value).toBe('64');
+    expect(download.value).toBe('32');
+    expect(run).not.toHaveBeenCalled();
+    fireEvent.change(upload, { target: { value: '1' } });
+    fireEvent.change(download, { target: { value: '16' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(run).toHaveBeenCalledWith({
         action: 'set-transfer-settings',
@@ -56,13 +62,6 @@ describe('transfer preferences', () => {
       }),
     );
     await waitFor(() => expect(save.disabled).toBe(false));
-    fireEvent.click(screen.getByRole('button', { name: 'Restore WinSCP defaults' }));
-    await waitFor(() =>
-      expect(run).toHaveBeenLastCalledWith({
-        action: 'set-transfer-settings',
-        settings: defaultTransferSettings,
-      }),
-    );
-    await waitFor(() => expect(upload.value).toBe('64'));
+    expect(run).toHaveBeenCalledTimes(1);
   });
 });

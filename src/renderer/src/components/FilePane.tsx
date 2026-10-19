@@ -133,6 +133,7 @@ export const FilePane = ({
     null,
   );
   const [busy, setBusy] = useState(false);
+  const [pendingCopies, setPendingCopies] = useState<readonly FileTransferRequest[]>([]);
   const [preparingDrag, setPreparingDrag] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [deletions, setDeletions] = useState<Record<
@@ -320,9 +321,7 @@ export const FilePane = ({
       })();
   };
   const queueCopy = (requests: FileTransferRequest[]) => {
-    void (async () => {
-      for (const request of requests) if (!(await run(request))) return;
-    })();
+    setPendingCopies(requests);
   };
   const commands: FileCommand[] = [
     {
@@ -829,13 +828,72 @@ export const FilePane = ({
           </form>
         </Dialog>
       ) : null}
+      {pendingCopies.length ? (
+        <Dialog
+          title={t('operations.copy')}
+          className="confirmation-dialog"
+          initialFocus='[data-dialog-result="ok"]'
+          onClose={(result) => {
+            if (busy) return;
+            if (result === 'cancel') {
+              setPendingCopies([]);
+              return;
+            }
+            setBusy(true);
+            void (async () => {
+              for (let index = 0; index < pendingCopies.length; index += 1) {
+                const request = pendingCopies[index];
+                if (!request || !(await run(request))) return;
+                setPendingCopies(pendingCopies.slice(index + 1));
+              }
+            })().finally(() => setBusy(false));
+          }}
+        >
+          <p>{t('commander.selected', { count: pendingCopies.length })}</p>
+          <ul className="operation-selection">
+            {pendingCopies.map((request) => (
+              <li key={request.sourcePath}>
+                {request.sourcePath.startsWith('gdrive:/')
+                  ? googleDisplayPath(request.sourcePath)
+                  : request.sourcePath}
+              </li>
+            ))}
+          </ul>
+          <p>{t('commander.destinationPath')}</p>
+          <code>
+            {pendingCopies[0]?.destinationDirectory.startsWith('gdrive:/')
+              ? googleDisplayPath(pendingCopies[0].destinationDirectory)
+              : pendingCopies[0]?.destinationDirectory}
+          </code>
+          {errorKey ? (
+            <p role="alert" className="inline-error">
+              {t(errorKey)}
+            </p>
+          ) : null}
+          <div className="dialog-actions">
+            <button type="button" data-dialog-result="cancel" disabled={busy}>
+              {t('connections.cancel')}
+            </button>
+            <button type="button" data-dialog-result="ok" className="primary" disabled={busy}>
+              {t('operations.confirm')}
+            </button>
+          </div>
+        </Dialog>
+      ) : null}
       {exporting && selectedEntry?.google && destination ? (
-        <Dialog title={t('google.export')} onClose={() => setExporting(false)}>
+        <Dialog
+          title={t('google.export')}
+          onClose={() => {
+            if (!busy) setExporting(false);
+          }}
+        >
           <form
             onSubmit={(event) => {
               event.preventDefault();
+              if (busy) return;
               const mimeType = String(new FormData(event.currentTarget).get('mimeType'));
-              queueCopy([
+              setBusy(true);
+              void run(
                 copyRequest(
                   paneId,
                   kind,
@@ -843,13 +901,16 @@ export const FilePane = ({
                   destinationId,
                   destination,
                 ),
-              ]);
-              setExporting(false);
+              )
+                .then((result) => {
+                  if (result) setExporting(false);
+                })
+                .finally(() => setBusy(false));
             }}
           >
             <label>
               {t('google.exportFormat')}
-              <select name="mimeType" required>
+              <select name="mimeType" required disabled={busy}>
                 {(
                   googleExportFormats[
                     selectedEntry.google.mimeType as keyof typeof googleExportFormats
@@ -863,10 +924,12 @@ export const FilePane = ({
             </label>
             <p>{t('google.exportLimit')}</p>
             <div className="dialog-actions">
-              <button type="button" onClick={() => setExporting(false)}>
+              <button type="button" disabled={busy} onClick={() => setExporting(false)}>
                 {t('connections.cancel')}
               </button>
-              <button className="primary">{t('operations.confirm')}</button>
+              <button type="submit" className="primary" disabled={busy}>
+                {t('operations.confirm')}
+              </button>
             </div>
           </form>
         </Dialog>
@@ -879,6 +942,7 @@ export const FilePane = ({
               : `operations.${operation}`,
           )}
           onClose={closeOperation}
+          initialFocus={operation === 'delete' ? 'button[type="submit"]' : 'input[name="name"]'}
         >
           {operation === 'rename' && isS3 ? (
             <p className="inline-error">{t('s3.renameWarning')}</p>
@@ -998,6 +1062,7 @@ export const FilePane = ({
                 {t('connections.cancel')}
               </button>
               <button
+                type="submit"
                 className={operation === 'delete' ? 'destructive' : 'primary'}
                 disabled={busy || (operation === 'delete' && isS3 && !deletions)}
               >

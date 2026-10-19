@@ -20,7 +20,10 @@ export class ProfileStore {
     return this.database
       .prepare('SELECT metadata FROM profiles ORDER BY id')
       .all()
-      .map((row) => connectionProfileSchema.parse(JSON.parse(String(row.metadata))));
+      .map((row) => connectionProfileSchema.parse(JSON.parse(String(row.metadata))))
+      .sort((left, right) =>
+        left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: 'base' }),
+      );
   }
 
   public save(profile: ConnectionProfile, secret?: string): ConnectionProfile {
@@ -89,6 +92,54 @@ export class ProfileStore {
     this.database
       .prepare('DELETE FROM settings WHERE key IN (?, ?)')
       .run(`group:${id}`, `recent:${id}`);
+  }
+
+  public createRollbackPoint(id: string): () => void {
+    const metadata = this.database
+      .prepare('SELECT metadata FROM profiles WHERE id = ?')
+      .get(id)?.metadata;
+    const credentials = this.database
+      .prepare('SELECT id, ciphertext FROM credentials WHERE profile_id = ?')
+      .all(id)
+      .map((row) => {
+        if (!(row.ciphertext instanceof Uint8Array))
+          throw new ApplicationError(applicationErrorCodes.credentialRequired);
+        return { id: String(row.id), ciphertext: Buffer.from(row.ciphertext) };
+      });
+    const group = this.getSetting(`group:${id}`);
+    return () => {
+      this.database.exec('BEGIN IMMEDIATE');
+      try {
+        if (metadata === undefined) this.delete(id);
+        else {
+          this.database
+            .prepare(
+              'INSERT INTO profiles (id, metadata) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET metadata=excluded.metadata',
+            )
+            .run(id, metadata);
+          const originalIds = credentials.map((entry) => String(entry.id));
+          for (const row of this.database
+            .prepare('SELECT id FROM credentials WHERE profile_id = ?')
+            .all(id)) {
+            if (!originalIds.includes(String(row.id)))
+              this.database.prepare('DELETE FROM credentials WHERE id = ?').run(String(row.id));
+          }
+          for (const entry of credentials)
+            this.database
+              .prepare(
+                'INSERT INTO credentials (id, profile_id, ciphertext) VALUES (?, ?, ?) ON CONFLICT(id) DO NOTHING',
+              )
+              .run(entry.id, id, entry.ciphertext);
+          if (group === undefined)
+            this.database.prepare('DELETE FROM settings WHERE key = ?').run(`group:${id}`);
+          else this.setSetting(`group:${id}`, group);
+        }
+        this.database.exec('COMMIT');
+      } catch (error) {
+        this.database.exec('ROLLBACK');
+        throw error;
+      }
+    };
   }
   public getSetting(key: string): string | undefined {
     const row = this.database.prepare('SELECT value FROM settings WHERE key = ?').get(key);

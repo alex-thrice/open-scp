@@ -863,6 +863,13 @@ small {
   background: #1b29396b;
   backdrop-filter: blur(3px);
 }
+
+.native-dialog.confirmation-dialog {
+  width: min(560px, calc(100vw - 32px));
+}
+.confirmation-dialog code {
+  overflow-wrap: anywhere;
+}
 .native-dialog {
   padding: 0;
   overflow: hidden;

@@ -13,17 +13,21 @@ export const GoogleConnectionForm = ({
   snapshot,
   run,
   onClose,
+  onConfirm,
   errorKey,
   editorControls,
   afterSave,
+  initialName,
 }: {
   readonly profile: GoogleConnectionProfile | undefined;
   readonly snapshot: WorkspaceSnapshot;
   readonly run: WorkspaceRunner;
   readonly onClose: () => void;
+  readonly onConfirm?: () => void;
   readonly errorKey: string | null;
   readonly editorControls?: ReactNode;
   readonly afterSave?: (result: WorkspaceResult) => Promise<boolean>;
+  readonly initialName?: string;
 }) => {
   const { t } = useTranslation();
   const formId = useId();
@@ -71,7 +75,7 @@ export const GoogleConnectionForm = ({
       if (authorize)
         await run({ action: 'authorize-google-profile', profileId: result.savedProfileId });
       else if (test) await connectionTest.test(result.savedProfileId);
-      else onClose();
+      else (onConfirm ?? onClose)();
     } finally {
       setSaving(false);
     }
@@ -124,8 +128,8 @@ export const GoogleConnectionForm = ({
           {t('connections.name')}
           <input
             name="name"
-            autoFocus
-            defaultValue={profile?.name ?? ''}
+            data-dialog-autofocus
+            defaultValue={profile?.name ?? initialName ?? ''}
             maxLength={200}
             required
             disabled={waiting}
