@@ -43,7 +43,9 @@ const entry = async (path, entryPath) => {
   };
 };
 try {
-  if (command === 'listremotes') {
+  if (command === 'version') {
+    process.stdout.write(behavior.versionOutput ?? 'rclone v1.75.2\n');
+  } else if (command === 'listremotes') {
     const remotes = behavior.remotes ?? {
       icloud: behavior.remoteType ?? 'iclouddrive',
       second: 'iclouddrive',

@@ -15,7 +15,7 @@ import { openDatabase } from './persistence/database';
 import { CredentialService } from './security/credential-service';
 import { ProfileStore } from './persistence/profile-store';
 import { WorkspaceService } from './sessions/workspace-service';
-import { discoverICloudRemotes } from './providers/icloud/icloud-availability';
+import { discoverICloudAvailability } from './providers/icloud/icloud-availability';
 import { dirname, join, resolve } from 'node:path';
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
 import { createFileDragHandler } from './ipc/file-drag-handler';
@@ -270,7 +270,7 @@ app.whenReady().then(async () => {
     localRootPath: localBrowsePaths.rootPath,
   });
   const profileStore = new ProfileStore(database, credentials);
-  const icloudRemotes = await discoverICloudRemotes(
+  const icloudAvailability = await discoverICloudAvailability(
     undefined,
     profileStore.getSetting('rclone-path'),
   );
@@ -335,7 +335,8 @@ app.whenReady().then(async () => {
     },
     applyApplicationLanguage,
     {
-      icloudRemotes,
+      rcloneAvailable: icloudAvailability.available,
+      icloudRemotes: icloudAvailability.remotes,
       pickRclone: async () => {
         const result = await dialog.showOpenDialog({
           properties: ['openFile'],

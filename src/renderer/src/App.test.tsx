@@ -1157,7 +1157,7 @@ describe('App', () => {
   });
 
   it('shows SFTP, S3 and explicitly insecure FTP editors without a redundant Close button', async () => {
-    statefulApi({ icloudRemotes: ['icloud'] });
+    statefulApi({ icloudRemotes: [], rcloneAvailable: true });
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Connections' }));
     fireEvent.click(screen.getByRole('button', { name: 'Connection' }));

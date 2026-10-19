@@ -457,6 +457,8 @@ export const App = () => {
           keyboardShortcuts={shortcuts}
           puttyPath={service.snapshot.puttyPath ?? null}
           rclonePath={service.snapshot.rclonePath ?? null}
+          rcloneAvailable={service.snapshot.rcloneAvailable === true}
+          icloudRemoteCount={service.snapshot.icloudRemotes?.length ?? 0}
           rememberPaths={service.snapshot.rememberPaths !== false}
           updateSettings={service.snapshot.updateSettings ?? defaultUpdateSettings}
           transferSettings={service.snapshot.transferSettings ?? defaultTransferSettings}

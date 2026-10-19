@@ -1,5 +1,6 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
-import { isAbsolute } from 'node:path';
+import { statSync } from 'node:fs';
+import { isAbsolute, join } from 'node:path';
 import type { ICloudConnectionProfile } from '@shared/models/connection-profile';
 import type { ProviderOperation } from '@shared/providers/provider-error';
 import { ProviderError, providerErrorCodes } from '@shared/providers/provider-error';
@@ -12,9 +13,11 @@ export type RcloneLauncher = (args: readonly string[]) => ChildProcessWithoutNul
 export const createRcloneLauncher =
   (profile: ICloudConnectionProfile, configuredPath?: () => string | undefined): RcloneLauncher =>
   (args) => {
-    const executable = configuredPath?.() || process.env.OPENSCP_RCLONE_PATH || 'rclone';
+    let executable = configuredPath?.() || process.env.OPENSCP_RCLONE_PATH || 'rclone';
     if (executable !== 'rclone' && !isAbsolute(executable))
       throw new ApplicationError(applicationErrorCodes.rcloneUnavailable);
+    if (executable !== 'rclone' && statSync(executable, { throwIfNoEntry: false })?.isDirectory())
+      executable = join(executable, process.platform === 'win32' ? 'rclone.exe' : 'rclone');
     // Исключаем унаследованные фильтры, dry-run и другие настройки операций rclone.
     const env = Object.fromEntries(
       Object.entries(process.env).filter(

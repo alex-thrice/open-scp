@@ -2,10 +2,15 @@ import { randomUUID } from 'node:crypto';
 import { createRcloneLauncher, RcloneProcess, type RcloneLauncher } from './rclone-process';
 import type { ICloudConnectionProfile } from '@shared/models/connection-profile';
 
-export const discoverICloudRemotes = async (
+export interface ICloudAvailability {
+  readonly available: boolean;
+  readonly remotes: readonly string[];
+}
+
+export const discoverICloudAvailability = async (
   launch?: RcloneLauncher,
   executablePath?: string,
-): Promise<readonly string[]> => {
+): Promise<ICloudAvailability> => {
   const profile: ICloudConnectionProfile = {
     id: randomUUID(),
     kind: 'icloud',
@@ -17,10 +22,14 @@ export const discoverICloudRemotes = async (
     profile,
     launch ?? createRcloneLauncher(profile, () => executablePath),
   );
+  const signal = AbortSignal.timeout(3000);
   try {
-    return await runner.icloudRemotes();
+    const version = await runner.output(['version'], 'connect', signal);
+    if (!/^rclone v\d+\.\d+/mu.test(version)) return { available: false, remotes: [] };
+    const remotes = await runner.icloudRemotes(signal).catch(() => []);
+    return { available: true, remotes };
   } catch {
-    return [];
+    return { available: false, remotes: [] };
   } finally {
     await runner.close();
   }

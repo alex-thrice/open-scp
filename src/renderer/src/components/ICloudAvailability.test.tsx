@@ -29,12 +29,12 @@ const snapshot: WorkspaceSnapshot = {
 };
 
 describe('iCloud availability in connection selectors', () => {
-  it.each([undefined, [], ['personal']])(
-    'offers creation only with configured rclone remotes (%j)',
-    (icloudRemotes) => {
+  it.each([undefined, false, true])(
+    'offers creation with a working rclone even without configured remotes (%j)',
+    (rcloneAvailable) => {
       render(
         <ConnectionEditor
-          snapshot={{ ...snapshot, ...(icloudRemotes ? { icloudRemotes } : {}) }}
+          snapshot={{ ...snapshot, ...(rcloneAvailable === undefined ? {} : { rcloneAvailable }) }}
           profile={undefined}
           run={vi.fn()}
           onClose={vi.fn()}
@@ -44,7 +44,7 @@ describe('iCloud availability in connection selectors', () => {
       const option = within(screen.getByLabelText('Connection type')).queryByRole('option', {
         name: 'iCloud Drive',
       });
-      expect(!!option).toBe(!!icloudRemotes?.length);
+      expect(!!option).toBe(!!rcloneAvailable);
     },
   );
 

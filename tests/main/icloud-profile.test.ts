@@ -46,6 +46,7 @@ describe('iCloud workspace profiles', () => {
       undefined,
       {
         icloudLaunch: fixture.launch,
+        rcloneAvailable: true,
         icloudRemotes: ['icloud', 'second'],
         pickRclone: async () => join(fixture.root, 'rclone.exe'),
       },
@@ -84,14 +85,35 @@ describe('iCloud workspace profiles', () => {
     const path = join(fixture.root, 'rclone.exe');
     expect((await service.execute({ action: 'pick-rclone' })).selectedPath).toBe(path);
     const saved = await service.execute({ action: 'set-rclone-path', path });
-    expect(saved.snapshot).toMatchObject({ rclonePath: path, icloudRemotes: ['icloud', 'second'] });
+    expect(saved.snapshot).toMatchObject({
+      rclonePath: path,
+      rcloneAvailable: true,
+      icloudRemotes: ['icloud', 'second'],
+    });
     expect(data.store.getSetting('rclone-path')).toBe(path);
     await service.execute({ action: 'save-icloud-profile', profile: draft });
     expect(exportProfiles(data.store)).not.toContain(path);
     await fixture.behavior({ remotes: {} });
+    expect((await service.execute({ action: 'refresh-rclone' })).snapshot).toMatchObject({
+      rclonePath: path,
+      rcloneAvailable: true,
+      icloudRemotes: [],
+    });
+    expect(data.store.getSetting('rclone-path')).toBe(path);
+    await fixture.behavior({ versionOutput: 'not-rclone' });
+    expect((await service.execute({ action: 'refresh-rclone' })).snapshot).toMatchObject({
+      rcloneAvailable: false,
+      icloudRemotes: [],
+    });
+    await fixture.behavior({ remotes: { icloud: 'iclouddrive' } });
+    expect((await service.execute({ action: 'refresh-rclone' })).snapshot).toMatchObject({
+      rcloneAvailable: true,
+      icloudRemotes: ['icloud'],
+    });
+    await fixture.behavior({ remotes: {} });
     expect(
       (await service.execute({ action: 'set-rclone-path', path: null })).snapshot,
-    ).toMatchObject({ rclonePath: null, icloudRemotes: [] });
+    ).toMatchObject({ rclonePath: null, rcloneAvailable: true, icloudRemotes: [] });
     expect(data.store.list()).toHaveLength(1);
     await expect(
       service.execute({ action: 'set-rclone-path', path: 'relative/rclone.exe' }),

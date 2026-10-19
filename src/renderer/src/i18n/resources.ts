@@ -14,7 +14,13 @@ export const resources = {
         profile: 'iCloud Drive connection',
         settings: 'iCloud Drive / rclone',
         settingsHint:
-          'Leave the path empty for automatic detection. iCloud connections are available when rclone is installed and an iCloud Drive remote is configured. Saving this setting checks availability again.',
+          'Choose the rclone executable or its folder. Leave the path empty for automatic detection. Saving this setting immediately refreshes availability and the connection list.',
+        ready: 'rclone is ready. Configured iCloud connections: {{count}}.',
+        noRemotes:
+          'rclone is ready. You can create an iCloud profile. Configure your Apple account using rclone config before connecting.',
+        unavailable:
+          'rclone was not found or could not be started. Select its executable or the folder containing it.',
+        check: 'Check rclone',
         executablePath: 'rclone executable path',
         chooseFile: 'Choose rclone…',
         savePath: 'Save rclone setting',
@@ -457,7 +463,12 @@ export const resources = {
         profile: 'Подключение iCloud Drive',
         settings: 'iCloud Drive / rclone',
         settingsHint:
-          'Оставьте путь пустым для автоматического поиска. Подключения iCloud доступны, когда установлен rclone и настроен remote iCloud Drive. При сохранении настройки доступность проверяется заново.',
+          'Укажите файл rclone или папку с программой. Пустой путь включает автоматический поиск. При сохранении доступность и список подключений обновляются сразу.',
+        ready: 'rclone найден. Настроенных подключений iCloud: {{count}}.',
+        noRemotes:
+          'rclone найден. Можно создать профиль iCloud. Для подключения настройте Apple Account через rclone config.',
+        unavailable: 'rclone не найден или не запускается. Укажите файл программы или папку с ним.',
+        check: 'Проверить rclone',
         executablePath: 'Путь к rclone',
         chooseFile: 'Выбрать rclone…',
         savePath: 'Сохранить настройку rclone',

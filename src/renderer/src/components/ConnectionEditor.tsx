@@ -122,7 +122,7 @@ export const ConnectionEditor = ({
           <option value="mailru">{t('mailru.name')}</option>
           <option value="yandex">{t('yandex.name')}</option>
           <option value="google">{t('google.name')}</option>
-          {profile?.kind === 'icloud' || snapshot.icloudRemotes?.length ? (
+          {profile?.kind === 'icloud' || snapshot.rcloneAvailable ? (
             <option value="icloud">{t('icloud.name')}</option>
           ) : null}
         </select>

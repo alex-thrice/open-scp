@@ -42,6 +42,8 @@ export const SettingsDialog = ({
   keyboardShortcuts,
   puttyPath,
   rclonePath,
+  rcloneAvailable,
+  icloudRemoteCount,
   rememberPaths,
   updateSettings,
   transferSettings,
@@ -57,6 +59,8 @@ export const SettingsDialog = ({
   readonly keyboardShortcuts: KeyboardShortcuts;
   readonly puttyPath: string | null;
   readonly rclonePath: string | null;
+  readonly rcloneAvailable: boolean;
+  readonly icloudRemoteCount: number;
   readonly rememberPaths: boolean;
   readonly updateSettings: UpdateSettings;
   readonly transferSettings: TransferSettings;
@@ -511,6 +515,16 @@ export const SettingsDialog = ({
               </button>
               <h4>{t('icloud.settings')}</h4>
               <p className="muted">{t('icloud.settingsHint')}</p>
+              <p role="status" className="muted">
+                {t(
+                  rcloneAvailable
+                    ? icloudRemoteCount
+                      ? 'icloud.ready'
+                      : 'icloud.noRemotes'
+                    : 'icloud.unavailable',
+                  { count: icloudRemoteCount },
+                )}
+              </p>
               <label>
                 {t('icloud.executablePath')}
                 <input
@@ -545,6 +559,17 @@ export const SettingsDialog = ({
                 >
                   <Icon name="Cloud" />
                   {t('icloud.savePath')}
+                </button>
+                <button
+                  disabled={busy || rclonePathDraft !== (rclonePath ?? '')}
+                  type="button"
+                  onClick={() => {
+                    setBusy(true);
+                    void run({ action: 'refresh-rclone' }).finally(() => setBusy(false));
+                  }}
+                >
+                  <Icon name="RefreshCw" />
+                  {t('icloud.check')}
                 </button>
               </div>
               <h4>{t('editor.settings')}</h4>

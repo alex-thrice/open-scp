@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { spawn } from 'node:child_process';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { discoverICloudRemotes } from '../../src/main/providers/icloud/icloud-availability';
+import { discoverICloudAvailability } from '../../src/main/providers/icloud/icloud-availability';
 import { startICloudFixture } from '../fixtures/icloud-harness';
 
 describe('startup iCloud availability', () => {
@@ -24,29 +24,53 @@ describe('startup iCloud availability', () => {
       },
     });
     const launch = vi.fn(fixture.launch);
-    expect(await discoverICloudRemotes(launch)).toEqual(['personal', 'work']);
-    expect(launch).toHaveBeenCalledTimes(1);
-    expect(launch.mock.calls[0]?.[0].slice(0, 2)).toEqual(['listremotes', '--long']);
+    expect(await discoverICloudAvailability(launch)).toEqual({
+      available: true,
+      remotes: ['personal', 'work'],
+    });
+    expect(launch).toHaveBeenCalledTimes(2);
+    expect(launch.mock.calls.map(([args]) => args[0])).toEqual(['version', 'listremotes']);
     expect(fixture.children.size).toBe(0);
   });
 
-  it('disables iCloud when rclone is missing, unconfigured or cannot read its config', async () => {
+  it('distinguishes a missing runtime from one without configured remotes', async () => {
     expect(
-      await discoverICloudRemotes((args) =>
+      await discoverICloudAvailability((args) =>
         spawn('openscp-rclone-does-not-exist', [...args], { stdio: 'pipe', windowsHide: true }),
       ),
-    ).toEqual([]);
+    ).toEqual({ available: false, remotes: [] });
     await fixture.behavior({ remotes: {} });
-    expect(await discoverICloudRemotes(fixture.launch)).toEqual([]);
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: [],
+    });
     await fixture.behavior({ remotes: { disk: 'drive' } });
-    expect(await discoverICloudRemotes(fixture.launch)).toEqual([]);
-    await fixture.behavior({ exit: 1, stderr: 'config file is encrypted cookie-canary' });
-    expect(await discoverICloudRemotes(fixture.launch)).toEqual([]);
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: [],
+    });
+    await fixture.behavior({
+      command: 'listremotes',
+      exit: 1,
+      stderr: 'config file is encrypted cookie-canary',
+    });
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: [],
+    });
+    await fixture.behavior({ versionOutput: 'Not a rclone binary\n' });
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: false,
+      remotes: [],
+    });
   });
 
   it('bounds the startup probe and terminates an unresponsive process', async () => {
     await fixture.behavior({ command: 'listremotes', delay: 10000 });
-    expect(await discoverICloudRemotes(fixture.launch)).toEqual([]);
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: [],
+    });
     expect(fixture.children.size).toBe(0);
   });
 });

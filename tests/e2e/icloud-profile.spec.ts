@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import {
   _electron as electron,
   expect,
@@ -109,7 +109,8 @@ test('rclone settings immediately update availability and survive restart withou
   const root = await mkdtemp(join(tmpdir(), 'openscp-rclone-settings-'));
   const userData = await mkdtemp(join(tmpdir(), 'openscp-rclone-settings-user-'));
   const config = join(root, 'rclone.conf');
-  await writeFile(config, '[icloud]\ntype = iclouddrive\n');
+  await writeFile(config, '');
+  const rcloneFolder = dirname(process.env.OPENSCP_TEST_RCLONE_BINARY ?? '');
   const packagedPath = process.env.OPENSCP_PACKAGED_EXE;
   let application: ElectronApplication | undefined;
   const launch = () =>
@@ -137,29 +138,45 @@ test('rclone settings immediately update availability and survive restart withou
     await expectCreation(window, false);
     await window.getByRole('button', { name: 'Settings', exact: true }).click();
     await window.getByRole('button', { name: 'Advanced', exact: true }).click();
-    await window
-      .getByLabel('rclone executable path')
-      .fill(process.env.OPENSCP_TEST_RCLONE_BINARY ?? '');
+    await window.getByLabel('rclone executable path').fill(rcloneFolder);
     await window.getByRole('button', { name: 'Save rclone setting', exact: true }).click();
     await expect(window.getByRole('dialog')).toHaveCount(0);
     await expectCreation(window, true);
-    await expectSource(window, true);
+    await expectSource(window, false);
+    await window.getByRole('button', { name: 'Connections', exact: true }).click();
+    await window.getByRole('button', { name: 'Connection', exact: true }).click();
+    await window.getByLabel('Connection type').selectOption('icloud');
+    await window.getByLabel('Profile name', { exact: true }).fill('Pending iCloud');
+    await window.getByLabel('Connection name in rclone').fill('pending');
+    await window.getByRole('button', { name: 'Save profile', exact: true }).click();
+    await expect(
+      window.getByRole('button', { name: 'Edit: Pending iCloud', exact: true }),
+    ).toBeVisible();
+    await window
+      .getByRole('dialog', { name: 'Connections', exact: true })
+      .getByRole('button', { name: 'Close', exact: true })
+      .last()
+      .click();
     await window.getByRole('button', { name: 'Settings', exact: true }).click();
     await window.getByRole('button', { name: 'Advanced', exact: true }).click();
+    await expect(window.getByRole('status')).toContainText('You can create an iCloud profile');
+    await writeFile(config, '[icloud]\ntype = iclouddrive\n');
+    await window.getByRole('button', { name: 'Check rclone', exact: true }).click();
+    await expect(window.getByRole('status')).toContainText('Configured iCloud connections: 1');
     await mkdir(resolve('tests/fixtures/runtime'), { recursive: true });
     await window.getByLabel('rclone executable path').scrollIntoViewIfNeeded();
     await window.screenshot({ path: resolve('tests/fixtures/runtime/rclone-settings.png') });
+    await window.getByRole('button', { name: 'Done', exact: true }).click();
+    await expectSource(window, true);
     await application.close();
     await writeFile(config, '[other]\ntype = local\n');
     application = await launch();
     window = await application.firstWindow();
-    await expectCreation(window, false);
+    await expectCreation(window, true);
     await expectSource(window, false);
     await window.getByRole('button', { name: 'Settings', exact: true }).click();
     await window.getByRole('button', { name: 'Advanced', exact: true }).click();
-    await expect(window.getByLabel('rclone executable path')).toHaveValue(
-      process.env.OPENSCP_TEST_RCLONE_BINARY ?? '',
-    );
+    await expect(window.getByLabel('rclone executable path')).toHaveValue(rcloneFolder);
     await application.close();
     await writeFile(config, '[icloud]\ntype = iclouddrive\n');
     application = await launch();

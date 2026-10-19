@@ -89,6 +89,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-rclone-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('refresh-rclone') }),
   z.strictObject({ action: z.literal('set-remember-paths'), enabled: z.boolean() }),
   z.strictObject({ action: z.literal('remember-workspace-layout'), layout: workspaceLayoutSchema }),
   z.strictObject({ action: z.literal('remember-local-path'), workspaceId: id, path }),
@@ -272,6 +273,7 @@ export const workspaceSnapshotSchema = z.strictObject({
     .optional(),
   profiles: z.array(connectionProfileSchema),
   icloudRemotes: z.array(icloudRemoteSchema).optional(),
+  rcloneAvailable: z.boolean().optional(),
   googleOAuthConfigured: z.boolean().optional(),
   googleAuthorizations: z
     .array(
