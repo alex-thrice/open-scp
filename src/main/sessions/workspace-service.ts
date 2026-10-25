@@ -111,6 +111,7 @@ export interface WorkspaceExternalActions {
   readonly openSshTerminal?: (
     profile: SftpConnectionProfile,
     puttyPath: string | null,
+    options: { readonly directory: string },
   ) => Promise<void>;
   readonly pickEditor?: () => Promise<string | null>;
   readonly setUpdateSettings?: (settings: UpdateSettings) => Promise<void>;
@@ -1182,6 +1183,14 @@ export class WorkspaceService {
         await this.externalActions.openSshTerminal(
           provider.connection.profile,
           this.store.getSetting('putty-path') || null,
+          {
+            directory:
+              (this.currentPathProfiles.get(request.workspaceId) === provider.connection.profile.id
+                ? this.currentPaths.get(request.workspaceId)
+                : undefined) ??
+              provider.connection.profile.initialDirectory ??
+              '/',
+          },
         );
         break;
       }

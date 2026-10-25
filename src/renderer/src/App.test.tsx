@@ -684,6 +684,89 @@ describe('App', () => {
     await waitFor(() => expect(document.activeElement).toBe(restoredDirectory));
   });
 
+  it.each(['keyboard', 'button'] as const)(
+    'restores keyboard navigation when returning from an empty directory using the %s',
+    async (navigation) => {
+      setDesktopApi(createDesktopApi(listingApi()));
+      render(<App />);
+      const directory = await pane('left').findByRole('row', { name: 'Open Documents' });
+      fireEvent.click(directory);
+      fireEvent.keyDown(directory, { key: 'Enter' });
+      const empty = await pane('left').findByText('This directory is empty.');
+      const surface = empty.closest<HTMLElement>('.commander-surface');
+      await waitFor(() => expect(document.activeElement).toBe(surface));
+
+      if (navigation === 'keyboard')
+        fireEvent.keyDown(surface as HTMLElement, { key: 'Backspace' });
+      else {
+        const parentButton = pane('left').getByRole('button', { name: 'Go to parent directory' });
+        parentButton.focus();
+        fireEvent.click(parentButton);
+      }
+
+      const restoredDirectory = await pane('left').findByRole('row', { name: 'Open Documents' });
+      await waitFor(() => expect(document.activeElement).toBe(restoredDirectory));
+      fireEvent.keyDown(restoredDirectory, { key: 'ArrowDown' });
+      await waitFor(() =>
+        expect(document.activeElement).toBe(pane('left').getByRole('row', { name: 'notes.txt' })),
+      );
+    },
+  );
+
+  it.each(['panel', 'other-panel', 'source-picker'] as const)(
+    'handles focus moving to the %s while a directory is loading',
+    async (focusDestination) => {
+      let complete:
+        ((result: Awaited<ReturnType<DesktopApi['listLocalDirectory']>>) => void) | undefined;
+      const pending = new Promise<Awaited<ReturnType<DesktopApi['listLocalDirectory']>>>(
+        (resolve) => {
+          complete = resolve;
+        },
+      );
+      setDesktopApi(
+        createDesktopApi(async (path) =>
+          path === childPath ? pending : { correlationId, ok: true, data: rootListing },
+        ),
+      );
+      render(<App />);
+      const directory = await pane('left').findByRole('row', { name: 'Open Documents' });
+      fireEvent.click(directory);
+      fireEvent.keyDown(directory, { key: 'Enter' });
+      await waitFor(() => expect(directory.isConnected).toBe(false));
+      const focusTarget =
+        focusDestination === 'panel'
+          ? within(screen.getByRole('tabpanel')).getByTestId('left-panel')
+          : focusDestination === 'other-panel'
+            ? pane('right').getByRole('row', { name: 'notes.txt' })
+            : pane('left').getByRole('button', { name: 'Drive or connection' });
+      act(() => focusTarget.focus());
+      await act(async () =>
+        complete?.({
+          correlationId,
+          ok: true,
+          data: {
+            ...childListing,
+            entries: [
+              {
+                name: 'nested.txt',
+                path: `${childPath}\\nested.txt`,
+                kind: 'file',
+                modifiedAt: null,
+                size: 1n,
+              },
+            ],
+          },
+        }),
+      );
+      const nestedFile = await pane('left').findByRole('row', { name: 'nested.txt' });
+      await waitFor(() =>
+        expect(document.activeElement).toBe(
+          focusDestination === 'panel' ? nestedFile : focusTarget,
+        ),
+      );
+    },
+  );
+
   it('opens a local file through the constrained workspace action', async () => {
     const workspace = statefulApi();
     render(<App />);

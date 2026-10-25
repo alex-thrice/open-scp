@@ -147,11 +147,18 @@ export const FilePane = ({
   const initialPathReference = useRef(initialPath);
   const hasSuccessfulListing = useRef(false);
   const attemptedPath = useRef<string | null>(initialPathReference.current);
-  const shouldRestoreFileFocus = useRef(false);
+  const fileFocusOrigin = useRef<Element | null>(null);
   const load = useCallback(
-    async (path: string | null) => {
-      shouldRestoreFileFocus.current =
-        panel.current?.querySelector('.file-list-shell')?.contains(document.activeElement) ?? false;
+    async (path: string | null, focusFiles = false) => {
+      const pane = panel.current;
+      const focused = document.activeElement;
+      fileFocusOrigin.current =
+        focusFiles ||
+        focused === pane ||
+        focused === pane?.querySelector('.commander-surface') ||
+        pane?.querySelector('.file-list-shell')?.contains(focused)
+          ? focused
+          : null;
       attemptedPath.current = path;
       const request = ++version.current;
       setLoading(true);
@@ -260,16 +267,25 @@ export const FilePane = ({
   const entries =
     listing?.entries.filter((entry) => appearance.showHidden || !entry.name.startsWith('.')) ?? [];
   useLayoutEffect(() => {
-    if (loading || !shouldRestoreFileFocus.current) return;
-    shouldRestoreFileFocus.current = false;
+    if (loading || !fileFocusOrigin.current) return;
+    const origin = fileFocusOrigin.current;
+    fileFocusOrigin.current = null;
+    const pane = panel.current;
+    const surface = pane?.querySelector<HTMLElement>('.commander-surface');
+    const focused = document.activeElement;
     if (
-      panel.current?.dataset.active !== 'true' ||
-      (document.activeElement !== null && document.activeElement !== document.body)
+      !pane ||
+      pane.dataset.active !== 'true' ||
+      pane.closest('[hidden]') ||
+      (focused !== null &&
+        focused !== document.body &&
+        focused !== origin &&
+        focused !== pane &&
+        focused !== surface)
     )
       return;
     const focusTarget =
-      panel.current.querySelector<HTMLElement>('[data-testid="file-row"][tabindex="0"]') ??
-      panel.current.querySelector<HTMLElement>('.commander-surface');
+      pane.querySelector<HTMLElement>('[data-testid="file-row"][tabindex="0"]') ?? surface;
     focusTarget?.focus();
   }, [currentPath, entries.length, loading]);
   const selected = selection.filter((path) => entries.some((entry) => entry.path === path));
@@ -422,7 +438,7 @@ export const FilePane = ({
       shortcut: shortcuts.parentDirectory,
       disabled: !listing?.parentPath || loading,
       run: () => {
-        if (listing?.parentPath) void load(listing.parentPath);
+        if (listing?.parentPath) void load(listing.parentPath, true);
       },
     },
   ];
@@ -467,6 +483,7 @@ export const FilePane = ({
     commands.push({
       id: 'terminal',
       label: t('terminal.open'),
+      disabled: !listing || loading,
       run: () => void run({ action: 'open-ssh-terminal', workspaceId: paneId }),
     });
   const retry = () => {
@@ -536,7 +553,7 @@ export const FilePane = ({
             title={t('path.up')}
             disabled={!listing?.parentPath || loading}
             onClick={() => {
-              if (listing?.parentPath) void load(listing.parentPath);
+              if (listing?.parentPath) void load(listing.parentPath, true);
             }}
           >
             <Icon name="ArrowUp" />
@@ -560,7 +577,7 @@ export const FilePane = ({
             onSubmit={(event) => {
               event.preventDefault();
               if (ready && kind !== 'google' && pathInput.current?.value)
-                void load(pathInput.current.value);
+                void load(pathInput.current.value, true);
             }}
           >
             <input
@@ -698,7 +715,7 @@ export const FilePane = ({
               selectedPaths={selected}
               onSelectionChange={setSelection}
               onDragError={setLoadError}
-              onOpenDirectory={(path) => void load(path)}
+              onOpenDirectory={(path) => void load(path, true)}
               {...(kind === 'local'
                 ? {
                     onOpenFile: (path: string) =>

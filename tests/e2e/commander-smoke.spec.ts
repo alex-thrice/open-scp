@@ -134,6 +134,67 @@ test('opens the desktop shell and changes the local directory', async () => {
   await expect(restoredLeftPanel.getByRole('row', { name: 'child-file.txt' })).toBeVisible();
 });
 
+test('keeps arrow-key navigation after opening folders and returning to their parent', async () => {
+  fixtureRootPath = await mkdtemp(join(tmpdir(), 'openscp-e2e-focus-'));
+  const childPath = join(fixtureRootPath, 'child-directory');
+  await mkdir(join(childPath, 'empty-directory'), { recursive: true });
+  await writeFile(join(childPath, 'alpha.txt'), 'alpha');
+  await writeFile(join(childPath, 'beta.txt'), 'beta');
+  await writeFile(join(fixtureRootPath, 'root-file.txt'), 'root');
+  userDataPath = await mkdtemp(join(tmpdir(), 'openscp-electron-'));
+  electronApplication = await electron.launch({
+    args: [
+      '--disable-gpu',
+      '--in-process-gpu',
+      '--no-sandbox',
+      `--user-data-dir=${userDataPath}`,
+      resolve('out/main/index.js'),
+    ],
+    env: {
+      ...process.env,
+      OPENSCP_DISABLE_HARDWARE_ACCELERATION: '1',
+      OPENSCP_LOCAL_ROOT: fixtureRootPath,
+    },
+  });
+  const window = await electronApplication.firstWindow();
+
+  for (const side of ['left', 'right']) {
+    const panel = window.getByTestId(`${side}-panel`);
+    const directory = panel.getByRole('row', { name: 'Open child-directory' });
+    const emptyDirectory = panel.getByRole('row', { name: 'Open empty-directory' });
+
+    await directory.click();
+    await window.keyboard.press('Enter');
+    await expect(emptyDirectory).toBeFocused();
+    await window.keyboard.press('Enter');
+    await expect(panel.getByText('This directory is empty.')).toBeVisible();
+    await expect(panel.locator('.commander-surface')).toBeFocused();
+    await window.keyboard.press('Backspace');
+    await expect(emptyDirectory).toBeFocused();
+    await window.keyboard.press('ArrowDown');
+    await expect(panel.getByRole('row', { name: 'alpha.txt' })).toBeFocused();
+    await window.keyboard.press('ArrowDown');
+    await expect(panel.getByRole('row', { name: 'beta.txt' })).toBeFocused();
+    await window.keyboard.press('Backspace');
+    await expect(directory).toBeFocused();
+    await window.keyboard.press('ArrowDown');
+    await expect(panel.getByRole('row', { name: 'root-file.txt' })).toBeFocused();
+
+    await directory.dblclick();
+    await expect(emptyDirectory).toBeFocused();
+    await panel.getByRole('button', { name: 'Go to parent directory' }).click();
+    await expect(directory).toBeFocused();
+    await window.keyboard.press('ArrowDown');
+    await expect(panel.getByRole('row', { name: 'root-file.txt' })).toBeFocused();
+
+    await panel.getByLabel('Current path').fill(childPath);
+    await window.keyboard.press('Enter');
+    await expect(emptyDirectory).toBeFocused();
+    await window.keyboard.press('ArrowDown');
+    await expect(panel.getByRole('row', { name: 'alpha.txt' })).toBeFocused();
+  }
+});
+
 test('discovers Windows drives and reopens the most recent drive path', async () => {
   test.skip(process.platform !== 'win32', 'Windows drive-letter integration check.');
   userDataPath = await mkdtemp(join(tmpdir(), 'openscp-electron-'));

@@ -1,4 +1,5 @@
 // @vitest-environment node
+import { randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,15 +8,91 @@ import { openDatabase } from '../../src/main/persistence/database';
 import { ProfileStore } from '../../src/main/persistence/profile-store';
 import { CredentialService } from '../../src/main/security/credential-service';
 import { WorkspaceService } from '../../src/main/sessions/workspace-service';
+import { SftpProvider } from '../../src/main/providers/sftp/sftp-provider';
+import type { SftpConnectionProfile } from '../../src/shared/models/connection-profile';
 
 const temporaryDirectories: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   for (const path of temporaryDirectories.splice(0))
     await rm(path, { recursive: true, force: true });
 });
 
 describe('workspace external actions', () => {
+  it('opens SSH terminals in the latest successful directory of their own pane and profile', async () => {
+    vi.spyOn(SftpProvider.prototype, 'connect').mockResolvedValue();
+    vi.spyOn(SftpProvider.prototype, 'connectionState', 'get').mockReturnValue('connected');
+    const list = vi.spyOn(SftpProvider.prototype, 'list').mockResolvedValue([]);
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, {
+      isEncryptionAvailable: () => true,
+      encryptString: (value) => Buffer.from(value),
+      decryptString: (value) => Buffer.from(value).toString(),
+    });
+    const store = new ProfileStore(database, credentials);
+    const profile: SftpConnectionProfile = {
+      id: randomUUID(),
+      kind: 'sftp',
+      name: 'VPS',
+      host: 'server.example.test',
+      port: 22,
+      username: 'fixture',
+      authentication: { method: 'agent' },
+      initialDirectory: '/home/fixture',
+    };
+    store.save(profile);
+    const openSshTerminal = vi.fn(async () => undefined);
+    const service = new WorkspaceService(
+      store,
+      credentials,
+      async () => [],
+      async () => null,
+      undefined,
+      undefined,
+      { openSshTerminal },
+    );
+    try {
+      const left = 'workspace-1:left';
+      const right = 'workspace-1:right';
+      await service.execute({ action: 'connect', workspaceId: left, profileId: profile.id });
+      await service.execute({ action: 'connect', workspaceId: right, profileId: profile.id });
+      await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, {
+        directory: '/home/fixture',
+      });
+
+      await service.execute({ action: 'list', workspaceId: left, path: '/opt/old' });
+      await service.execute({ action: 'list', workspaceId: left, path: "/opt/my app/it's here" });
+      await service.execute({ action: 'list', workspaceId: right, path: '/var/www' });
+      list.mockRejectedValueOnce(new Error('Listing failed'));
+      await expect(
+        service.execute({ action: 'list', workspaceId: left, path: '/unavailable' }),
+      ).rejects.toBeDefined();
+      await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, {
+        directory: "/opt/my app/it's here",
+      });
+      await service.execute({ action: 'open-ssh-terminal', workspaceId: right });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, { directory: '/var/www' });
+
+      const otherProfile = store.save({
+        ...profile,
+        id: randomUUID(),
+        initialDirectory: '/srv/new',
+      });
+      await service.execute({ action: 'connect', workspaceId: left, profileId: otherProfile.id });
+      await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(otherProfile, null, {
+        directory: '/srv/new',
+      });
+    } finally {
+      service.dispose();
+      database.close();
+      vi.restoreAllMocks();
+    }
+  });
+
   it('opens only a validated regular file inside an available local root', async () => {
     const rootPath = await mkdtemp(join(tmpdir(), 'openscp-external-actions-'));
     temporaryDirectories.push(rootPath);
