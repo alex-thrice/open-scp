@@ -20,6 +20,7 @@ import {
 } from './CommanderSurface';
 import { Dialog } from './Dialog';
 import { MailruPasswordLabel } from './MailruPasswordLabel';
+import { PasswordInput } from './PasswordInput';
 import { YandexAuthorizationControls } from './YandexAuthorizationControls';
 import { Icon } from './Icon';
 import { SourcePicker } from './SourcePicker';
@@ -810,7 +811,7 @@ export const FilePane = ({
               ) : (
                 <label htmlFor={passwordId}>{t('connections.password')}</label>
               )}
-              <input
+              <PasswordInput
                 id={passwordId}
                 autoFocus
                 autoComplete="current-password"
@@ -818,7 +819,6 @@ export const FilePane = ({
                 maxLength={65536}
                 name="password"
                 required
-                type="password"
               />
             </div>
             <label className="checkbox-label">

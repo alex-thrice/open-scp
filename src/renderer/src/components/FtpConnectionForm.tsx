@@ -4,6 +4,7 @@ import type { FtpConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceResult } from '@shared/ipc/workspace';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
+import { PasswordInput } from './PasswordInput';
 import { Icon } from './Icon';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
 
@@ -150,10 +151,10 @@ export const FtpConnectionForm = ({
             required
           />
         </label>
-        <label>
-          {t('connections.password')}
-          <input autoComplete="off" name="password" type="password" />
-        </label>
+        <div className="form-field">
+          <label htmlFor={`${formId}-password`}>{t('connections.password')}</label>
+          <PasswordInput id={`${formId}-password`} autoComplete="off" name="password" />
+        </div>
         <small>{t('connections.secretHint')}</small>
         <details className="advanced-fields">
           <summary>{t('ui.advanced')}</summary>

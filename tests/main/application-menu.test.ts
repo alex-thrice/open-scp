@@ -15,7 +15,7 @@ describe('application menu', () => {
   it('provides the Windows sections and an About command', () => {
     const template = createApplicationMenuTemplate('en', 'win32', actions());
 
-    expect(template.map((item) => item.label)).toEqual(['File', 'View', 'Window', 'Help']);
+    expect(template.map((item) => item.label)).toEqual(['File', 'Edit', 'View', 'Window', 'Help']);
     const help = template.find((item) => item.label === 'Help');
     expect(Array.isArray(help?.submenu) ? help.submenu.map((item) => item.label) : []).toContain(
       'About OpenSCP',
@@ -33,4 +33,18 @@ describe('application menu', () => {
         : [],
     ).toContain('О программе OpenSCP');
   });
+
+  it.each(['darwin', 'win32', 'linux'] as const)(
+    'keeps native text editing commands available on %s in both languages',
+    (platform) => {
+      for (const language of ['en', 'ru'] as const) {
+        const template = createApplicationMenuTemplate(language, platform, actions());
+        const edit = template.find((item) => item.role === 'editMenu');
+        expect(edit?.label).toBe(language === 'ru' ? 'Правка' : 'Edit');
+        expect(
+          Array.isArray(edit?.submenu) ? edit.submenu.map((item) => item.role).filter(Boolean) : [],
+        ).toEqual(['undo', 'redo', 'cut', 'copy', 'paste', 'selectAll']);
+      }
+    },
+  );
 });

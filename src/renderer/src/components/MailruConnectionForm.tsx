@@ -5,6 +5,7 @@ import type { WorkspaceResult } from '@shared/ipc/workspace';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
 import { MailruPasswordLabel } from './MailruPasswordLabel';
+import { PasswordInput } from './PasswordInput';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const MailruConnectionForm = ({
@@ -132,7 +133,7 @@ export const MailruConnectionForm = ({
         </label>
         <div className="form-field">
           <MailruPasswordLabel inputId={passwordId} />
-          <input id={passwordId} autoComplete="off" name="password" type="password" />
+          <PasswordInput id={passwordId} autoComplete="off" name="password" />
         </div>
         <small>{t('connections.secretHint')}</small>
         <details className="advanced-fields">

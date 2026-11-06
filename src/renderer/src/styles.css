@@ -960,6 +960,36 @@ small {
   display: grid;
   gap: 6px;
 }
+.password-input {
+  position: relative;
+  display: flex;
+  min-width: 0;
+}
+.password-input input {
+  width: 100%;
+  padding-right: 38px;
+}
+.password-input__toggle {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  bottom: 4px;
+  width: 26px;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--muted);
+}
+.password-input__toggle svg {
+  width: 16px;
+  height: 16px;
+}
+.password-input__toggle:hover:not(:disabled) {
+  color: var(--text);
+}
 .oauth-account {
   display: grid;
   gap: 10px;
