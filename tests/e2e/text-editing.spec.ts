@@ -84,7 +84,9 @@ test('offers native text editing menus and reveals only the current password dra
         password.evaluate((input: HTMLInputElement) => [input.selectionStart, input.selectionEnd]),
       )
       .toEqual([2, 8]);
-    await password.click({ button: 'right' });
+    // On Linux, right-clicking beyond the selected text collapses the selection.
+    await password.evaluate((input: HTMLInputElement) => input.select());
+    await password.click({ button: 'right', position: { x: 20, y: 16 } });
     await expect.poll(() => menus.evaluate((opened) => opened.length)).toBe(3);
     expect(
       await menus.evaluate((opened) =>
