@@ -53,6 +53,7 @@ test('opens the desktop shell and changes the local directory', async () => {
   expect(menuLabels).toEqual([
     ...(process.platform === 'darwin' ? ['OpenSCP'] : []),
     'File',
+    'Edit',
     'View',
     'Window',
     'Help',

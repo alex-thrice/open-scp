@@ -34,6 +34,7 @@ import { configureProductionContentSecurityPolicy } from './security/content-sec
 import { configureWebContentsSecurity } from './security/web-contents-security';
 import { createWindowOptions } from './window-options';
 import { setApplicationLanguage, type ApplicationMenuActions } from './application-menu';
+import { configureTextInputContextMenu } from './text-input-context-menu';
 import { menuResources } from '@shared/localization/menu-resources';
 import { openSshTerminal } from './external/ssh-terminal';
 import { normalizeMacApplicationPath, openEditor } from './external/editor';
@@ -155,6 +156,9 @@ const createMainWindow = (
     ...restoredBounds,
     ...(app.isPackaged ? { icon: join(process.resourcesPath, 'icon.png') } : {}),
   });
+  configureTextInputContextMenu(mainWindow, () =>
+    profileStore.getSetting('language') === 'ru' ? 'ru' : 'en',
+  );
   let saveTimer: ReturnType<typeof setTimeout> | undefined;
   let hasWindowShown = false;
   let closePrompting = false;

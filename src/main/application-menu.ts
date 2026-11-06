@@ -69,6 +69,20 @@ export const createApplicationMenuTemplate = (
     ...applicationMenu,
     { label: labels.file, submenu: fileMenu },
     {
+      label: labels.edit,
+      role: 'editMenu',
+      submenu: [
+        { role: 'undo', label: labels.undo },
+        { role: 'redo', label: labels.redo },
+        { type: 'separator' },
+        { role: 'cut', label: labels.cut },
+        { role: 'copy', label: labels.copy },
+        { role: 'paste', label: labels.paste },
+        { type: 'separator' },
+        { role: 'selectAll', label: labels.selectAll },
+      ],
+    },
+    {
       label: labels.view,
       submenu: [
         { role: 'resetZoom', label: labels.resetZoom },
