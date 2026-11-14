@@ -112,7 +112,9 @@ export const WorkspaceView = ({
               paneId={paneId}
               active={activeSide === side}
               isActive={isActive}
-              initialPath={initialPaths?.[side] ?? snapshot.localPaths?.[paneId] ?? null}
+              initialPath={
+                initialPaths ? initialPaths[side] : (snapshot.localPaths?.[paneId] ?? null)
+              }
               initialized={initialized}
               snapshot={snapshot}
               run={run}
