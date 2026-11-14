@@ -45,4 +45,4 @@ Fixture endpoints доступны только через явную main-ко�
 operations, signed URLs, CRUD, очередь 32 МиБ и Electron restart/sign-out/cancel.
 Client ID приходит в сборку из `.env.local`/переменной CI, без значения в исходниках;
 callback и права проверены по публичной
-конфигурации. Реальный smoke пока ожидается: [руководство и чеклист](../user/yandex.md).
+конфигурации. Реальный smoke пока ожидается: [руководство и чеклист](../development/yandex-oauth.md).

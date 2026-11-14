@@ -12,6 +12,7 @@ export interface GoogleConfiguration {
   readonly clientId: string;
   readonly clientSecret?: string;
   readonly openBrowser: (url: string) => Promise<void>;
+  readonly callbackLanguage?: 'en' | 'ru';
   readonly apiEndpoint?: string;
   readonly authorizationEndpoint?: string;
   readonly tokenEndpoint?: string;
@@ -45,6 +46,7 @@ export class GoogleAuthorization {
       authorizationParameters: { access_type: 'offline', prompt: 'consent select_account' },
       ...(configuration.clientSecret ? { clientSecret: configuration.clientSecret } : {}),
       openBrowser: configuration.openBrowser,
+      callbackLanguage: configuration.callbackLanguage ?? 'en',
       ...(configuration.allowLoopbackEndpoints ? { allowLoopbackEndpoints: true } : {}),
       ...(configuration.timeout ? { timeout: configuration.timeout } : {}),
     });

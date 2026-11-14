@@ -1,224 +1,113 @@
 # OpenSCP
 
-[Repository](https://github.com/alex-thrice/open-scp) ·
-[CI](https://github.com/alex-thrice/open-scp/actions/workflows/ci.yml) ·
-[MIT License](LICENSE)
+**Your files, servers and cloud storage in two panels.**
 
-Early-stage cross-platform desktop file client built with Electron, React, Vite, and strict
-TypeScript. The application includes local drive browsing, independent workspaces, encrypted
-connection profiles, SFTP, FTP, S3, Mail.ru Cloud, Yandex Disk and Google Drive browsing/file operations, an experimental iCloud Drive provider through external rclone, and a shared streaming transfer queue
-for Local ↔ SFTP, Local ↔ S3 and SFTP ↔ S3. It also includes customizable Commander
-shortcuts, profile management, GitHub updates and live English/Russian localization.
+[Download](https://github.com/alex-thrice/open-scp/releases/latest) ·
+[Website](https://openscp.made-in-krim.ru/) ·
+[Getting started](docs/user/getting-started.md) ·
+[Русский](README.ru.md)
 
-## Requirements
+OpenSCP is a free, open-source desktop file manager for **Windows, macOS and Linux**.
+Open a folder or connection in each panel, select files and copy them to the other
+side. Keep several connections open in tabs and follow transfers in one queue.
 
-- Node.js 24.20.0 LTS (the exact development version is in `.nvmrc`)
-- pnpm 11.24.0 (pinned in `package.json`)
+![OpenSCP copying a demo project between two local folders](docs/images/workspace.png)
 
-Corepack can select the declared pnpm version:
+_Actual application window with synthetic demo files and a separate profile._
 
-```bash
-corepack enable
-pnpm install --frozen-lockfile
-```
+## What you can do
 
-## Commands
+- Browse local folders, SFTP and FTP servers, S3-compatible storage and cloud drives.
+- Upload, download and copy between connected sources through your computer.
+- Create folders, rename files, handle overwrite conflicts and follow transfer progress.
+- Organize saved connections into folders and find them by name.
+- Work with keyboard shortcuts, drag and drop, and independent workspace tabs.
+- Choose a light, dark or system theme and switch between English and Russian.
 
-```bash
-pnpm dev
-pnpm lint
-pnpm typecheck
-pnpm test
-pnpm licenses:check
-pnpm build
-pnpm package
-```
+OpenSCP is under active development. Available operations depend on the connection
+and the permissions of your account.
 
-GitHub Actions runs lint, type checking, unit/packaging tests, license checks, builds
-and Electron UI tests on Windows, Linux and Apple Silicon macOS. UI regression tests use
-temporary local SFTP/S3 servers; Linux runs them with a disposable keyring.
-Development packages are built and smoke-tested by `packages.yml` on version tags,
-including OpenSSH/MinIO integration for the installed Linux package; signed
-candidates remain a manual workflow requiring signing credentials.
+## Download and install
 
-## License
+Get a package from the [latest release](https://github.com/alex-thrice/open-scp/releases/latest).
+No development tools are needed to use OpenSCP.
+
+| Your computer          | Package to choose                                            |
+| ---------------------- | ------------------------------------------------------------ |
+| Windows x64            | Setup `.exe`, or portable `.exe` to run without installation |
+| Linux x64              | `.deb` for Debian/Ubuntu-based systems, or `.AppImage`       |
+| macOS on Apple Silicon | `.dmg` or `.zip` for arm64                                   |
+
+Open the downloaded package and start OpenSCP. Linux needs a working desktop
+keyring to save credentials. macOS packages currently use ad-hoc signing; see
+[platform notes](docs/user/platforms.md) for installation and update limitations.
+The release page lists the packages actually available for that version.
+
+### Additional tools for specific features
+
+| Feature                      | Install separately                                                                                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud Drive on any platform | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → iCloud Drive / rclone**                                                 |
+| SSH terminal on Windows      | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); set the path to `putty.exe` in **Settings → Advanced → SSH terminal** if needed |
+
+These programs are not bundled with OpenSCP. SFTP browsing and file transfers work
+without PuTTY; it is needed only to open the separate SSH terminal on Windows.
+See [installation steps](docs/user/getting-started.md#additional-tools).
+
+## Your first transfer
+
+1. Open the source folder in one panel and the destination folder in the other.
+2. For a server or cloud drive, open **Connections → Connection**, choose the type
+   and save a profile. Select it using the source picker above either panel.
+3. Select files or folders and press **F5**, or use the panel's **Copy** button.
+4. Check the destination and confirm. Follow progress in the queue below the panels.
+   If a name already exists, choose whether to overwrite, skip or keep both.
+
+You can try these steps between two local folders before connecting a server.
+For a first SFTP connection, verify the fingerprint with the server administrator
+before accepting it.
+
+## Connections
+
+| Source                      | What you need                                                                   |
+| --------------------------- | ------------------------------------------------------------------------------- |
+| Local folders               | Access to the folder on your computer                                           |
+| SFTP                        | Server address, username and password, private key or SSH Agent                 |
+| FTP                         | Address, username and password; plain FTP is unencrypted, FTPS is not supported |
+| S3 / compatible storage     | Region, bucket and access keys; a custom endpoint for services such as MinIO    |
+| Mail.ru Cloud               | Account email and an external application password with Cloud access            |
+| Yandex Disk                 | Sign in to your Yandex ID in your browser                                       |
+| Google Drive                | Sign in to your Google Account in your browser                                  |
+| iCloud Drive — experimental | Separately installed rclone; account setup is available from OpenSCP            |
+
+Google Drive sign-in is handled by OpenSCP. Google verification is pending, so
+access may currently be limited.
+
+Cloud integrations have additional limitations and real-account acceptance checks
+remain open. Read the service guides before relying on a new connection for important files.
+Despite the application name, the SCP protocol is not currently supported.
+
+## Help
+
+- [Getting started](docs/user/getting-started.md)
+- [Keyboard, tabs and file operations](docs/user/commander.md)
+- [Platform and installation notes](docs/user/platforms.md)
+- Service guides: [Mail.ru](docs/user/mailru.md), [Yandex Disk](docs/user/yandex.md),
+  [Google Drive](docs/user/google.md), [iCloud Drive](docs/user/icloud.md)
+- [All documentation](docs/README.md)
+
+Saved passwords and OAuth tokens use the operating system's protected storage.
+Profile exports exclude passwords and tokens, but still contain connection details;
+review them before sharing.
+
+Report problems in [GitHub Issues](https://github.com/alex-thrice/open-scp/issues).
+Include your OpenSCP version, operating system and steps to reproduce. Remove personal
+paths and connection details from screenshots; do not attach passwords or tokens.
+
+## For contributors
+
+Build instructions, development commands and implementation details are in the
+[development guide](docs/development.md).
 
 OpenSCP's original code and artwork use the [MIT License](LICENSE).
-See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licenses and the
-independent implementation boundary. Packaging generates and includes the full
-runtime dependency notices, including Electron/Chromium notices.
-
-## Packaging and application identity
-
-The application is named **OpenSCP**; package names, Linux commands and artifact
-prefixes use `openscp`. Development/test environment variables use `OPENSCP_`.
-The new identity uses a separate user-data directory; export/import profiles
-explicitly when moving from an earlier development build and re-enter credentials.
-
-`pnpm package` builds development packages in `release/`: Windows x64 NSIS/portable,
-Linux x64 AppImage/DEB, macOS arm64 DMG/ZIP (ad-hoc only, requires Apple Silicon).
-`pnpm package:signed` is fail-closed and requires owner-approved identity and signing secrets.
-See [packaging and release checks](docs/release/packaging.md) and
-[platform differences](docs/user/platforms.md). T18 was explicitly skipped; signing configuration
-does not substitute for real Apple Silicon / Gatekeeper / Keychain acceptance.
-
-## Process boundaries
-
-- `src/main` owns the Electron lifecycle and system access.
-- `src/preload` exposes a deliberately narrow, typed `contextBridge` contract.
-- `src/renderer` is a sandboxed React application without Node.js or Electron imports.
-- `src/shared` contains process-neutral contracts only.
-
-ESLint import restrictions protect these boundaries, while the Electron window configuration
-enforces `nodeIntegration: false`, `contextIsolation: true`, and renderer sandboxing.
-
-## IPC security
-
-- Renderer receives named methods and event subscriptions, never `ipcRenderer` or a method that
-  accepts an arbitrary channel.
-- Request, response, and event contracts live in `src/shared/ipc`.
-- Main process handlers validate request and response payloads with Zod before crossing the IPC
-  boundary.
-- Every response carries a correlation ID and a discriminated success/failure result.
-- Serialized errors contain only a machine code and localization key; exception messages, stack
-  traces, paths, and payload values are not returned to renderer.
-- Main process blocks navigation, redirects, and new windows. Packaged builds add a strict CSP
-  response header without `unsafe-eval`.
-
-## Architecture decisions
-
-The initial decisions and the independent-implementation boundary are recorded in `docs/adr`.
-Product choices that must not be guessed are tracked in
-`docs/architecture/open-product-decisions.md`.
-
-## Provider foundation
-
-The shared domain layer defines connection profiles without embedded secrets, provider-specific
-paths, file entries, transfer operations, connection lifecycle, normalized provider errors, and
-explicit capability flags. `FakeProvider` and `LocalProvider` run against the same reusable
-contract test suite.
-
-`LocalProvider` is rooted at an explicit directory, rejects path traversal and intermediate
-symlinks, deletes symlinks without following them, and uses bounded Web Streams for file content.
-Protocol differences and the capability matrix are documented in
-`docs/architecture/provider-semantics.md`.
-
-## Local drives and workspaces
-
-Each workspace has two independent panels. Both initially show local folders; either panel can
-open a local drive, SFTP connection or S3 profile. The source picker searches names, groups
-profiles into folders, and shows protocol icons and native OS drive icons where available.
-Opening the picker refreshes removable drives. An inaccessible directory does not block
-selecting another drive or returning to the previous listing.
-
-Use **+** or Ctrl/Command+T to add a tab. Its title combines the left folder name with the
-right folder name (local) or connection name (remote). A remote source picker is locked:
-close the tab to disconnect. Closing the last connected tab creates a fresh local workspace.
-Tab closing asks for confirmation by default and can be disabled in Settings. The gear opens
-Settings: appearance, shortcuts, update automation, external applications and language.
-Settings are applied with Done; Cancel, Escape and the close icon discard the draft.
-Connection edits are also canceled after a connection test, including temporary credentials.
-
-Drive discovery and filesystem access run in the main process through fixed, validated IPC
-channels. Each discovered root uses its own bounded `LocalProvider`; tabs do not change a shared
-active root. On macOS and Linux, mounted disks remain accessible by their paths under `/`.
-The development-only `OPENSCP_LOCAL_ROOT` override stays confined to the configured directory
-and does not enumerate other drives. Arbitrary UNC paths and volume labels are not yet exposed
-in the drive selector.
-
-## SFTP and transfers
-
-Open **Connections → Connection**, select SFTP, and choose password, private key or SSH Agent.
-Double-click a saved profile to open it in the active local panel, or choose it in a source picker.
-On the first connection, verify the displayed host fingerprint through a trusted channel before
-explicitly accepting it. A changed key blocks connection. Secrets are encrypted with Electron
-safeStorage and never returned to the UI; insecure storage backends are refused.
-
-Select entries and use the panel's **Copy** icon or F5, then confirm the destination and conflict policy. Directories
-are copied recursively. The queue shows progress, speed and ETA with cancel, resume and restart.
-Completed transfers refresh the destination panel. Temporary `.openscp-part-…` files are published
-only after success; interrupted parts remain available for verified resume during this run.
-The transfer queue is session-only and starts empty on every application launch. Closing the
-application with queued or running tasks asks before interrupting them.
-
-## S3 and multipart
-
-Open **Connections → Connection** and select S3. For AWS leave Endpoint empty and select the region;
-for MinIO specify its HTTPS endpoint and enable path-style when needed. Leave Bucket empty
-to list buckets, or set a bucket and initial prefix. Secret access key and optional session
-token are encrypted with safeStorage; HTTP is allowed only for local fixtures.
-
-Buckets, prefixes and objects have distinct labels. Rename uses server-side copy and is
-explicitly non-atomic. Prefix deletion shows the exact object count/bytes before confirmation.
-Large uploads use multipart with bounded buffers, two in-flight parts and abort on cancellation.
-Failed cleanup is recorded in SQLite and can be retried; do not delete the profile until cleanup
-finishes. Download supports verified Range resume; interrupted uploads restart from zero.
-Multiple S3 and SFTP sessions can stay connected in independent workspaces.
-
-See [S3 semantics and limitations](docs/architecture/s3.md),
-[integration setup](docs/testing/integration.md) and
-[persistence/SFTP/transfer details](docs/architecture/persistence-sftp-transfers.md).
-
-## Commander, profiles and diagnostics
-
-Use F6 to switch panels, arrows/Home/End/PageUp/PageDown to navigate, Shift/Ctrl to select,
-Ctrl+A to select all, F5 to copy to the opposite panel, F2 to rename, F7 to create a directory,
-Delete to confirm deletion, F4 to edit, Ctrl+F5 to refresh and Backspace to go up. These command
-and tab shortcuts can be reassigned in Settings. Context menus expose only provider-supported
-commands. Internal drops and operating-system file drops use the same queue.
-Tab and Shift+Tab move directly between file panels, including empty folders. Copying first
-shows the selected files and destination for confirmation; Cancel leaves the queue unchanged.
-Connect both panels to stream directly between SFTP/S3 sources using the same Copy action.
-
-**Connections** provides search, folders, duplication, deletion and secret-free JSON import/export,
-including empty folders. Imported password/S3 profiles need credentials configured before connecting.
-**Settings → Advanced** contains known_hosts import and diagnostic export. Reports contain allowlisted technical metadata only;
-they are never uploaded automatically. Both application and native menus switch language live.
-
-See the [Commander guide](docs/user/commander.md) and
-[recovery/security design](docs/architecture/commander-recovery.md) for limitations and details.
-
-## Mail.ru Cloud
-
-Select **Connections → Connection → Mail.ru Cloud**, enter your Mail account email and an
-external app password with WebDAV access. **Test connection** saves the profile and checks
-read access without opening a panel session. Choose the profile in either panel to browse
-and transfer through the shared queue, including Local/SFTP/FTP/S3 endpoints.
-
-Passwords use safeStorage and are excluded from exports. Interrupted Mail.ru transfers restart
-from zero; a partial temporary file may remain. Real-account acceptance is deferred to the owner;
-automated tests use a disposable WebDAV server. See the [setup and acceptance checklist](docs/user/mailru.md)
-and [protocol semantics](docs/architecture/mailru.md).
-
-## Yandex Disk
-
-Select **Connections → Connection → Yandex Disk** and sign in through the system browser.
-OAuth credentials use safeStorage; cloning/importing a profile requires a separate sign-in.
-Both panels support browsing and shared streaming transfers with Local/Mail.ru/SFTP/FTP/S3.
-Set `OPENSCP_YANDEX_CLIENT_ID` in a Git-ignored `.env.local` or GitHub Actions repository
-variable when building. The value is excluded from sources; real-service acceptance remains
-pending. See [registration and setup](docs/user/yandex.md) and
-[OAuth/REST semantics](docs/architecture/yandex.md).
-
-## iCloud Drive (rclone prototype)
-
-Install current rclone and configure an `iclouddrive` remote using `rclone config`, then add
-**Connections → Connection → iCloud Drive** with its remote name. Apple sign-in and 2FA are
-handled by rclone. Browsing, file operations and transfers use the existing panels and queue.
-Set the executable under **Settings → Advanced → iCloud Drive / rclone** or use automatic
-detection. Startup checks local configuration; iCloud creation and unavailable source options
-are hidden until a configured `iclouddrive` remote is found. Saved profiles remain editable.
-The binary and its configuration are external; real-account and platform acceptance remain open.
-See [setup and limitations](docs/user/icloud.md) and [ADR 0011](docs/adr/0011-icloud-rclone.md).
-
-## Google Drive
-
-Select **Connections → Connection → Google Drive** after configuring a **Desktop app** OAuth
-client. My Drive uses ID-based addresses, explicit native-document export, object permissions,
-trash and streaming/resumable transfers through the common queue. Duplicate names remain
-distinct; ambiguous overwrite requires selecting the target ID. Shortcuts are not traversed.
-Set `OPENSCP_GOOGLE_CLIENT_ID` outside Git; an optional desktop credential uses
-`OPENSCP_GOOGLE_CLIENT_SECRET`. CI reads the repository variable and optional Actions secret.
-The OAuth client is configured locally outside Git; real-account acceptance remains pending. Public OAuth verification
-is a separate release dependency. See [registration and acceptance](docs/user/google.md) and
-[provider semantics](docs/architecture/google.md).
+See [third-party notices](THIRD_PARTY_NOTICES.md) for dependency licenses.

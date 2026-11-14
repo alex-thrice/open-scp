@@ -1,100 +1,40 @@
-# Подключение Яндекс Диска
+# Connect Yandex Disk
 
-В OpenSCP выберите «Подключения → Подключение → Яндекс Диск», задайте имя и нажмите
-«Войти в Яндекс». Подтвердите доступ в системном браузере. После возвращения в приложение
-появится имя аккаунта; «Проверить подключение» проверяет чтение начального каталога.
-Сохраните профиль и выберите его в любой панели. Пароль Яндекса в OpenSCP не вводится.
+[Русский](yandex.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-## Однократная регистрация OpenSCP владельцем проекта
+## Sign in
 
-Client ID приложения передаётся при сборке через `OPENSCP_YANDEX_CLIENT_ID`.
-Его значение не хранится в исходниках, тестах или документации репозитория.
-Для обычного входа в настроенную сборку дополнительных параметров не нужно.
-Публичные настройки Яндекса подтверждают callback и три нужных права; реальный вход ещё
-ожидается. Следующие шаги нужны при
-повторной регистрации приложения или выпуске собственной сборки с другим ID.
+1. Open **Connections → Connection → Yandex Disk** and name the profile.
+2. Choose **Sign in to Yandex**.
+3. Sign in to your existing Yandex ID and approve the requested access in your
+   system browser. Do not enter your Yandex password in OpenSCP.
+4. Return to OpenSCP and check the connected account. **Test connection** checks
+   read access to the initial folder.
+5. Save the profile and select it in either panel's source picker.
 
-1. Создайте приложение **для авторизации** по
-   [инструкции Яндекс ID](https://yandex.ru/dev/id/doc/ru/register-auth),
-   через [форму регистрации](https://oauth.yandex.ru/client/new/id/).
-   Название — `OpenSCP`, контактная почта — действующая почта владельца проекта.
-2. Выберите платформу «Веб-сервисы» с точным Redirect URI:
-   `http://127.0.0.1:53682/oauth/yandex/callback`.
-   Это локальный callback desktop-приложения; публичный сервер не нужен.
-3. В дополнительных разрешениях выберите «Яндекс.Диск REST API»: чтение всего Диска
-   (`cloud_api:disk.read`), запись в любом месте (`cloud_api:disk.write`) и доступ
-   к информации о Диске (`cloud_api:disk.info`). Другие права OpenSCP не запрашивает.
-4. Скопируйте публичный **Client ID** (32 шестнадцатеричных символа).
-   Client secret не вводится в OpenSCP и не включается в сборку.
+If sign-in is unavailable, check the release information. Account authorization
+is handled by OpenSCP. Real-account acceptance checks remain open.
 
-Форма «Для доступа к API или отладки» имеет фиксированный callback
-`https://oauth.yandex.ru/verification_code` и для этого автоматического входа не подходит.
-Это ограничение описано в [документации регистрации API-приложений](https://yandex.ru/dev/id/doc/ru/register-api).
-Callback и выбранные права приложения подтверждены публичными настройками Яндекса.
-Выдачу и обновление токена нужно подтвердить настоящим входом.
+## Files and limitations
 
-Для локальной разработки скопируйте `.env.example` в `.env.local` и заполните
-`OPENSCP_YANDEX_CLIENT_ID` своим значением. `.env.local` исключён из Git и автоматически
-читается сборщиком при `pnpm dev` и `pnpm package:win`. Можно задать переменную прямо
-в PowerShell вместо файла:
+You can browse folders, create folders, rename, move, delete and transfer files
+to or from local folders, Mail.ru, SFTP, FTP and S3. Deleting sends data to Disk's
+trash. Asynchronous operations finish in OpenSCP after the service confirms them.
 
-```powershell
-$env:OPENSCP_YANDEX_CLIENT_ID = 'CLIENT_ID_ИЗ_КАБИНЕТА'
-pnpm dev
-# Или собрать пакет с тем же публичным ID:
-pnpm package:win
-```
+POSIX permissions, symlinks, offset-based resume, atomic rename and server-side
+copy are not supported by this integration.
 
-На Linux/macOS: `OPENSCP_YANDEX_CLIENT_ID=<id> pnpm dev` или `pnpm package`.
-Для GitHub Actions создайте **repository variable** `OPENSCP_YANDEX_CLIENT_ID`:
-Settings → Secrets and variables → Actions → Variables → New repository variable.
-Значение — Client ID из кабинета Яндекса. Обычный CI и workflow упаковки уже читают
-`${{ vars.OPENSCP_YANDEX_CLIENT_ID }}`. Client secret добавлять не нужно.
+Cancellation or a connection failure may leave a `.openscp-part-…` file. Retrying
+starts the transfer from zero. If publication of the final name is uncertain,
+inspect both the final and temporary names in Disk before retrying. Writes are
+not retried automatically. Read requests have bounded retries; quota and request
+rate errors are reported separately.
 
-ID встраивается только в main bundle готового приложения, поэтому доступен внутри пакета.
-Без значения при сборке вход отключён. Для готовой локальной сборки разрешён runtime
-override той же переменной; после изменения нужен перезапуск OpenSCP.
+## Sign out and revoke access
 
-Обмен кода использует `state` и PKCE S256. Яндекс документирует
-[обмен с code_verifier без client secret](https://yandex.ru/dev/id/doc/ru/codes/code-url).
-Refresh отправляет только Client ID и refresh token. Его совместимость с зарегистрированным
-приложением требует реальной проверки; если сервис отказывает, OpenSCP предлагает повторный
-вход. Клиентский секрет в desktop-пакет добавляться не будет.
+**Sign out** disconnects the profile's panels and removes its local tokens.
+Authorization at Yandex remains until you remove OpenSCP's access in Yandex ID
+settings. After revocation, another connection requires sign-in again.
 
-## Выход и ограничения
-
-«Выйти» отключает панели этого профиля и удаляет локальные токены. Разрешение приложения
-на стороне Яндекса при этом остаётся. Для полного отзыва удалите доступ OpenSCP в настройках
-Яндекс ID. После отзыва приложение попросит войти заново. Другой аккаунт можно привязать
-после явного выхода; дубликат или импорт профиля тоже требует отдельного входа.
-Экспорт содержит только параметры подключения.
-
-Доступны папки, list/stat, создание, переименование, перемещение, удаление и передачи
-в обе стороны с Local, Mail.ru, SFTP, FTP и S3. Удаление отправляет данные в корзину Диска.
-Асинхронная операция завершается в UI после подтверждения сервиса. Права POSIX, симлинки,
-resume, атомарность rename и server-side copy не объявляются.
-
-При отмене/обрыве может остаться `.openscp-part-…`. Повтор передачи начинается с нуля.
-Если результат публикации неизвестен, очередь требует проверки: сначала проверьте конечное
-и временное имя в облаке. Автоматического повтора записи нет. GET повторяется ограниченно,
-с учётом `Retry-After`; превышение квоты и частоты запросов показывается отдельно.
-
-## Ручная приёмка после регистрации
-
-Используйте отдельную папку с тестовыми данными:
-
-- [x] Подтвердить callback и права по публичной конфигурации Яндекса.
-- [ ] Подтвердить вход без client secret и фактические signed hosts.
-- [ ] Войти двумя разными аккаунтами в разных профилях/панелях; отменить один из входов.
-- [ ] Перезапустить OpenSCP, проверить защищённое сохранение и обновление токена.
-- [ ] Проверить refresh без client secret; при отказе — повторный вход.
-- [ ] Создать вложенную/пустую папки, пустой и Unicode-файл с `%`, загрузить большой файл,
-      скачать и сравнить SHA-256.
-- [ ] Проверить пагинацию, rename/move, корзину, конфликты skip/rename/overwrite.
-- [ ] Отменить передачу, проверить временные файлы и ручной повтор.
-- [ ] Отозвать разрешение в Яндекс ID, проверить повторный вход.
-- [ ] Выполнить двунаправленные передачи с Local/Mail.ru/SFTP/FTP/S3.
-- [ ] Зафиксировать ОС, дату и результаты в T32 плана.
-
-Автоматические OAuth/REST fixtures проверяют реализацию, но не заменяют регистрацию
-приложения и реальную приёмку сервиса. T32 остаётся открытой до этих проверок.
+Sign out before switching accounts. Duplicating or importing a profile requires
+a separate sign-in. Profile exports contain connection settings without tokens.

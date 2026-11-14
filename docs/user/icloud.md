@@ -1,113 +1,81 @@
-# iCloud Drive через rclone
+# Connect iCloud Drive with rclone
 
-Экспериментальная интеграция T34. Нужен отдельно установленный актуальный
-[rclone](https://rclone.org/downloads/), доступный приложению. Системный клиент Apple не нужен.
-Реальный Apple Account и все три ОС ещё требуют ручной приёмки.
+[Русский](icloud.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-## Подключение
+This integration is experimental. Install current [rclone](https://rclone.org/downloads/)
+separately; it is not bundled with OpenSCP. Apple's system iCloud client is not required.
+Real-account and platform acceptance checks remain open.
 
-1. Установите rclone. В OpenSCP откройте **Настройки → Дополнительно → iCloud Drive / rclone**,
-   укажите полный путь к программе или папке с ней (например, `C:\Distr\rclone-v1.75.2-windows-amd64`),
-   либо нажмите **Выбрать rclone…**, затем сохраните настройку. Список обновится сразу:
-   если rclone запускается, создание профилей iCloud станет доступно даже без готового remote.
-   Пустой путь включает автоматический поиск. Приоритет: сохранённая настройка →
-   `OPENSCP_RCLONE_PATH` → `rclone` из PATH. Например, для настройки через окружение PowerShell:
+## Set up rclone in OpenSCP
 
-   ```powershell
-   $env:OPENSCP_RCLONE_PATH = 'C:\Tools\rclone\rclone.exe'
-   ```
+1. Download rclone for your system and extract it into a permanent folder.
+2. Open **Settings → Advanced → iCloud Drive / rclone**.
+3. Select the executable or its folder using **Choose rclone…**, then save. On
+   Windows, for example, select `C:\Tools\rclone\rclone.exe`. Leaving the path empty
+   enables automatic detection.
+4. Check the status. Once rclone can run, the iCloud Drive connection type becomes
+   available even if no iCloud connection is configured yet.
 
-2. Откройте **Подключения → Подключение → iCloud Drive**. В режиме **Войти в новый Apple Account**
-   задайте название профиля, затем введите email и обычный пароль Apple Account.
-   Имя нового подключения rclone автоматически совпадает с email; поле недоступно для ручного ввода.
-   Нажмите **Сохранить профиль** или **Проверить соединение**.
-   Приложение запускает настройку rclone в фоне, без терминального окна.
-   Допускаются буквы и цифры Unicode, `_`, `-`, `.`, `+`, `@` и внутренние пробелы,
-   до 320 символов. Имя не начинается с дефиса или пробела и не заканчивается пробелом.
-   Одиночная латинская буква исключена из-за неоднозначности с диском Windows.
-   Обычные email подходят; если в адресе есть недопустимые символы, форма покажет сообщение.
-3. Разрешите вход на устройстве Apple и введите код подтверждения. По кнопке **Отправить код
-   по SMS** можно выбрать доверенный номер и получить код сообщением. После успешного входа
-   профиль сохраняется, список источников обновляется сразу. Email как имя remote входит в
-   метаданные профиля и экспорт; пароль туда не попадает.
-4. Для уже настроенного remote выберите **Использовать готовое подключение rclone** и выберите
-   его в списке. Список читается с этого компьютера при переключении режима; кнопка **Обновить
-   подключения** повторяет проверку. Показаны только remotes типа `iclouddrive`, в том числе
-   со старыми именами. Настройка через `rclone config` также поддерживается. После её изменения
-   вне приложения можно нажать **Проверить rclone** в дополнительных настройках OpenSCP.
-   Приложение локально проверяет запуск rclone и список подключений, без входа в Apple
-   и проверки сети. Эта же проверка выполняется при запуске и сохранении нового пути.
-   Если программа не найдена или не запускается, пункт добавления iCloud скрыт.
-   Статус в настройках показывает, найден ли rclone и сколько iCloud-подключений настроено.
-   Начальный каталог профиля по умолчанию `/`.
-5. Нажмите **Проверить соединение**, затем сохраните профиль. Выберите его в переключателе
-   источника любой панели. Копирование использует общую очередь и её правила конфликтов.
+Use this settings window to configure the executable. Its path is saved only on
+this computer and is not included in profile exports. Finish sign-in and active
+iCloud transfers before changing it.
 
-В переключателе источников показываются только iCloud-профили, чей remote найден в конфиге.
-Недоступные профили сохраняются и остаются в менеджере подключений для редактирования.
-После проверки с доступным rclone и настроенным remote они снова появятся в переключателе.
-Смена пути во время входа или активных передач iCloud запрещена; сначала завершите их.
+## Sign in to your existing Apple Account
 
-OpenSCP использует тот же конфиг, что обычный rclone. Если он находится в другом месте,
-задайте абсолютный путь в `RCLONE_CONFIG` перед запуском приложения. Исполняемый файл
-и путь конфига не принимаются через профиль или импорт. Путь к программе хранится только
-в настройках данного компьютера и не экспортируется с профилями.
+1. Open **Connections → Connection → iCloud Drive** and choose Apple Account sign-in.
+2. Name the OpenSCP profile and enter your existing account's email and regular
+   Apple Account password. Apple app-specific passwords are not accepted.
+3. Choose **Save profile** or **Test connection**. OpenSCP runs rclone setup in the
+   background and presents its sign-in steps.
+4. Approve sign-in on your trusted Apple device and enter the verification code.
+   **Send code by SMS** lets you select an available trusted phone number.
+5. Wait for setup to finish, then test and save the profile. Select it above either
+   panel and use the normal file operations and transfer queue.
 
-## Вход и безопасность конфигурации
+The rclone connection name is derived from the account email. That email is part
+of the profile metadata and exports; the password is not.
 
-Вход Apple и 2FA выполняет **rclone**, а OpenSCP показывает поля ввода и запросы подтверждения.
-Пароль передаётся в `rclone obscure -` через stdin. Ответы и состояние последующих шагов
-передаются только в окружении дочернего процесса, без секретов в аргументах команд.
-Непрозрачное состояние входа, cookies и исходные сообщения ошибок rclone не уходят в renderer.
-При отмене незавершённый новый remote удаляется; существующие remotes не перезаписываются.
-После успешного входа remote остаётся в rclone, даже если затем отменить редактирование профиля.
-На вход отведено 10 минут. При аварийном завершении или недоступном конфиге незавершённый remote
-может остаться; его можно удалить через `rclone config`.
-По документации rclone нужен основной пароль Apple Account; пароль приложения не подходит.
-Trust token рассчитан на 30 дней. При истечении сессии выполните
-`rclone config reconnect icloud:`, завершите вход и переподключите панель OpenSCP.
+If you already have an iCloud connection in rclone, choose **Use an existing rclone
+connection** and select it from the list. **Refresh connections** reads the list
+again. Only iCloud Drive connections are listed. **Check rclone** in Advanced
+settings refreshes the local availability check without signing in to Apple or
+testing the network. The default initial directory is `/`.
 
-ADP заявлена как поддерживаемая rclone. Для неё может понадобиться включить доступ к данным
-iCloud через веб и одобрить запрос на доверенном устройстве. Условия описаны в
-[документации rclone](https://rclone.org/iclouddrive/).
+Profiles with an unavailable rclone connection remain editable in Connections,
+but are hidden from panel source pickers until the connection is found again.
 
-Секреты сохраняет rclone в своём конфиге. Обычный `obscure` не является защитой паролем;
-используйте шифрование конфигурации rclone и подходящие права доступа к файлу.
-Если конфиг зашифрован, задайте `RCLONE_CONFIG_PASS` в окружении запуска OpenSCP.
-Запрос пароля конфига через терминал в дочернем процессе отключён. OpenSCP не копирует
-конфиг или пароль в свою базу, импорт/экспорт или диагностику. Экспортированный профиль
-требует настроить remote на другом компьютере. Удаление профиля не удаляет remote из rclone.
+## Sign-in and local data
 
-## Ограничения
+rclone performs Apple sign-in and 2FA; OpenSCP presents the prompts. Existing
+rclone connections are not overwritten. Canceling setup attempts to remove the
+unfinished connection. A successful rclone connection remains even if you later
+cancel profile editing. Sign-in has a ten-minute limit; an unexpected application
+exit may leave unfinished configuration behind.
 
-- Первый вариант запускает отдельный процесс для операций, поэтому навигация может иметь
-  заметную задержку. Автоматическая установка и обновление rclone не реализованы.
-- Интеграция использует веб-сервисы iCloud через rclone. Изменения Apple могут требовать
-  обновления rclone. Это не официальный публичный API Apple для всего iCloud Drive.
-- Передачи потоковые, повтор после обрыва начинается с нуля. Возобновление с байтового
-  смещения, server-side copy и изменение атрибутов не заявлены.
-- Неудачная загрузка обычно очищает временный файл; при offline или завершении процесса
-  могут остаться `.openscp-upload-*` или файлы общей очереди `.openscp-part-*`.
-- Проверка конфликтов с другим клиентом не атомарна. Для первого smoke используйте
-  отдельную тестовую папку и не редактируйте те же файлы одновременно на другом устройстве.
-- Удаление выполняет rclone. Восстановление из корзины этой интеграцией не гарантируется;
-  изменение или удаление отражается на других устройствах аккаунта.
-- Листинг каталога ограничен 16 МиБ JSON-метаданных. Проверка ошибок конфигурации и сети
-  не заменяет ручную проверку настоящего аккаунта и ADP.
+A session can expire and require sign-in again. If access stops working, check
+the error and the [rclone authentication guidance](https://rclone.org/iclouddrive/).
+With Advanced Data Protection, web access to iCloud data and approval on a trusted
+device may be required.
 
-## Проверка разработчиком
+rclone keeps credentials in its own configuration. Its ordinary password
+obfuscation is not password protection; protect that configuration and your device.
+OpenSCP does not copy the configuration or its password into its database, exports
+or diagnostics. An imported profile requires the corresponding rclone connection
+on the other computer. Deleting an OpenSCP profile does not remove it from rclone.
 
-Автоматические сценарии без настоящих аккаунтов:
+## Limitations
 
-```text
-pnpm test
-pnpm test:e2e -- tests/e2e/icloud-profile.spec.ts
-```
-
-Для необязательного smoke настоящего rclone задайте `OPENSCP_TEST_RCLONE_BINARY` абсолютным
-путём к программе и выполните `pnpm test -- tests/providers/rclone-local.test.ts`.
-Тест создаёт собственный локальный remote и одноразовые файлы, к Apple не обращается.
-
-До приёмки вручную проверьте на каждой целевой ОС: первоначальный вход/2FA, повторный вход,
-ADP, два аккаунта, CRUD, пустые/большие файлы, Unicode, конфликты, offline, отмену,
-повтор передачи и копирование с каждым ранее поддержанным источником. T34 остаётся открытой.
+- Operations start external processes, so browsing may have noticeable latency.
+  OpenSCP does not install or update rclone automatically.
+- The integration uses iCloud web services through rclone. Apple changes may
+  require a rclone update; this is not a public Apple API for the whole of iCloud Drive.
+- Interrupted transfers restart from zero. Offset resume, server-side copy and
+  attribute changes are not supported.
+- Failed uploads normally clean up their temporary file, but an outage or process
+  exit can leave `.openscp-upload-*` or `.openscp-part-*` files.
+- Conflict checks against another client are not atomic. Try a separate test
+  folder first and avoid editing the same files concurrently on another device.
+- Deletion is performed by rclone. Recovery from trash is not guaranteed and
+  changes affect the account's other devices.
+- A directory listing has a 16 MiB metadata limit. Configuration and network checks
+  do not establish real-account or Advanced Data Protection acceptance.

@@ -1,109 +1,60 @@
-# Подключение Google Диска
+# Connect Google Drive
 
-В OpenSCP выберите «Подключения → Подключение → Google Диск», задайте имя и нажмите
-«Войти в Google». Подтвердите доступ в системном браузере, затем проверьте подключение
-и сохраните профиль. Пароль Google в OpenSCP не вводится. Без настроенного OAuth-клиента
-кнопка входа недоступна. OAuth-клиент создан владельцем; параметры заданы локально вне Git.
-Настоящий вход ещё не проверен.
+[Русский](google.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-## Регистрация владельцем приложения
+## Sign in
 
-1. В [Google Cloud Console](https://console.cloud.google.com/) создайте проект OpenSCP.
-   В **APIs & Services → Library** включите **Google Drive API**.
-2. В **Google Auth platform → Branding** настройте название OpenSCP, email поддержки
-   и контакт разработчика. Для публичного распространения подготовьте собственные
-   страницы приложения и политики конфиденциальности, подтверждённый домен и сведения,
-   запрашиваемые Google. Не публикуйте приложение с фиктивными реквизитами.
-3. В **Audience** выберите External для обычных Google-аккаунтов, оставьте Testing
-   и добавьте свой адрес в Test users. Internal подходит только для своей организации Workspace.
-4. В **Data Access → Add or remove scopes** добавьте
-   `https://www.googleapis.com/auth/drive`. Это restricted scope для работы со всем My Drive.
-   Ограниченный `drive.file` не предоставляет навигацию по всему пользовательскому дереву.
-5. В **Clients → Create client** выберите **Desktop app**, имя OpenSCP Desktop.
-   Скопируйте Client ID. Web application, API key и service account для этого входа не подходят.
-   Отдельный сервер callback регистрировать не нужно: desktop-клиент использует loopback
-   `http://127.0.0.1:<случайный порт>/oauth/google/callback`.
-6. Если выданный desktop-клиент требует `client_secret` при обмене кода, задайте также
-   `OPENSCP_GOOGLE_CLIENT_SECRET` локально/в CI. Это credential установленного приложения,
-   который невозможно скрыть внутри распространяемого exe; серверный секрет здесь не используется.
-   Не добавляйте скачанный JSON credentials в репозиторий и не отправляйте его в чат.
+1. Open **Connections → Connection → Google Drive**.
+2. Name the profile and choose **Sign in to Google**.
+3. Select your existing Google Account and review the requested access in your
+   system browser. Enter your Google password only on Google's sign-in page.
+4. Return to OpenSCP, test the connection and save the profile.
+5. Select the profile in the source picker above the panel you want to connect.
+6. Open a destination in the other panel and press F5 to copy files.
 
-Основания: [настройка consent screen](https://developers.google.com/workspace/guides/configure-oauth-consent),
-[создание desktop credentials](https://developers.google.com/workspace/guides/create-credentials),
-[desktop OAuth и loopback](https://developers.google.com/identity/protocols/oauth2/native-app),
-[права Drive](https://developers.google.com/workspace/drive/api/guides/api-specific-auth).
+OpenSCP handles sign-in with your existing Google Account. Google verification is
+pending, so access may currently be limited. If sign-in is unavailable, check the
+release information and Google Drive support status.
 
-## Настройка локальной сборки и GitHub Actions
+## Files, documents and trash
 
-Добавьте пустые ключи из `.env.example` в существующий **игнорируемый Git** файл `.env.local`
-и заполните своими значениями:
+The panel opens My Drive. File IDs distinguish items with identical names. A short
+ID appears in the row; hover to see the full ID. If an overwrite is ambiguous,
+select the destination ID in the queue. Rename and trash actions apply to the
+selected object. Navigation follows saved IDs while the read-only address shows
+readable folder names.
 
-```dotenv
-OPENSCP_GOOGLE_CLIENT_ID=
-OPENSCP_GOOGLE_CLIENT_SECRET=
-```
+Use **Export document…** for Google Docs, Sheets, Slides and Drawings: choose a
+format and transfer the exported file to the other panel. The export limit is
+10 MiB. Uploading a binary file over a Google document is not supported. Shortcuts
+are listed separately and are not followed.
 
-Client ID обязателен, desktop secret — при необходимости. Реальные значения остаются вне
-исходников. `pnpm dev`, `pnpm build` и `pnpm package` подхватывают файл через Vite и передают
-параметры только main. Renderer их не получает. Изменение требует перезапуска dev/новой сборки.
-Переменные окружения процесса имеют приоритет и поддерживаются также установленным приложением.
+When both panels are connected to Google, documents also support **Copy**. A name
+ending in `.txt` may still belong to a Google document; its actual type appears
+beside the ID in the tooltip. Within the same account, a new copy is created
+directly. Between accounts, Docs, Sheets and Slides pass through DOCX, XLSX and
+PPTX and are imported back into their original Google document type, keeping the
+name. The export must fit within 10 MiB. Revision history and comments are not
+transferred; formatting depends on Google's conversion. Source sharing permissions
+are not changed automatically.
 
-В репозитории GitHub откройте **Settings → Secrets and variables → Actions**:
+Shared Drives and a separate Shared with me tree are not supported. Available
+commands respect object permissions and check them again before the operation.
 
-- **Variables → New repository variable:** `OPENSCP_GOOGLE_CLIENT_ID`.
-- При необходимости **Secrets → New repository secret:** `OPENSCP_GOOGLE_CLIENT_SECRET`.
+**Move to trash** does not permanently delete a file. Restore files or empty trash
+using Google Drive.
 
-Все workflow уже используют эти имена. Пустой Client ID допускает сборку, но отключает вход.
-OAuth-клиент уже создан, локальная конфигурация заполнена. Переменные GitHub Actions
-настраиваются отдельно в кабинете репозитория.
+## Interrupted transfers and sign-out
 
-## Файлы, экспорт, корзина и повтор передачи
+Regular file uploads use chunks up to 1 MiB without an intermediate local copy.
+**Resume** checks the source and the current upload session's offset. Use
+**Restart** when the session has expired, the source has changed or the source
+cannot safely resume from an offset. If finalization is uncertain, inspect the
+destination before retrying. Interrupted transfers do not resume automatically
+after an application restart.
 
-Панель открывает My Drive. ID различает одноимённые файлы; короткий ID виден в строке,
-полный — при наведении. При неоднозначной замене выберите ID назначения в очереди.
-Переименование и корзина применяются к выбранному объекту. Переходы используют сохранённые
-ID; текст адреса показывает понятные имена и доступен только для чтения.
-
-Google Docs, Sheets, Slides и Drawings открываются через команду «Экспорт документа…»:
-выберите формат и передайте в другую панель. API ограничивает экспорт 10 МиБ. Запись
-бинарного файла поверх Google-документа запрещена. Ярлыки показаны отдельно и не обходятся.
-Если обе панели подключены к Google, для документов доступна обычная команда «Копировать».
-Имя с расширением `.txt` тоже может принадлежать Google-документу: настоящий тип указан
-в подсказке рядом с ID. Новая копия в пределах одного аккаунта создаётся напрямую.
-Между разными аккаунтами Docs, Sheets и Slides передаются через DOCX, XLSX и PPTX с обратным
-импортом в исходный тип Google; имя сохраняется. Экспорт должен укладываться в 10 МиБ.
-История изменений и комментарии таким способом не переносятся; особенности оформления
-зависят от преобразования Google. Доступ к исходному файлу автоматически не меняется.
-Shared Drives и отдельное дерево «Доступные мне» в T33 не поддерживаются.
-Ограничения конкретного файла учитываются в командах и повторно проверяются перед API-запросом.
-
-«Переместить в корзину» не удаляет файл навсегда. Восстановление и очистка корзины выполняются
-в Google Диске. Загрузка обычных файлов идёт чанками до 1 МиБ, без локальной промежуточной копии.
-«Продолжить» проверяет исходный файл и смещение upload-сессии текущего запуска. После истечения
-сессии, изменения источника или для источника без безопасного offset используйте «Начать заново».
-Неопределённая финализация требует проверки результата. После перезапуска очередь начинается пустой.
-
-«Выйти» удаляет локальные токены и отключает профили. Для полного отзыва разрешения удалите OpenSCP
-в [подключениях аккаунта Google](https://myaccount.google.com/connections); повторный доступ
-потребует входа. Для смены аккаунта сначала выйдите. Импорт и clone не переносят токены/привязку.
-
-## Реальная приёмка и публичный релиз
-
-Автоматические проверки используют фиктивный OAuth/API, а не Google-аккаунт. До завершения T33:
-
-- [x] Создать OAuth-клиент и задать параметры в игнорируемом `.env.local`.
-- [ ] Подтвердить тип Desktop app, включённый Drive API, scope и тестового пользователя.
-- [ ] На настоящем аккаунте проверить вход, перезапуск/refresh, выход и отзыв доступа.
-- [ ] Проверить одноимённые ID, rename, корзину и восстановление через сайт.
-- [ ] Передать большой файл (не менее 1 ГиБ) Local ↔ Google, отменить, продолжить, сравнить hash.
-- [ ] Проверить Google ↔ Mail.ru/Яндекс/SFTP/FTP/S3, включая restart источника без offset.
-- [ ] Проверить запрет скачивания, права папок, Docs/Sheets/Slides export и лимит 10 МиБ.
-- [ ] Записать ОС, дату и результаты в T33; проверить Windows/macOS/Linux с настоящим браузером.
-- [ ] Отдельно завершить Google OAuth verification перед публичным распространением.
-
-В Testing refresh token External-приложения с Drive scope обычно истекает через 7 дней —
-потребуется новый вход. [Правила срока жизни токенов](https://developers.google.com/identity/protocols/oauth2/).
-Для restricted scope публичное приложение зависит от проверки Google; дополнительные требования
-зависят от обработки данных, включая серверную передачу/хранение.
-[Требования restricted verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
-Успешный тест на одном аккаунте не подтверждает готовность публичного OAuth-релиза.
+**Sign out** removes local tokens and disconnects the profile's sessions. To revoke
+authorization completely, remove OpenSCP from
+[Google Account connections](https://myaccount.google.com/connections).
+Sign out before switching accounts. Profile imports and duplicates do not carry
+Google tokens or the account association.

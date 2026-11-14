@@ -1,146 +1,152 @@
-# Работа с Commander
+# Files, tabs and keyboard shortcuts
 
-Каждая вкладка содержит две независимые панели. Обе могут показывать локальные папки;
-в любой панели можно выбрать SFTP, S3, FTP или Облако Mail.ru. Список источников содержит диски с системными
-значками (при недоступности — запасными), подключения со значками протоколов, папки
-группировки и поиск по названию.
+[Русский](commander.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-Новая вкладка добавляется кнопкой «+» или Ctrl/Command+T. Название:
-«Папка слева - Папка справа», а при удалённом источнике справа используется имя подключения.
-Крестик появляется при нескольких вкладках или наличии удалённого подключения.
-Выбранное удалённое подключение блокирует список источников своей панели; отключение —
-через закрытие вкладки. Перед закрытием показывается подтверждение; его можно отключить в
-настройках. Закрытие последней удалённой вкладки открывает новую локальную.
+## Panels and connections
 
-В редакторе любого подключения — SFTP, FTP, S3 или Mail.ru — кнопка «Проверить подключение»
-сохраняет профиль, проверяет вход и чтение начального расположения, оставляя редактор открытым.
-Для S3 проверяется bucket/prefix или список bucket, если bucket не задан. Проверка не создаёт
-удалённых файлов и не проверяет право записи. Активные подключения панелей не затрагиваются.
-Неизвестный ключ SSH требует явного подтверждения отпечатка; изменённый ключ блокируется.
-Пароль или другие данные можно исправить и повторить проверку в этой же форме.
-Результат показывается под полями, над кнопками: светло-зелёная подсказка при успехе
-или светло-красная с причиной ошибки. Подсказка остаётся видимой при прокрутке настроек.
-«Все подключения» возвращает к списку без сохранения последующих изменений.
+Each tab has two independent panels. Either can show local folders or a supported
+server or cloud connection. The source picker lists drives, saved profiles,
+profile folders and search. Drive icons use the operating system's icons when
+available.
 
-## Клавиатура и перенос файлов
+Use **+** or Ctrl/Command+T to add a tab. Its title combines the left folder with
+the right folder or connection name. Close a connected tab to disconnect it;
+its remote source picker stays locked while connected. A close confirmation is
+enabled by default and can be disabled in Settings. Closing the last remote tab
+returns to a local workspace.
 
-| Клавиша                              | Действие                                             |
-| ------------------------------------ | ---------------------------------------------------- |
-| F6                                   | Сменить активную панель                              |
-| Стрелки, Home/End, PageUp/PageDown   | Переместить фокус по файлам                          |
-| Enter / Backspace                    | Открыть папку / подняться на уровень выше            |
-| Shift + стрелки или щелчок           | Выделить диапазон                                    |
-| Ctrl/Command + щелчок, Space, Insert | Изменить выделение                                   |
-| Ctrl/Command + A                     | Выделить все элементы списка                         |
-| Ввод текста                          | Открыть быстрый поиск в активной панели              |
-| F5                                   | Загрузить/скачать выделенное в соседнюю панель       |
-| Ctrl + F5                            | Обновить список файлов и папок активной панели       |
-| F2 / F7 / Delete                     | Переименовать / создать папку / подтвердить удаление |
-| F4                                   | Открыть выбранный файл во внешнем редакторе          |
-| Ctrl/Command + T / W                 | Создать / закрыть вкладку                            |
+**Test connection** saves the profile and checks sign-in and read access to its
+initial location, leaving the editor open. For S3 it checks the bucket and prefix,
+or lists buckets if none is set. It does not create files or test write permission,
+and does not disturb connected panels. A new SSH host key requires explicit
+fingerprint approval; a changed key blocks connection. Correct credentials and
+retry in the same form. **All connections** returns to the library without saving
+subsequent edits.
 
-Команды из таблицы, кроме навигации и выделения в списке, можно переназначить в
-разделе «Настройки → Горячие клавиши». Одно сочетание нельзя назначить двум действиям.
+## Keyboard and file operations
 
-У каждой панели свои иконки создания папки, копирования, переименования и удаления
-с подсказками и горячими клавишами. Копирование выполняется в каталог соседней панели;
-для удалённой передачи подключите нужные источники в обеих панелях.
-Обновление каталога выполняется по Ctrl+F5 или кнопкой со стрелками в строке пути.
-При вводе текста в списке открывается компактная строка поиска. Запрос можно исправлять,
-стрелки вверх и вниз переходят между совпадениями, Enter открывает выбранный элемент,
-а Escape закрывает поиск. Двойной щелчок по локальному файлу открывает его в системном
-приложении по умолчанию; двойной щелчок по каталогу по-прежнему открывает каталог в панели.
+| Shortcut                            | Action                                      |
+| ----------------------------------- | ------------------------------------------- |
+| F6                                  | Switch the active panel                     |
+| Arrows, Home/End, PageUp/PageDown   | Move focus through the list                 |
+| Enter / Backspace                   | Open a folder / go up                       |
+| Shift + arrows or click             | Select a range                              |
+| Ctrl/Command + click, Space, Insert | Toggle selection                            |
+| Ctrl/Command+A                      | Select all entries                          |
+| Typing                              | Open quick search in the active panel       |
+| F5                                  | Copy selected entries to the other panel    |
+| Ctrl+F5                             | Refresh the current listing                 |
+| F2 / F7 / Delete                    | Rename / create a folder / confirm deletion |
+| F4                                  | Open a file in an external editor           |
+| Ctrl/Command+T / W                  | Add / close a tab                           |
 
-Локальные файлы можно перетаскивать из списка в Telegram Desktop, проводник и другие
-приложения, принимающие файлы. Можно выделить несколько файлов; перетаскивание между
-панелями OpenSCP также поддерживается.
+Command shortcuts, apart from list navigation and selection, can be reassigned in
+**Settings → Keyboard shortcuts**. A shortcut cannot belong to two actions.
 
-Для файлов с SFTP, FTP или S3 выберите «Подготовить файлы для другого приложения»
-на панели команд или в контекстном меню. После скачивания с индикатором прогресса
-перетащите кнопку «Перетащите в другое приложение» в нужное окно. Подготовку можно
-отменить. Поддерживаются обычные файлы, до 100 за раз; папки и символические ссылки
-по-прежнему перетаскиваются только между панелями. Временные копии остаются доступными
-после скрытия индикатора и закрытия OpenSCP. Копии старше суток удаляются при первой
-подготовке файлов после следующего запуска приложения.
+Each panel has folder creation, copy, rename and delete icons with tooltips and
+shortcuts. Copy targets the opposite panel's folder. Connect remote sources on
+both sides to transfer between them. Use Ctrl+F5 or the refresh icon beside the
+path to refresh a listing.
 
-У подключённой SFTP-панели доступна кнопка SSH-терминала. Windows запускает PuTTY,
-а macOS и Linux — системный терминал с OpenSSH. Host, port, пользователь и совместимый
-приватный ключ берутся из профиля; пароли и passphrase не передаются через командную строку.
-Путь к PuTTY при необходимости задаётся в «Настройки → Дополнительно».
+Typing opens quick search. Edit the query, use up/down to move through matches,
+Enter to open an entry and Escape to close search. Double-clicking a local file
+opens its default system application; double-clicking a folder opens it in the panel.
 
-F4 открывает обычный локальный файл напрямую во внешнем редакторе. Без дополнительной
-настройки используются Notepad в Windows, TextEdit в macOS и доступный системный редактор
-в Linux. Путь к другому редактору можно ввести вручную или выбрать системным диалогом в
-«Настройки → Дополнительно». В macOS выбирается само приложение `.app`; OpenSCP запускает его через
-системную команду `open`, а не пытается исполнить каталог bundle.
-Для SFTP, S3 и FTP приложение создаёт защищённую временную копию. После изменения появляется
-предложение загрузить её обратно. Перед загрузкой повторно проверяются метаданные и SHA-256
-удалённого файла; параллельное изменение требует отдельного подтверждения перезаписи.
-Незавершённая временная правка восстанавливается после аварийного перезапуска.
+## Drag files to another application
 
-Перетаскивание, включая файлы из системного файлового менеджера, также использует очередь.
-Копирование начинается сразу. Диалог появляется только при существующем объекте назначения
-и показывает источник и назначение. Решение «перезаписать», «пропустить» или «сохранить оба»
-можно применить к одному конфликту либо ко всем оставшимся конфликтам этой операции.
-Другие операции очереди при этом продолжают выполняться.
+Drag local files into a system file manager or another application that accepts
+file drops. Multiple files and drops between OpenSCP panels are supported.
 
-Последний успешно открытый локальный путь сохраняется отдельно для каждой панели и диска,
-а удалённый путь — для каждого профиля. При следующем запуске или повторном удалённом подключении
-он восстанавливается. Если каталог исчез, открывается ближайший доступный родитель, начальный
-каталог профиля или корень, и панель показывает уведомление. Неудачный переход не затирает
-последний рабочий путь. Настройка «Запоминать пути сеанса» включена по умолчанию. При её
-отключении история локальных и удалённых путей очищается и больше не сохраняется.
+For SFTP, FTP or S3 files, choose **Prepare files for another application** from
+the toolbar or context menu. After downloading, drag the resulting drag button
+to the other window. Preparation shows progress and can be canceled. It supports
+up to 100 regular files; folders and symlinks can only be dragged between OpenSCP
+panels. Temporary copies remain available after hiding the indicator or closing
+OpenSCP. Copies older than a day are cleaned up on the first preparation after
+the next application launch.
 
-Во время SFTP-подключения панель показывает текущий этап и неопределённый индикатор прогресса;
-попытку можно отменить. Ошибки сети, проверки ключа и аутентификации показываются раздельно.
-Если пароль отсутствует или неверен, появляется отдельный диалог повторного ввода. Пароль
-сохраняется в защищённом хранилище ОС только при отмеченном флаге и после успешного подключения.
+## SSH terminal and external editing
 
-S3-префиксы — не обычные папки. Переименование копирует объекты и затем удаляет оригиналы,
-поэтому не является атомарным. Предупреждение удаления объясняет ограничения совместимых S3
-серверов. Не запускайте параллельную запись в удаляемый префикс.
+A connected SFTP panel offers **Open SSH terminal**. Windows uses separately
+installed PuTTY; macOS and Linux use a system terminal with OpenSSH. Host, port,
+username and a compatible private key come from the profile. Passwords and key
+passphrases are not passed as command-line arguments. Configure the PuTTY path in
+**Settings → Advanced → SSH terminal**. PuTTY is not needed for SFTP browsing or
+file transfers. See [additional tools](getting-started.md#additional-tools).
 
-Обычный FTP не шифрует пароль, имена или содержимое файлов и не подтверждает подлинность
-сервера. Он всегда отмечен отдельной иконкой и предупреждением; значок защищённого SFTP для него
-не используется. FTP v1 работает только в passive mode с username/password, включая явно
-настроенный anonymous profile. FTPS пока не поддерживается. При отсутствии MLSD используется
-совместимый `LIST`; в этом режиме дата изменения может не показываться. FTP resume, permissions,
-симлинки и атомарный rename не заявляются.
+F4 opens a regular local file directly in an external editor. Defaults are Notepad
+on Windows, TextEdit on macOS and an available system editor on Linux. Choose an
+editor in **Settings → Advanced**. On macOS, select the application `.app` itself.
 
-## После прерывания
+For SFTP, S3 and FTP, OpenSCP creates a protected temporary copy and offers to upload
+it after modification. Before uploading it checks the remote metadata and SHA-256
+again. A concurrent remote change requires separate overwrite confirmation.
+Unfinished temporary edits can be recovered after an unexpected restart.
 
-После перезапуска очередь не выполняет задания автоматически. Проверьте источник и назначение,
-затем выберите повтор с нуля или отмену. Ожидающий решения конфликт остаётся приостановленным,
-не перезаписывая назначение автоматически.
-Если сервер мог завершить запись перед обрывом, сначала проверьте результат в назначении.
-Оставленные `.openscp-part-*` файлы не удаляются автоматически. В текущем запуске доступно
-проверенное продолжение подходящих передач; для S3 upload повтор начинается с нуля.
+## Copy conflicts and remembered folders
 
-Историю завершённых/отменённых операций можно очистить кнопкой в очереди. Это не удаляет файлы.
-Закрытие занятой вкладки требует подтверждения; отменённые операции остаются в общей истории.
+Drag and drop, including files from the system file manager, uses the transfer
+queue. A copy starts immediately unless the destination already exists. The
+conflict dialog shows source and destination. Overwrite, skip or keep both can
+apply to one conflict or the remaining conflicts in that operation. Other queued
+operations can continue while a conflict awaits your decision.
 
-## Профили и безопасный обмен
+The last successfully opened local folder is remembered per panel and drive;
+remote folders are remembered per profile. On the next launch or connection, that
+folder is restored. If it disappeared, OpenSCP uses the nearest accessible parent,
+the profile's initial folder or the root and shows a notice. A failed navigation
+does not replace the last working path. **Remember session paths** is enabled by
+default; disabling it clears path history and stops saving it.
 
-Откройте «Подключения»: здесь есть поиск, папки, редактирование, дублирование,
-удаление, импорт/экспорт. Создание подключения и папки сгруппировано отдельно от импорта/экспорта.
-Двойной щелчок или Enter по профилю открывает его в активной локальной панели.
-Редактор переключается между SFTP, S3 и FTP; SCP пока не поддерживается.
-Экспорт сохраняет и пустые папки, но не содержит паролей, токенов и содержимого приватных ключей,
-но содержит адреса серверов, имена пользователей, access key ID и пути — передавайте его
-только подходящему получателю. После импорта настройте credentials через редактирование профиля.
+An SFTP connection shows its current stage and can be canceled. Network, host-key
+and authentication errors are distinguished. An absent or rejected password opens
+a retry prompt. It is saved to protected storage only when you choose to save it
+and the connection succeeds.
 
-Импорт known_hosts находится в «Настройки → Дополнительно». Используйте только доверенный файл.
-Сначала создайте SFTP-профили, если файл
-использует хешированные имена. Импорт не заменяет уже доверенный другой ключ. Шаблоны,
-сертификаты и marker lines не поддерживаются; число пропущенных записей видно после импорта.
-Новый fingerprint также можно подтвердить отдельно при подключении, сверив его вне приложения.
+S3 prefixes are not ordinary folders. Rename copies objects then removes originals,
+so it is not atomic. Deletion warns about compatible-server limitations. Avoid
+concurrent writes to a prefix being deleted.
 
-Там же можно сохранить технический отчёт без данных подключений и секретов.
-Он не отправляется автоматически.
+Plain FTP does not encrypt passwords, names or file content, and does not verify
+the server's identity. It has a separate warning and icon. FTP currently uses
+passive mode and username/password, including explicitly configured anonymous
+profiles. FTPS is not supported. Without MLSD it falls back to LIST, where dates
+may be unavailable. FTP resume, permissions, symlinks and atomic rename are not
+supported.
 
-Шестерёнка открывает настройки: светлая, тёмная или системная тема, плотность списка,
-видимость файлов с точкой в начале имени и язык. Параметры сохраняются между запусками.
-Смена языка применяется сразу, включая системное меню.
-Положение и размер главного окна, а также обычный, развёрнутый или полноэкранный режим
-восстанавливаются при следующем запуске. Если сохранённый монитор больше недоступен, окно
-автоматически переносится в рабочую область доступного экрана.
+## After an interruption
+
+After restarting, queued work does not run automatically. Check the source and
+destination before restarting from zero or canceling. An unresolved conflict
+remains paused. If a server might have completed a write before the interruption,
+check the destination first. Leftover `.openscp-part-*` files are not automatically
+removed. Suitable transfers can resume during the current run; S3 uploads restart
+from zero.
+
+Clear completed and canceled history with the queue's clear action; this does not
+delete files. Closing a busy tab asks for confirmation. Canceled operations remain
+in the shared history.
+
+## Profiles, diagnostics and settings
+
+**Connections** provides search, folders, editing, duplication, deletion and
+import/export. Double-click or press Enter on a profile to open it in the active
+local panel. SCP is not supported.
+
+Exports include empty folders and connection details such as server names,
+usernames, access key IDs and paths. They exclude passwords, tokens and private-key
+contents. Review an export before sharing it, and enter credentials after importing.
+
+Import trusted known_hosts files in **Settings → Advanced**. For hashed hostnames,
+create SFTP profiles first so entries can be matched. Import does not replace a
+different already trusted key. Patterns, certificates and marker lines are not
+supported; the result reports skipped records. Verify a new fingerprint through
+a trusted channel before accepting it.
+
+The same settings area exports a technical diagnostic report without connection
+data or secrets. It is not sent automatically.
+
+Settings controls light/dark/system themes, list density, dotfile visibility and
+language. Changes persist between launches; language also updates native menus.
+Window position, size and maximized/full-screen state are restored. If a saved
+monitor is missing, the window is moved to an available screen.
