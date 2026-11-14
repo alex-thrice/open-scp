@@ -362,7 +362,11 @@ export const FilePane = ({
     },
     {
       id: 'copy',
-      label: t('ui.copyTo', { path: destination?.path || t('ui.sourceNotReady') }),
+      label: t('ui.copyTo', {
+        path: destination?.path.startsWith('gdrive:/')
+          ? googleDisplayPath(destination.path)
+          : destination?.path || t('ui.sourceNotReady'),
+      }),
       shortcut: shortcuts.copy,
       disabled:
         invalidSelection ||

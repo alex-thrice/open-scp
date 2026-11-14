@@ -1429,9 +1429,19 @@ kbd {
   box-shadow: var(--shadow);
 }
 .context-menu button {
+  min-width: 0;
   justify-content: space-between;
   text-align: left;
   border: 0;
+}
+.context-menu__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.context-menu kbd {
+  flex-shrink: 0;
 }
 .spinner {
   width: 22px;
