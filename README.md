@@ -76,9 +76,12 @@ before accepting it.
 | FTP                         | Address, username and password; plain FTP is unencrypted, FTPS is not supported |
 | S3 / compatible storage     | Region, bucket and access keys; a custom endpoint for services such as MinIO    |
 | Mail.ru Cloud               | Account email and an external application password with Cloud access            |
-| Yandex Disk                 | Browser sign-in; availability depends on the build's OAuth configuration        |
-| Google Drive                | Browser sign-in; availability depends on OAuth configuration and account access |
+| Yandex Disk                 | Sign in to your Yandex ID in your browser                                       |
+| Google Drive                | Sign in to your Google Account in your browser                                  |
 | iCloud Drive — experimental | Separately installed rclone; account setup is available from OpenSCP            |
+
+Google Drive sign-in is handled by OpenSCP. Google verification is pending, so
+access may currently be limited.
 
 Cloud integrations have additional limitations and real-account acceptance checks
 remain open. Read the service guides before relying on a new connection for important files.

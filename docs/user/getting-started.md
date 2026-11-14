@@ -79,9 +79,10 @@ Use **+** or Ctrl/Command+T to add a tab with its own two panels. Close a connec
 tab to disconnect it. Complete or cancel transfers before exiting the application.
 
 Service guides (Russian): [Mail.ru](mailru.md), [Yandex Disk](yandex.md),
-[Google Drive](google.md), [iCloud Drive](icloud.md). Google and Yandex depend on the
-build's OAuth configuration and account access. iCloud needs external rclone and
-is experimental. Plain FTP is unencrypted; FTPS and SCP are not supported.
+[Google Drive](google.md), [iCloud Drive](icloud.md). Use your existing account to
+sign in through OpenSCP in your browser. Google verification is pending, so Google
+Drive access may currently be limited. iCloud needs external rclone and is
+experimental. Plain FTP is unencrypted; FTPS and SCP are not supported.
 
 ## Make it comfortable
 
