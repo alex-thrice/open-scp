@@ -129,6 +129,15 @@ const profiles: WorkspaceSnapshot['profiles'] = [
     forcePathStyle: false,
   },
 ];
+const googleProfile: WorkspaceSnapshot['profiles'][number] = {
+  id: 'google-one',
+  kind: 'google',
+  name: 'Google Work',
+  authentication: {
+    method: 'oauth',
+    secret: { id: 'google-secret', storage: 'safe-storage' },
+  },
+};
 const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
   let snapshot: WorkspaceSnapshot = {
     profiles,
@@ -161,6 +170,11 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
       };
     if (request.action === 'remember-workspace-layout')
       snapshot = { ...snapshot, workspaceLayout: request.layout };
+    if (request.action === 'remember-local-path' && snapshot.rememberPaths !== false)
+      snapshot = {
+        ...snapshot,
+        localPaths: { ...snapshot.localPaths, [request.workspaceId]: request.path },
+      };
     if (request.action === 'connect') {
       const profile = snapshot.profiles.find((item) => item.id === request.profileId);
       if (profile)
@@ -178,7 +192,9 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
                   ? formatS3Path(
                       createS3ProviderPath(profile.bucket ?? '', profile.initialPrefix ?? ''),
                     )
-                  : '/',
+                  : profile.kind === 'google'
+                    ? 'gdrive:/'
+                    : '/',
               hostKey: null,
               state: 'connected',
               capabilities: {
@@ -1131,6 +1147,188 @@ describe('App', () => {
     });
     expect(screen.getAllByRole('tab')).toHaveLength(1);
     expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2');
+  });
+
+  it.each([
+    {
+      scenario: 'the same local directory on both sides',
+      leftPath: 'C:\\Temp',
+      rightPath: 'C:\\Temp',
+      rememberPaths: true,
+      stalePaths: false,
+    },
+    {
+      scenario: 'independent local directories despite stale tab history',
+      leftPath: 'C:\\Temp',
+      rightPath: 'D:\\Projects',
+      rememberPaths: true,
+      stalePaths: true,
+    },
+    {
+      scenario: 'local directories with persistent path history disabled',
+      leftPath: 'C:\\Temp',
+      rightPath: 'D:\\Projects',
+      rememberPaths: false,
+      stalePaths: false,
+    },
+  ])('restores $scenario after closing the last Google tab', async (testCase) => {
+    const workspace = statefulApi({
+      profiles: [googleProfile],
+      rememberPaths: testCase.rememberPaths,
+      workspaceLayout: {
+        activeWorkspaceId: 'workspace-1',
+        workspaceIds: ['workspace-1'],
+      },
+      localPaths: testCase.stalePaths
+        ? { 'workspace-2:left': 'C:\\Old', 'workspace-2:right': rootPath }
+        : {},
+    });
+    setDesktopApi({
+      ...window.desktop,
+      listLocalDirectory: async (path) => ({
+        correlationId,
+        ok: true,
+        data: { ...rootListing, currentPath: path ?? rootPath, entries: [] },
+      }),
+    });
+    render(<App />);
+    for (const side of ['left', 'right'] as const) {
+      const path = side === 'left' ? testCase.leftPath : testCase.rightPath;
+      await pane(side).findByText('This directory is empty.');
+      const input = pane(side).getByLabelText('Current path');
+      fireEvent.change(input, { target: { value: path } });
+      fireEvent.submit(input.closest('form') as HTMLFormElement);
+      await waitFor(() =>
+        expect(workspace).toHaveBeenCalledWith({
+          action: 'remember-local-path',
+          workspaceId: `workspace-1:${side}`,
+          path,
+        }),
+      );
+      await pane(side).findByText('This directory is empty.');
+      fireEvent.click(pane(side).getByRole('button', { name: 'Drive or connection' }));
+      fireEvent.click(await screen.findByRole('option', { name: /Google Work/u }));
+      await waitFor(() =>
+        expect(workspace).toHaveBeenCalledWith({
+          action: 'list',
+          workspaceId: `workspace-1:${side}`,
+          path: null,
+        }),
+      );
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^Close /u }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close tab' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tabpanel').dataset.workspaceId).not.toBe('workspace-1'),
+    );
+    await waitFor(() => {
+      expect(pane('left').getByLabelText('Current path')).toHaveProperty(
+        'value',
+        testCase.leftPath,
+      );
+      expect(pane('right').getByLabelText('Current path')).toHaveProperty(
+        'value',
+        testCase.rightPath,
+      );
+    });
+    const result = await workspace({ action: 'snapshot' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('The workspace snapshot failed.');
+    expect(result.data.snapshot.sessions).toEqual([]);
+    if (!testCase.rememberPaths) expect(result.data.snapshot.localPaths).toEqual({});
+  });
+
+  it('restores the latest local directory when Google connects before path persistence completes', async () => {
+    const storedWorkspace = statefulApi({ profiles: [googleProfile] });
+    let completeRemember: (() => void) | undefined;
+    const pendingRemember = new Promise<void>((resolve) => {
+      completeRemember = resolve;
+    });
+    let isRememberPending = false;
+    const workspace = vi.fn<DesktopApi['workspace']>(async (request) => {
+      if (
+        request.action === 'remember-local-path' &&
+        request.workspaceId === 'workspace-1:left' &&
+        request.path === childPath
+      ) {
+        isRememberPending = true;
+        await pendingRemember;
+      }
+      return storedWorkspace(request);
+    });
+    setDesktopApi({ ...window.desktop, workspace });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'Open Documents' });
+    await waitFor(() =>
+      expect(pane('left').getByRole('button', { name: 'New directory' })).toHaveProperty(
+        'disabled',
+        false,
+      ),
+    );
+    fireEvent.doubleClick(pane('left').getByRole('row', { name: 'Open Documents' }));
+    await waitFor(() => expect(isRememberPending).toBe(true));
+    fireEvent.click(pane('left').getByRole('button', { name: 'Drive or connection' }));
+    fireEvent.click(await screen.findByRole('option', { name: /Google Work/u }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'list',
+        workspaceId: 'workspace-1:left',
+        path: null,
+      }),
+    );
+    await act(async () => completeRemember?.());
+    const result = await storedWorkspace({ action: 'snapshot' });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error('The workspace snapshot failed.');
+    expect(result.data.snapshot.localPaths?.['workspace-1:left']).toBe(childPath);
+    fireEvent.click(screen.getByRole('button', { name: /^Close /u }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close tab' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2'),
+    );
+    await waitFor(() =>
+      expect(pane('left').getByLabelText('Current path')).toHaveProperty('value', childPath),
+    );
+    expect(pane('right').getByLabelText('Current path')).toHaveProperty('value', rootPath);
+  });
+
+  it('ignores stale local paths when closing a Google tab without local history', async () => {
+    statefulApi({
+      profiles: [googleProfile],
+      workspaceLayout: {
+        activeWorkspaceId: 'workspace-1',
+        workspaceIds: ['workspace-1'],
+      },
+      localPaths: { 'workspace-2:left': 'C:\\Old', 'workspace-2:right': 'D:\\Old' },
+      sessions: (['left', 'right'] as const).map((side) => ({
+        workspaceId: `workspace-1:${side}`,
+        profileId: googleProfile.id,
+        name: googleProfile.name,
+        kind: 'google',
+        state: 'connected',
+        hostKey: null,
+        currentPath: 'gdrive:/',
+      })),
+    });
+    setDesktopApi({
+      ...window.desktop,
+      listLocalDirectory: async (path) => ({
+        correlationId,
+        ok: true,
+        data: { ...rootListing, currentPath: path ?? rootPath, entries: [] },
+      }),
+    });
+    render(<App />);
+    await waitFor(() => expect(pane('right').queryByText('This directory is empty.')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: /^Close /u }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Close tab' }));
+    await waitFor(() =>
+      expect(screen.getByRole('tabpanel').dataset.workspaceId).toBe('workspace-2'),
+    );
+    await waitFor(() => {
+      for (const side of ['left', 'right'] as const)
+        expect(pane(side).getByLabelText('Current path')).toHaveProperty('value', rootPath);
+    });
   });
 
   it('shows the SSH terminal action only for a connected SFTP pane', async () => {

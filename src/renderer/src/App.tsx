@@ -68,6 +68,7 @@ export const App = () => {
   const [locations, setLocations] = useState<
     Record<string, Partial<Record<PaneSide, PaneLocation>>>
   >({});
+  const lastLocalPaths = useRef(new Map<string, Partial<Record<PaneSide, string>>>());
   const [activeSides, setActiveSides] = useState<Record<string, PaneSide>>({});
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -142,6 +143,15 @@ export const App = () => {
   }, [activeWorkspaceId, service.run, workspaceLayoutReady, workspaces]);
   const reportLocations = useCallback(
     (id: string, value: Partial<Record<PaneSide, PaneLocation>>) => {
+      for (const side of ['left', 'right'] as const) {
+        const location = value[side];
+        if (location?.kind === 'local' && location.localPath) {
+          lastLocalPaths.current.set(id, {
+            ...lastLocalPaths.current.get(id),
+            [side]: location.localPath,
+          });
+        }
+      }
       setLocations((current) => ({ ...current, [id]: value }));
     },
     [],
@@ -151,13 +161,20 @@ export const App = () => {
   }, []);
   const focusTab = (id: string) =>
     requestAnimationFrame(() => document.getElementById(getTabId(id))?.focus());
+  const workspaceLocalPaths = (id: string, snapshot: WorkspaceSnapshot) => {
+    const initialPaths = workspaces.find((workspace) => workspace.id === id)?.initialPaths;
+    const savedPaths = initialPaths ?? {
+      left: snapshot.localPaths?.[sessionPaneId(snapshot, id, 'left')] ?? null,
+      right: snapshot.localPaths?.[sessionPaneId(snapshot, id, 'right')] ?? null,
+    };
+    return {
+      left: lastLocalPaths.current.get(id)?.left ?? savedPaths.left,
+      right: lastLocalPaths.current.get(id)?.right ?? savedPaths.right,
+    };
+  };
   const addWorkspace = () => {
     const workspace = createWorkspace(++sequence.current);
-    const previous = locations[activeWorkspaceId];
-    const initialPaths = {
-      left: previous?.left?.kind === 'local' ? previous.left.path || null : null,
-      right: previous?.right?.kind === 'local' ? previous.right.path || null : null,
-    };
+    const initialPaths = workspaceLocalPaths(activeWorkspaceId, service.snapshot);
     setWorkspaces((current) => [...current, { ...workspace, initialPaths }]);
     setActiveWorkspaceId(workspace.id);
     focusTab(workspace.id);
@@ -212,6 +229,7 @@ export const App = () => {
         setPendingClose({ id, hasActiveTransfers });
         return;
       }
+      const initialPaths = workspaceLocalPaths(id, state.data.snapshot);
       for (const workspaceId of ids) {
         const result = await service.run(
           hasActiveTransfers
@@ -223,7 +241,9 @@ export const App = () => {
       setPendingClose(null);
       const index = workspaces.findIndex((item) => item.id === id);
       let remaining = workspaces.filter((item) => item.id !== id);
-      if (!remaining.length) remaining = [createWorkspace(++sequence.current)];
+      if (!remaining.length) {
+        remaining = [{ ...createWorkspace(++sequence.current), initialPaths }];
+      }
       setWorkspaces(remaining);
       if (activeWorkspaceId === id) {
         const next = remaining[Math.min(index, remaining.length - 1)];
@@ -235,6 +255,7 @@ export const App = () => {
       setLocations((current) =>
         Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
       );
+      lastLocalPaths.current.delete(id);
       setActiveSides((current) =>
         Object.fromEntries(Object.entries(current).filter(([key]) => key !== id)),
       );
@@ -422,7 +443,7 @@ export const App = () => {
           isActive={workspace.id === activeWorkspaceId}
           tabId={getTabId(workspace.id)}
           tabPanelId={getTabPanelId(workspace.id)}
-          initialPaths={workspace.initialPaths}
+          initialPaths={workspaceLocalPaths(workspace.id, service.snapshot)}
           initialized={service.initialized && workspaceLayoutReady}
           snapshot={service.snapshot}
           run={service.run}

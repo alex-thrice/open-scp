@@ -247,6 +247,7 @@ export const FilePane = ({
   useEffect(() => {
     onLocation(side, {
       ...(googleAccountId ? { googleAccountId } : {}),
+      ...(kind === 'local' && listing ? { localPath: listing.currentPath } : {}),
       kind,
       path: currentPath,
       title,
