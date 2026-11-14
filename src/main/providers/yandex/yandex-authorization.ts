@@ -11,6 +11,7 @@ import { yandexAccountSchema } from './yandex-connection';
 export interface YandexConfiguration {
   readonly clientId: string;
   readonly openBrowser: (url: string) => Promise<void>;
+  readonly callbackLanguage?: 'en' | 'ru';
   readonly apiEndpoint?: string;
   readonly authorizationEndpoint?: string;
   readonly tokenEndpoint?: string;
@@ -42,6 +43,7 @@ export class YandexAuthorization {
       port: configuration.callbackPort ?? 53682,
       scopes: ['cloud_api:disk.read', 'cloud_api:disk.write', 'cloud_api:disk.info'],
       openBrowser: configuration.openBrowser,
+      callbackLanguage: configuration.callbackLanguage ?? 'en',
       ...(configuration.allowLoopbackEndpoints ? { allowLoopbackEndpoints: true } : {}),
       ...(configuration.timeout ? { timeout: configuration.timeout } : {}),
     });

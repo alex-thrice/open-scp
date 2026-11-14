@@ -321,6 +321,9 @@ app.whenReady().then(async () => {
   const applyApplicationLanguage = (language: 'en' | 'ru'): void =>
     setApplicationLanguage(language, applicationMenuActions);
   applyApplicationLanguage(profileStore.getSetting('language') === 'ru' ? 'ru' : 'en');
+  const oauthCallbackLanguage = /^ru(?:[-_]|$)/iu.test(app.getPreferredSystemLanguages()[0] ?? '')
+    ? 'ru'
+    : 'en';
   const workspaceService = new WorkspaceService(
     profileStore,
     credentials,
@@ -351,8 +354,14 @@ app.whenReady().then(async () => {
         return result.canceled ? null : (result.filePaths[0] ?? null);
       },
       dragDirectory: join(app.getPath('userData'), 'drag-files'),
-      google: createGoogleConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
-      yandex: createYandexConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
+      google: {
+        ...createGoogleConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
+        callbackLanguage: oauthCallbackLanguage,
+      },
+      yandex: {
+        ...createYandexConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
+        callbackLanguage: oauthCallbackLanguage,
+      },
       ...(!app.isPackaged &&
       process.env.OPENSCP_WEBDAV_FIXTURE === '1' &&
       process.env.OPENSCP_TEST_MAILRU_ENDPOINT

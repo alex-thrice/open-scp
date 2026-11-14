@@ -32,6 +32,7 @@ export interface OAuthConfiguration {
   readonly port: number;
   readonly scopes: readonly string[];
   readonly openBrowser: (url: string) => Promise<void>;
+  readonly callbackLanguage?: 'en' | 'ru';
   readonly allowLoopbackEndpoints?: boolean;
   readonly timeout?: number;
 }
@@ -73,9 +74,17 @@ export class LoopbackOAuth {
   }
   private async listen(): Promise<void> {
     if (this.listening) return this.listening;
+    const language = this.configuration.callbackLanguage ?? 'en';
+    const invalidResponse =
+      language === 'ru' ? 'Некорректный ответ авторизации.' : 'Invalid authorization response.';
+    const receivedResponse =
+      language === 'ru'
+        ? 'OpenSCP: ответ получен. Можно закрыть эту вкладку и вернуться в приложение.'
+        : 'OpenSCP: response received. You can close this tab and return to the application.';
     this.listening = new Promise((resolve, reject) => {
       const server = createServer((request, response) => {
         response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        response.setHeader('Content-Language', language);
         response.setHeader('Cache-Control', 'no-store');
         response.setHeader('Content-Security-Policy', "default-src 'none'; frame-ancestors 'none'");
         response.setHeader('Connection', 'close');
@@ -86,7 +95,7 @@ export class LoopbackOAuth {
           url = new URL(request.url ?? '/', `http://${host || '127.0.0.1'}`);
         } catch {
           response.writeHead(400);
-          response.end('Invalid authorization response.');
+          response.end(invalidResponse);
           return;
         }
         const state = url.searchParams.get('state') ?? '';
@@ -103,18 +112,18 @@ export class LoopbackOAuth {
           url.searchParams.getAll('error').length > 1
         ) {
           response.writeHead(400);
-          response.end('Invalid authorization response.');
+          response.end(invalidResponse);
           return;
         }
         const code = url.searchParams.get('code');
         const error = url.searchParams.get('error');
         if ((!code && !error) || (code && error) || (code?.length ?? 0) > 2048) {
           response.writeHead(400);
-          response.end('Invalid authorization response.');
+          response.end(invalidResponse);
           return;
         }
         response.writeHead(200);
-        response.end('OpenSCP: ответ получен. Можно закрыть эту вкладку и вернуться в приложение.');
+        response.end(receivedResponse);
         pending.finish(
           code ?? undefined,
           error ? new ApplicationError(applicationErrorCodes.oauthRequired) : undefined,
