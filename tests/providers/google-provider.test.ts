@@ -45,6 +45,73 @@ describe('Google Drive API provider', () => {
     await writer.write(content);
     await writer.close();
   };
+  it.each(['rename', 'trash', 'rename-and-trash'] as const)(
+    'creates a fresh file at a previously uploaded name after %s',
+    async (action) => {
+      const address = googleChildPath(googleRootPath, 'Test1.txt');
+      await put(address, Buffer.from('first'));
+      const original = await provider.stat(path(address));
+      let previous = original.path;
+      if (action !== 'trash') {
+        const renamed = path(googleChildPath(googleRootPath, 'Test3.txt'));
+        await provider.rename(original.path, renamed);
+        previous = (await provider.stat(renamed)).path;
+      }
+      if (action !== 'rename') await provider.delete(previous, { recursive: false });
+      await expect(provider.list(root)).resolves.toHaveLength(action === 'rename' ? 1 : 0);
+
+      await put(address, Buffer.from('second'));
+      const replacement = await provider.stat(path(address));
+      expect(replacement.google?.id).not.toBe(original.google?.id);
+      expect(
+        (
+          await read(
+            required(replacement.path.provider === 'google' ? replacement.path.path : undefined),
+          )
+        ).toString(),
+      ).toBe('second');
+      expect(
+        required(harness.fixture.accounts.get('one'))
+          .get(required(original.google?.id))
+          ?.content.toString(),
+      ).toBe('first');
+    },
+  );
+  it.each(['rename', 'trash'] as const)(
+    'creates a fresh folder at a previously created name after %s',
+    async (action) => {
+      const address = path(googleChildPath(googleRootPath, 'folder'));
+      await provider.createDirectory(address);
+      const original = await provider.stat(address);
+      if (action === 'rename')
+        await provider.rename(original.path, path(googleChildPath(googleRootPath, 'renamed')));
+      else await provider.delete(original.path, { recursive: false });
+
+      await provider.createDirectory(address);
+      const replacement = await provider.stat(address);
+      expect(replacement.kind).toBe('directory');
+      expect(replacement.google?.id).not.toBe(original.google?.id);
+    },
+  );
+  it('retains the reserved ID for an interrupted upload until a restart succeeds', async () => {
+    const address = googleChildPath(googleRootPath, 'interrupted');
+    const writer = (
+      await provider.openWrite(path(address), { overwrite: false, expectedSize: 5n })
+    ).getWriter();
+    await writer.write(Buffer.from('first'));
+    await writer.abort();
+
+    await put(address, Buffer.from('retry'));
+    const creates = harness.fixture.requests.filter(
+      (request) => request.method === 'POST' && request.query.get('uploadType') === 'resumable',
+    );
+    expect(creates).toHaveLength(2);
+    expect(creates[0]?.json).toMatchObject({ id: (await provider.stat(path(address))).google?.id });
+    expect(creates[1]?.json).toEqual(creates[0]?.json);
+    expect(
+      harness.fixture.requests.filter((request) => request.path.endsWith('/generateIds')),
+    ).toHaveLength(1);
+  });
   it('copies native documents directly within an account without exporting or changing the original', async () => {
     const tree = required(harness.fixture.accounts.get('one'));
     const doc = googleFixtureEntry('source.txt', 'native');

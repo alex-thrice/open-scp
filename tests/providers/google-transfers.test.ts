@@ -74,6 +74,45 @@ describe('Google Drive shared queue and workspace', () => {
       direction: 'remote',
       conflictPolicy: 'ask',
     });
+  it('repeats a Google-to-Google binary copy after renaming and trashing the first result', async () => {
+    const tree = required(harness.fixture.accounts.get('one'));
+    const source = googleFixtureEntry('Test1.txt', '12345');
+    const folder = googleFixtureEntry('Verification Target');
+    tree.set(source.id, source);
+    tree.set(folder.id, folder);
+    const destination = harness.provider();
+    await destination.connect();
+    const parent = googleChildPath(googleRootPath, folder.name, folder.id);
+    const target = path(googleChildPath(parent, source.name));
+    const copy = () =>
+      engine.enqueue({
+        source: google,
+        destination,
+        sourcePath: path(googleChildPath(googleRootPath, source.name, source.id)),
+        destinationPath: target,
+        workspaceId: 'source',
+        destinationWorkspaceId: 'destination',
+        direction: 'remote',
+        conflictPolicy: 'ask',
+      });
+    try {
+      await wait(copy());
+      const first = await destination.stat(target);
+      const renamed = path(googleChildPath(parent, 'Test3.txt'));
+      await destination.rename(first.path, renamed);
+      await destination.delete((await destination.stat(renamed)).path, { recursive: false });
+      expect(await destination.list(path(parent))).toHaveLength(0);
+
+      await wait(copy());
+      const second = await destination.stat(target);
+      expect(second.google?.id).not.toBe(first.google?.id);
+      expect(tree.get(required(second.google?.id))?.content.toString()).toBe('12345');
+      expect(tree.get(required(first.google?.id))?.trashed).toBe(true);
+      expect(engine.snapshots().every((item) => item.transferredBytes === 5n)).toBe(true);
+    } finally {
+      await destination.disconnect();
+    }
+  });
   it('copies a folder containing binary files and native documents through the queue', async () => {
     const tree = required(harness.fixture.accounts.get('one'));
     const folder = googleFixtureEntry('folder');

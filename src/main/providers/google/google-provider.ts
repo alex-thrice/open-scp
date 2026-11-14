@@ -365,6 +365,7 @@ export class GoogleProvider implements FileSystemProvider {
           parents: [parent.id],
           mimeType: folderMime,
         });
+      if (this.reservations.get(address) === id) this.reservations.delete(address);
     });
   }
   public delete(path: ProviderPath, options: DeleteOptions): Promise<void> {
@@ -740,21 +741,31 @@ export class GoogleProvider implements FileSystemProvider {
         this.sessions.set(address, session);
       }
       const upload = session;
-      return googleUploadStream(this.connection.api(), upload, options, async () => {
-        if (parsed.segments.at(-1)?.id) {
-          const current = await this.stat(path, options);
-          if (current.google?.type !== 'binary' || !current.google.canWrite)
-            throw googleFailure('accessDenied', 'write');
-          if (upload.originalVersion && current.versionTag !== upload.originalVersion)
+      return googleUploadStream(
+        this.connection.api(),
+        upload,
+        options,
+        async () => {
+          if (parsed.segments.at(-1)?.id) {
+            const current = await this.stat(path, options);
+            if (current.google?.type !== 'binary' || !current.google.canWrite)
+              throw googleFailure('accessDenied', 'write');
+            if (upload.originalVersion && current.versionTag !== upload.originalVersion)
+              throw googleFailure('conflict', 'write');
+          } else if (
+            (await this.conflictCandidates(path, options)).some(
+              (candidate) => candidate.google?.id !== upload.id,
+            )
+          ) {
             throw googleFailure('conflict', 'write');
-        } else if (
-          (await this.conflictCandidates(path, options)).some(
-            (candidate) => candidate.google?.id !== upload.id,
-          )
-        ) {
-          throw googleFailure('conflict', 'write');
-        }
-      });
+          }
+        },
+        () => {
+          if (this.sessions.get(address) !== upload) return;
+          this.sessions.delete(address);
+          if (this.reservations.get(address) === upload.id) this.reservations.delete(address);
+        },
+      );
     });
   }
 }
