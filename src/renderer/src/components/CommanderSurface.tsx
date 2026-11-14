@@ -130,13 +130,15 @@ export const CommanderSurface = ({
               autoFocus={index === 0}
               role="menuitem"
               key={command.id}
+              title={command.label}
               disabled={command.disabled}
               onClick={() => {
                 setMenu(null);
                 command.run();
               }}
             >
-              {command.label} <kbd>{fileCommandShortcut(command)}</kbd>
+              <span className="context-menu__label">{command.label}</span>
+              {command.shortcut ? <kbd>{fileCommandShortcut(command)}</kbd> : null}
             </button>
           ))}
         </div>
