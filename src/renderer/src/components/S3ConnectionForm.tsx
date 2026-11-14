@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import type { S3ConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
+import { PasswordInput } from './PasswordInput';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const S3ConnectionForm = ({
@@ -165,21 +166,21 @@ export const S3ConnectionForm = ({
             defaultValue={profile?.accessKeyId ?? ''}
           />
         </label>
-        <label>
-          {t('s3.secretAccessKey')}
-          <input
+        <div className="form-field">
+          <label htmlFor={`${formId}-secret`}>{t('s3.secretAccessKey')}</label>
+          <PasswordInput
+            id={`${formId}-secret`}
             name="secretAccessKey"
-            type="password"
             autoComplete="off"
             required={!profile?.secret && !createdId}
           />
-        </label>
+        </div>
         <details className="advanced-fields">
           <summary>{t('ui.advanced')}</summary>
-          <label>
-            {t('s3.sessionToken')}
-            <input name="sessionToken" type="password" autoComplete="off" />
-          </label>
+          <div className="form-field">
+            <label htmlFor={`${formId}-token`}>{t('s3.sessionToken')}</label>
+            <PasswordInput id={`${formId}-token`} name="sessionToken" autoComplete="off" />
+          </div>
           {profile ? (
             <label>
               {t('s3.clearToken')}

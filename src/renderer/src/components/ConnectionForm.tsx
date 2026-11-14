@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import type { SftpConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
+import { PasswordInput } from './PasswordInput';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const ConnectionForm = ({
@@ -185,10 +186,12 @@ export const ConnectionForm = ({
             {t('connections.browse')}
           </button>
         </label>
-        <label hidden={authMode === 'agent'}>
-          {t(authMode === 'private-key' ? 'connections.passphrase' : 'connections.password')}
-          <input autoComplete="off" name="secret" type="password" />
-        </label>
+        <div className="form-field" hidden={authMode === 'agent'}>
+          <label htmlFor={`${formId}-secret`}>
+            {t(authMode === 'private-key' ? 'connections.passphrase' : 'connections.password')}
+          </label>
+          <PasswordInput key={authMode} id={`${formId}-secret`} autoComplete="off" name="secret" />
+        </div>
         <small>{t('connections.secretHint')}</small>
         <details className="advanced-fields">
           <summary>{t('ui.advanced')}</summary>

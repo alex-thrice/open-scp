@@ -8,6 +8,7 @@ import { icloudRemoteSchema } from '@shared/models/icloud-profile';
 import type { WorkspaceResult } from '@shared/ipc/workspace';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
+import { PasswordInput } from './PasswordInput';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
 
 export const ICloudConnectionForm = ({
@@ -349,17 +350,17 @@ export const ICloudConnectionForm = ({
                   required
                 />
               </label>
-              <label>
-                {t('icloud.password')}
-                <input
-                  type="password"
+              <div className="form-field">
+                <label htmlFor={`${formId}-password`}>{t('icloud.password')}</label>
+                <PasswordInput
+                  id={`${formId}-password`}
                   autoComplete="current-password"
                   maxLength={4096}
                   value={password}
                   onChange={(event) => setPassword(event.currentTarget.value)}
                   required
                 />
-              </label>
+              </div>
               <small>{t('icloud.passwordHint')}</small>
             </>
           ) : configuredRemote ? (

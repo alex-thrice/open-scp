@@ -119,6 +119,7 @@ test('keyboard selection, local file operations, profile library and live Russia
     expect(menuLabels).toEqual([
       ...(process.platform === 'darwin' ? ['OpenSCP'] : []),
       'Файл',
+      'Правка',
       'Вид',
       'Окно',
       'Справка',
