@@ -12,6 +12,39 @@ Linux requires a working desktop keyring to save credentials. macOS packages use
 ad-hoc signing and may require manual updates. See [platform notes](platforms.md)
 (Russian) for details.
 
+## Additional tools
+
+These tools are installed separately for the features listed below. They are not
+bundled with OpenSCP.
+
+### iCloud Drive: rclone on all platforms
+
+1. Download [rclone for your system](https://rclone.org/downloads/) and extract it
+   into a folder you will keep. On Windows, the executable is `rclone.exe`.
+2. Open **Settings → Advanced → iCloud Drive / rclone** in OpenSCP. Choose the
+   executable or its folder and save. An empty path enables automatic detection.
+3. Check the rclone status. Once it is available, add an iCloud Drive connection
+   and complete Apple sign-in and 2FA. See the [iCloud guide](icloud.md) (Russian).
+
+rclone is required for the experimental iCloud integration, independently of
+whether Apple's own iCloud application is installed. Other OpenSCP connections
+do not require rclone.
+
+### SSH terminal on Windows: PuTTY
+
+1. Download PuTTY from its [official download page](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html).
+   Use the Windows installer or keep the standalone `putty.exe` in a permanent folder.
+2. Open **Settings → Advanced → SSH terminal**. If automatic detection does not
+   find PuTTY, set the full **PuTTY executable path (Windows)**, for example
+   `C:\Program Files\PuTTY\putty.exe`, and save the setting.
+3. Connect an SFTP panel, then choose **Open SSH terminal**. PuTTY opens a separate
+   window using the server, port and username from that profile.
+
+PuTTY is required for this external terminal action on Windows. SFTP browsing and
+file transfers in OpenSCP work without it. Passwords and key passphrases are not
+passed to the terminal through command-line arguments; the terminal may prompt again.
+On macOS and Linux, the terminal action uses a system terminal and OpenSSH.
+
 ## Try two local folders
 
 Both panels initially show local folders. Use the picker above a panel to choose

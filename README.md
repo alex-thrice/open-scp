@@ -43,6 +43,17 @@ keyring to save credentials. macOS packages currently use ad-hoc signing; see
 [platform notes](docs/user/platforms.md) (Russian) for installation and update limitations.
 The release page lists the packages actually available for that version.
 
+### Additional tools for specific features
+
+| Feature                      | Install separately                                                                                                                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| iCloud Drive on any platform | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → iCloud Drive / rclone**                                                 |
+| SSH terminal on Windows      | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); set the path to `putty.exe` in **Settings → Advanced → SSH terminal** if needed |
+
+These programs are not bundled with OpenSCP. SFTP browsing and file transfers work
+without PuTTY; it is needed only to open the separate SSH terminal on Windows.
+See [installation steps](docs/user/getting-started.md#additional-tools).
+
 ## Your first transfer
 
 1. Open the source folder in one panel and the destination folder in the other.

@@ -13,6 +13,9 @@
 | Google Drive / Google Диск                                    | —                                          | [Подключение](user/google.md)               |
 | iCloud Drive (experimental) / iCloud Drive (экспериментально) | —                                          | [Подключение](user/icloud.md)               |
 
+[rclone and PuTTY setup](user/getting-started.md#additional-tools) /
+[Установка rclone и PuTTY](user/getting-started.ru.md#дополнительные-программы).
+
 The [project website](https://openscp.made-in-krim.ru/) is the user-facing entry point.
 The repository keeps versioned guides and technical references.
 
