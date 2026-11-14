@@ -10,7 +10,7 @@ Open the package; with a DMG, copy OpenSCP to Applications.
 
 Linux requires a working desktop keyring to save credentials. macOS packages use
 ad-hoc signing and may require manual updates. See [platform notes](platforms.md)
-(Russian) for details.
+for details.
 
 ## Additional tools
 
@@ -24,7 +24,7 @@ bundled with OpenSCP.
 2. Open **Settings → Advanced → iCloud Drive / rclone** in OpenSCP. Choose the
    executable or its folder and save. An empty path enables automatic detection.
 3. Check the rclone status. Once it is available, add an iCloud Drive connection
-   and complete Apple sign-in and 2FA. See the [iCloud guide](icloud.md) (Russian).
+   and complete Apple sign-in and 2FA. See the [iCloud guide](icloud.md).
 
 rclone is required for the experimental iCloud integration, independently of
 whether Apple's own iCloud application is installed. Other OpenSCP connections
@@ -78,9 +78,9 @@ between local folders. Transfers between remote sources pass through your comput
 Use **+** or Ctrl/Command+T to add a tab with its own two panels. Close a connected
 tab to disconnect it. Complete or cancel transfers before exiting the application.
 
-Service guides (Russian): [Mail.ru](mailru.md), [Yandex Disk](yandex.md),
-[Google Drive](google.md), [iCloud Drive](icloud.md). Use your existing account to
-sign in through OpenSCP in your browser. Google verification is pending, so Google
+Service guides: [Mail.ru](mailru.md), [Yandex Disk](yandex.md),
+[Google Drive](google.md), [iCloud Drive](icloud.md). Google and Yandex sign-in use
+your existing account in your browser. Google verification is pending, so Google
 Drive access may currently be limited. iCloud needs external rclone and is
 experimental. Plain FTP is unencrypted; FTPS and SCP are not supported.
 

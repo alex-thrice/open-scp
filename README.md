@@ -40,7 +40,7 @@ No development tools are needed to use OpenSCP.
 
 Open the downloaded package and start OpenSCP. Linux needs a working desktop
 keyring to save credentials. macOS packages currently use ad-hoc signing; see
-[platform notes](docs/user/platforms.md) (Russian) for installation and update limitations.
+[platform notes](docs/user/platforms.md) for installation and update limitations.
 The release page lists the packages actually available for that version.
 
 ### Additional tools for specific features
@@ -89,10 +89,10 @@ Despite the application name, the SCP protocol is not currently supported.
 
 ## Help
 
-- [Getting started](docs/user/getting-started.md) / [Начало работы](docs/user/getting-started.ru.md)
-- [Keyboard, tabs and file operations](docs/user/commander.md) — Russian
-- [Platform and installation notes](docs/user/platforms.md) — Russian
-- Service guides (Russian): [Mail.ru](docs/user/mailru.md), [Yandex Disk](docs/user/yandex.md),
+- [Getting started](docs/user/getting-started.md)
+- [Keyboard, tabs and file operations](docs/user/commander.md)
+- [Platform and installation notes](docs/user/platforms.md)
+- Service guides: [Mail.ru](docs/user/mailru.md), [Yandex Disk](docs/user/yandex.md),
   [Google Drive](docs/user/google.md), [iCloud Drive](docs/user/icloud.md)
 - [All documentation](docs/README.md)
 

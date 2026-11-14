@@ -71,4 +71,4 @@ Contract/protocol tests используют одноразовый WebDAV fixtu
 32-МиБ roundtrip, конфликты и реальные адаптеры OpenSSH/MinIO/FTP. Electron E2E проверяет форму,
 вход, test connection, передачу, шифрование и переподключение после рестарта.
 Это не подтверждает тарифные ограничения и особенности настоящего сервиса. Ручной сценарий:
-[подключение Mail.ru](../user/mailru.md).
+[подключение Mail.ru](../user/mailru.ru.md).

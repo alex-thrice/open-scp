@@ -44,7 +44,7 @@ pnpm exec playwright test tests/e2e/google-transfer.spec.ts
 Проверяются точный ID при замене, запрет native overwrite/shortcut traversal, права, корзина,
 потоковые файлы, отмена/resume с проверкой offset и источника, истечение сессии, quota/rate,
 refresh/отзыв, clone/import, Electron restart и явный export PDF.
-Реальный smoke и публичная OAuth verification: [чеклист Google](../user/google.md).
+Реальный smoke и публичная OAuth verification: [чеклист Google](../development/google-oauth.md).
 
 T32 использует `tests/fixtures/yandex-fixture.ts` с фиктивным Client ID и токенами на случайном
 loopback-порту. Реальный браузер/аккаунт для этих проверок не нужен. Модульные и Electron-тесты
@@ -59,13 +59,13 @@ pnpm exec playwright test tests/e2e/yandex-transfer.spec.ts
 
 Проверяются PKCE/state, отмена, callback replay, refresh, разделение аккаунтов, пагинация,
 асинхронные операции, signed URLs без Authorization, 32-МиБ roundtrip, конфликты и рестарт.
-Реальная приёмка: [чеклист Яндекс Диска](../user/yandex.md).
+Реальная приёмка: [чеклист Яндекс Диска](../development/yandex-oauth.md).
 
 T31 использует также `tests/fixtures/webdav-fixture.ts`: сервер на случайном loopback-порту
 с фиктивными `fixture@example.test` / `webdav-fixture-password-only`. Сервер создаётся и
 закрывается самими тестами. Contract/protocol и Electron-сценарий не требуют Docker;
 передачи Mail.ru ↔ SFTP/S3/FTP требуют контейнеров ниже. Реальные credentials Mail.ru не
-используются. Ручная приёмка: [чеклист аккаунта Mail.ru](../user/mailru.md).
+используются. Ручная приёмка: [чеклист аккаунта Mail.ru](mailru.md).
 
 ```sh
 pnpm exec vitest run tests/providers/mailru-provider.contract.test.ts tests/providers/mailru-provider.test.ts tests/main/mailru-profile.test.ts

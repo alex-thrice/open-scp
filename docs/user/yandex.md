@@ -1,30 +1,40 @@
-# Подключение Яндекс Диска
+# Connect Yandex Disk
 
-В OpenSCP выберите «Подключения → Подключение → Яндекс Диск», задайте имя и нажмите
-«Войти в Яндекс». Подтвердите доступ в системном браузере. После возвращения в приложение
-появится имя аккаунта; «Проверить подключение» проверяет чтение начального каталога.
-Сохраните профиль и выберите его в любой панели. Пароль Яндекса в OpenSCP не вводится.
+[Русский](yandex.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-Если вход недоступен, проверьте сведения о релизе: настройка OAuth выполняется
-владельцем приложения и входит в сборку. Пользователю настроенной сборки создавать
-своё OAuth-приложение не нужно. Проверки с настоящими аккаунтами ещё не завершены.
+## Sign in
 
-## Выход и ограничения
+1. Open **Connections → Connection → Yandex Disk** and name the profile.
+2. Choose **Sign in to Yandex**.
+3. Sign in to your existing Yandex ID and approve the requested access in your
+   system browser. Do not enter your Yandex password in OpenSCP.
+4. Return to OpenSCP and check the connected account. **Test connection** checks
+   read access to the initial folder.
+5. Save the profile and select it in either panel's source picker.
 
-«Выйти» отключает панели этого профиля и удаляет локальные токены. Разрешение приложения
-на стороне Яндекса при этом остаётся. Для полного отзыва удалите доступ OpenSCP в настройках
-Яндекс ID. После отзыва приложение попросит войти заново. Другой аккаунт можно привязать
-после явного выхода; дубликат или импорт профиля тоже требует отдельного входа.
-Экспорт содержит только параметры подключения.
+If sign-in is unavailable, check the release information. Account authorization
+is handled by OpenSCP. Real-account acceptance checks remain open.
 
-Доступны папки, list/stat, создание, переименование, перемещение, удаление и передачи
-в обе стороны с Local, Mail.ru, SFTP, FTP и S3. Удаление отправляет данные в корзину Диска.
-Асинхронная операция завершается в UI после подтверждения сервиса. Права POSIX, симлинки,
-resume, атомарность rename и server-side copy не объявляются.
+## Files and limitations
 
-При отмене/обрыве может остаться `.openscp-part-…`. Повтор передачи начинается с нуля.
-Если результат публикации неизвестен, очередь требует проверки: сначала проверьте конечное
-и временное имя в облаке. Автоматического повтора записи нет. GET повторяется ограниченно,
-с учётом `Retry-After`; превышение квоты и частоты запросов показывается отдельно.
+You can browse folders, create folders, rename, move, delete and transfer files
+to or from local folders, Mail.ru, SFTP, FTP and S3. Deleting sends data to Disk's
+trash. Asynchronous operations finish in OpenSCP after the service confirms them.
 
-Настройка OAuth и проверки разработчиком — в [отдельном файле](../development/yandex-oauth.md).
+POSIX permissions, symlinks, offset-based resume, atomic rename and server-side
+copy are not supported by this integration.
+
+Cancellation or a connection failure may leave a `.openscp-part-…` file. Retrying
+starts the transfer from zero. If publication of the final name is uncertain,
+inspect both the final and temporary names in Disk before retrying. Writes are
+not retried automatically. Read requests have bounded retries; quota and request
+rate errors are reported separately.
+
+## Sign out and revoke access
+
+**Sign out** disconnects the profile's panels and removes its local tokens.
+Authorization at Yandex remains until you remove OpenSCP's access in Yandex ID
+settings. After revocation, another connection requires sign-in again.
+
+Sign out before switching accounts. Duplicating or importing a profile requires
+a separate sign-in. Profile exports contain connection settings without tokens.

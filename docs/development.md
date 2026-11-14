@@ -127,7 +127,9 @@ environment values. Owner registration and acceptance checklists are in the
 verification remains a separate release concern.
 
 iCloud uses external rclone and its own configuration. OpenSCP does not bundle or
-update rclone. See the [iCloud guide](user/icloud.md).
+update rclone. See the [iCloud guide](user/icloud.md). Environment overrides,
+custom and encrypted configurations, and command-line recovery are documented in
+the [advanced rclone maintainer reference](development/icloud-rclone.md) (Russian).
 
 Architecture decisions and the independent implementation boundary are recorded in
 [ADRs](adr). Unresolved product choices are tracked in

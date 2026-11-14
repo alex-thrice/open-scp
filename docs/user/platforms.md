@@ -1,78 +1,79 @@
-# Различия платформ
+# Platform notes
 
-## Установка и пути
+[Русский](platforms.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-Windows: NSIS setup устанавливает per-user, portable запускает приложение без установки.
-По умолчанию оба используют `%APPDATA%/OpenSCP`, поэтому portable не делает credentials
-переносимыми. Uninstall сохраняет настройки. Закройте все экземпляры перед обновлением.
-Drive selector показывает буквы доступных дисков; arbitrary UNC пока не поддерживается.
+## Installation and paths
 
-macOS: arm64 DMG/ZIP. Development ad-hoc пакет не является доверенным публичным релизом.
-Настройки dev-приложения — `~/Library/Application Support/OpenSCP`.
-Диски доступны через `/Volumes`; доступ к защищённым каталогам зависит от разрешений macOS.
-Не выдавайте Full Disk Access без конкретной необходимости.
+**Windows:** setup installs per user; portable runs without installation. Both
+normally use `%APPDATA%/OpenSCP`, so portable does not make credentials portable.
+Uninstalling preserves settings. Close all instances before updating. The drive
+picker lists available drive letters; arbitrary UNC paths are not supported yet.
 
-В установленной macOS-сборке OpenSCP проверяет подпись `Developer ID Application`. Если
-корректной подписи нет, приложение продолжает проверять GitHub и сообщает о новой версии, но
-не скачивает и не устанавливает её автоматически. Кнопка обновления открывает страницу
-конкретного релиза в браузере; DMG нужно скачать и установить вручную. Переключатели
-автоматического скачивания и установки в этом режиме недоступны.
+**macOS:** packages are arm64 DMG/ZIP. Current ad-hoc packages are not trusted
+Developer ID releases. Application data is under
+`~/Library/Application Support/OpenSCP`. Mounted disks are accessible through
+`/Volumes`; protected folders depend on macOS permissions. Do not grant Full Disk
+Access without a specific need.
 
-Linux: x64 DEB или AppImage, настройки обычно `~/.config/OpenSCP` (учитывается XDG).
-Точки монтирования доступны через `/`, `/mnt`, `/media`. Для AppImage нужен FUSE либо распаковка.
-Нужны GTK3/NSS/Secret Service и работающие user namespaces для Chromium sandbox. Если
-корпоративная политика/AppArmor блокирует user namespaces, требуется согласованная настройка
-системного администратора. Не запускайте файловый клиент от root или с `--no-sandbox`.
-Матрица desktop-дистрибутивов пока ограничена: не обещается поддержка всех Linux окружений.
+An installed macOS build checks for a valid Developer ID Application signature.
+Without one it can check GitHub and notify you about updates, but does not download
+or install them automatically. The update action opens that release in your
+browser; download and install its DMG manually. Automatic download and install
+settings are unavailable in this mode.
 
-SFTP paths всегда POSIX, S3 keys — не локальные пути. Симлинки не обходят границы local provider;
-удаление ссылки не удаляет её цель. На Windows зарезервированные имена (CON/NUL и др.), ADS,
-недопустимые символы, trailing dots/spaces не становятся допустимыми оттого, что их принял S3.
-На POSIX учитываются filesystem permissions. Case sensitivity зависит от конкретного volume,
-а не только от ОС. Проверьте конфликт имён перед копированием между разными файловыми системами.
+**Linux:** use an x64 DEB or AppImage. Settings normally live in
+`~/.config/OpenSCP`, subject to the desktop's configuration directory settings.
+Mounted disks can be reached through `/`, `/mnt` and `/media`. AppImage needs
+FUSE or extraction. The application needs GTK3, NSS, Secret Service and working
+user namespaces for Chromium sandboxing. If policy or AppArmor blocks namespaces,
+ask the system administrator to configure the environment. Do not run the file
+client as root or with `--no-sandbox`. Support for every Linux desktop is not promised.
 
-## Дополнительные программы
+SFTP paths are POSIX paths; S3 keys are not local paths. Symlinks cannot bypass
+local folder boundaries, and deleting a link does not delete its target. Windows
+reserved names such as CON/NUL, alternate data streams, invalid characters and
+trailing dots or spaces remain restricted even if a remote service accepts them.
+POSIX permissions still apply. Case sensitivity depends on the volume, not just
+the operating system. Check name conflicts when copying between file systems.
 
-| Возможность                            | Внешняя программа                                                                                                          |
-| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| iCloud Drive на Windows, macOS и Linux | Отдельно установленный [rclone](https://rclone.org/downloads/)                                                             |
-| Открытие SSH-терминала в Windows       | Отдельно установленный [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html) или сохранённый `putty.exe` |
+## Additional tools
 
-OpenSCP не включает эти программы в свой пакет. Путь к rclone задаётся в
-«Настройки → Дополнительно → iCloud Drive / rclone», а путь к `putty.exe` — в
-«Настройки → Дополнительно → SSH-терминал». Пустой путь включает автоматический поиск.
-PuTTY нужен только для отдельного окна терминала: SFTP-передачи работают без него.
-На macOS/Linux для внешнего SSH-терминала используются системный терминал и OpenSSH.
-Пошаговая установка описана в [начале работы](getting-started.ru.md#дополнительные-программы).
+| Feature                                  | Separate installation                                                                                |
+| ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| iCloud Drive on Windows, macOS and Linux | [rclone](https://rclone.org/downloads/)                                                              |
+| SSH terminal on Windows                  | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html), or a standalone `putty.exe` |
 
-## Секреты
+These programs are not bundled. Configure rclone in **Settings → Advanced →
+iCloud Drive / rclone** and PuTTY in **Settings → Advanced → SSH terminal**.
+An empty path enables automatic detection. PuTTY is only needed for a separate
+terminal window; SFTP file transfers work without it. On macOS and Linux, the
+external SSH terminal uses a system terminal and OpenSSH.
+See the [installation steps](getting-started.md#additional-tools).
 
-Приложение не сохраняет пароль открытым текстом при отсутствии защищённого backend.
-На Linux `basic_text`, `unknown`, пустой и неизвестный backend отклоняются для чтения и записи.
-Разблокируйте GNOME Keyring/KWallet в своей desktop session и повторите операцию.
-Копирование `settings.sqlite` не гарантирует перенос credentials: может потребоваться повторный ввод.
+## Credentials
 
-На Windows DPAPI защищает от других пользователей, **не от вредоносного приложения того же
-пользователя**. На macOS Keychain ограничивает доступ других приложений, если пользователь
-сам не разрешил его; стабильная подпись важна для обновлений. На Linux свойства защиты
-определяет выбранный secret store. Эти ограничения следуют из
-[документации Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage).
+OpenSCP refuses to save secrets as plaintext when protected storage is unavailable.
+On Linux, insecure or unknown keyring backends are rejected for reading and
+writing secrets. Unlock GNOME Keyring or KWallet in your desktop session and retry.
+Copying `settings.sqlite` does not guarantee that credentials will work on another
+computer; you may need to enter them again.
 
-## SSH Agent и Pageant
+Windows DPAPI protects against other users, but not malicious applications running
+as the same user. macOS Keychain limits access by other apps unless you allow it;
+a stable application signature matters for updates. On Linux, protection depends
+on the selected secret store. See [Electron safeStorage](https://www.electronjs.org/docs/latest/api/safe-storage).
 
-При выборе «SSH Agent» приложение использует `SSH_AUTH_SOCK` процесса. На macOS/Linux
-запускайте из сессии с доступным агентом; загрузку ключа/подтверждение выполняет сам агент.
-Открытие из Finder/desktop launcher не обязательно наследует переменные терминала.
-Forwarding agent на удалённый сервер приложение не включает.
+## SSH Agent and Pageant
 
-На Windows без `SSH_AUTH_SOCK` используется OpenSSH named pipe
-`\\.\pipe\openssh-ssh-agent`. Службу OpenSSH Authentication Agent и загрузку ключей
-пользователь настраивает отдельно; приложение не меняет службы ОС.
+With **SSH Agent**, OpenSCP uses the agent available to its launching session.
+On macOS and Linux, start it from a session with access to the agent; key loading
+and approval belong to that agent. Finder and desktop launchers may not inherit
+the terminal session's agent. OpenSCP does not enable forwarding to the remote server.
 
-Pageant/Cygwin **не входят в подтверждённые поддерживаемые варианты packaged-приложения**.
-У `ssh2` есть Pageant selector, и `pagent.exe` включён в пакет вне ASAR, но это не доказывает
-работоспособность bridge: upstream вызывает helper через `spawn` с ASAR-путём. Отдельной
-настройки Pageant в UI нет; использовать его вместо OpenSSH Agent пока не рекомендуется.
-Живой SSH Agent на macOS также требует отдельной приёмки. Проверенные сетевые package smoke
-используют пароль. При проблемах используйте профиль с private key/password, не отключая
-host-key verification.
+On Windows it can use the OpenSSH Authentication Agent service. Configure the
+service and load keys separately; OpenSCP does not change Windows services.
+
+Pageant and Cygwin are not confirmed supported alternatives for packaged builds;
+there is no Pageant option in the interface. Live SSH Agent use on macOS also needs
+separate acceptance. If an agent does not work, use a private-key or password
+profile while keeping host-key verification enabled.

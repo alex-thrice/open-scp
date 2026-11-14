@@ -1,44 +1,55 @@
-# Подключение Облака Mail.ru
+# Connect Mail.ru Cloud
 
-1. Откройте [пароли внешних приложений Mail](https://account.mail.ru/user/2-step-auth/passwords/):
-   в Почте это «Настройки → Все настройки → Безопасность → Пароли для внешних приложений».
-   Нажмите «Создать», назовите пароль `OpenSCP`, выберите **«Полный доступ к Облаку»**
-   и скопируйте созданный пароль. Доступ только к Почте для подключения Облака не подходит.
-   [Официальная инструкция](https://help.mail.ru/mail/login/mailer/).
-2. Откройте «Подключения → Подключение» и выберите «Облако Mail.ru».
-3. Введите название профиля, полный email аккаунта и пароль приложения.
-   Инструкция по созданию пароля и входу через VK ID скрыта в подсказке у синей звёздочки
-   рядом с подписью «Пароль приложения». Она открывается при наведении, фокусе или клике;
-   повторный клик, Escape или клик вне подсказки закрывает её.
-4. При необходимости в «Дополнительно» задайте начальный каталог и timeout.
-5. Нажмите «Проверить подключение». Профиль сохранится и будет проверен доступ на чтение
-   к корню и начальному каталогу. Сетевой диск или приложение Mail устанавливать не требуется.
-6. Сохраните профиль и выберите его в списке источников нужной панели.
+[Русский](mailru.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-Если на сайте вы входите через VK ID, войдите так же в настройки Mail и создайте пароль
-приложения. Обычный пароль и пароль VK ID здесь не подходят: WebDAV принимает только пароль
-внешнего приложения. В поле email нужен полный адрес ящика, которому принадлежит Облако,
-а не телефон или имя пользователя ВКонтакте.
-[Требование Mail для WebDAV](https://help.mail.ru/cloud/desktop/webdav/).
+Use your existing Mail account and an application password with Cloud access.
 
-При отсутствующем/неверном пароле или отказе WebDAV во время входа появится диалог ввода
-пароля приложения. Флаг сохранения
-записывает исправленный пароль после успешного подключения в защищённое хранилище ОС.
-Экспорт переносит настройки без пароля; на другом устройстве его нужно ввести заново.
+## Prepare an application password
 
-Если Mail.ru всё равно отказывает в доступе, проверьте email, что пароль создан для того же
-аккаунта и имеет право «Полный доступ к Облаку». Отказ при входе сам по себе не доказывает,
-что пароль неверен; при верных данных проверьте доступ через WebDAV по официальной инструкции
-Mail. Отказ в отдельной операции после подключения означает недостаточные права на операцию
-и не вызывает новый запрос пароля.
+Open [Mail application passwords](https://account.mail.ru/user/2-step-auth/passwords/).
+In Mail's website this is **Settings → All settings → Security → Application passwords**.
+Create a password named OpenSCP, select **Full access to Cloud**
+(Полный доступ к Облаку) and copy the generated password. Email-only access is not
+sufficient. See [Mail's instructions](https://help.mail.ru/mail/login/mailer/) (Russian).
 
-Создание папок, rename/delete и F5 работают как у других источников. Соседняя панель может
-содержать Local, SFTP, FTP, S3 или другой профиль Mail.ru. Конфликт запрашивается только при
-существующем назначении. Последний каталог запоминается отдельно для каждого профиля.
+If you normally sign in through VK ID, use that sign-in to open Mail settings and
+create the application password. Your regular password and VK ID password do not
+work for this connection. WebDAV requires an application password.
+See [Mail's WebDAV requirements](https://help.mail.ru/cloud/desktop/webdav/) (Russian).
 
-Прерванная передача Mail.ru перезапускается с начала. На сервисе может остаться
-`.openscp-part-…`; удаляйте его только после завершения использующей его операции.
-При обрыве публикации конечного имени сначала проверьте результат в облаке.
+## Connect in OpenSCP
 
-Проверки с настоящим аккаунтом ещё требуют завершения; автоматические тесты
-используют отдельный сервер WebDAV. [Приёмка для разработчиков](../testing/mailru.md).
+1. Open **Connections → Connection → Mail.ru Cloud**.
+2. Enter a profile name, the full mailbox email that owns the Cloud, and the
+   application password. A phone number or VK profile name is not the mailbox address.
+3. The blue marker beside **Application password** opens setup and VK ID guidance
+   on hover, focus or click. Click again, press Escape or click outside to close it.
+4. If needed, choose an initial directory and timeout under **Advanced**.
+5. Choose **Test connection**. This saves the profile and checks read access to
+   the root and initial directory. No mapped network drive or Mail desktop app is needed.
+6. Save the profile and select it in the source picker above either panel.
+
+An absent or rejected password prompts for an application password again. Choosing
+to save it stores the corrected password in the operating system's protected
+storage after a successful connection. Exports do not include the password; enter
+it again on another computer.
+
+## File operations and troubleshooting
+
+Create folders, rename, delete and use F5 as with other sources. The other panel
+can show local folders, SFTP, FTP, S3 or another Mail.ru profile. A conflict is
+requested only when the destination already exists. The last directory is remembered
+separately for each profile.
+
+If access is refused, check the mailbox address, that the password belongs to the
+same account, and that it grants Cloud access. A sign-in refusal alone does not
+prove the password is wrong. If the credentials appear correct, check WebDAV access
+using Mail's instructions. A refusal of one operation after connecting indicates
+insufficient operation permissions and does not trigger another password prompt.
+
+Interrupted transfers restart from zero. A `.openscp-part-…` file may remain;
+remove it only after the operation using it has finished. If publishing the final
+name was interrupted, inspect the destination before retrying.
+
+Real-account acceptance remains open. Automated checks use a separate WebDAV
+server and do not establish Mail.ru account or subscription restrictions.

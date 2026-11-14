@@ -1,34 +1,33 @@
-# Documentation / Документация
+# Documentation
 
-## Use OpenSCP / Работа с приложением
+[Русский](README.ru.md) · [Overview and downloads](../README.md)
 
-| Topic / Тема                                                  | English                                    | Русский                                     |
-| ------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------- |
-| Overview and downloads / Обзор и скачивание                   | [README](../README.md)                     | [README](../README.ru.md)                   |
-| First transfer / Первая передача                              | [Getting started](user/getting-started.md) | [Начало работы](user/getting-started.ru.md) |
-| Keyboard and tabs / Клавиатура и вкладки                      | —                                          | [Руководство](user/commander.md)            |
-| Installation and updates / Установка и обновления             | —                                          | [Особенности платформ](user/platforms.md)   |
-| Mail.ru Cloud / Облако Mail.ru                                | —                                          | [Подключение](user/mailru.md)               |
-| Yandex Disk / Яндекс Диск                                     | —                                          | [Подключение](user/yandex.md)               |
-| Google Drive / Google Диск                                    | —                                          | [Подключение](user/google.md)               |
-| iCloud Drive (experimental) / iCloud Drive (экспериментально) | —                                          | [Подключение](user/icloud.md)               |
+## Using OpenSCP
 
-[rclone and PuTTY setup](user/getting-started.md#additional-tools) /
-[Установка rclone и PuTTY](user/getting-started.ru.md#дополнительные-программы).
+- [Getting started](user/getting-started.md)
+- [Install rclone and PuTTY](user/getting-started.md#additional-tools)
+- [Files, tabs and keyboard shortcuts](user/commander.md)
+- [Installation, updates and platform notes](user/platforms.md)
 
-The [project website](https://openscp.made-in-krim.ru/) is the user-facing entry point.
-The repository keeps versioned guides and technical references.
+## Connection guides
 
-Настройка OAuth и проверки разработчиком вынесены из пользовательских руководств.
-Для использования настроенной готовой сборки регистрация своего OAuth-приложения не нужна.
+- [Mail.ru Cloud](user/mailru.md)
+- [Yandex Disk](user/yandex.md)
+- [Google Drive](user/google.md)
+- [iCloud Drive with rclone](user/icloud.md) — experimental
 
-## Build and maintain / Разработка
+These guides assume that you already have a service account. They describe
+sign-in, permission approval and application settings. Google verification is
+pending, so Google Drive access may currently be limited.
 
-- [Source builds and development commands](development.md)
-- [Architecture and provider semantics](architecture/provider-semantics.md)
+## Development and maintenance
+
+- [Build from source and development commands](development.md)
+- [Provider architecture](architecture/provider-semantics.md) — Russian
 - [Architecture decisions](adr)
-- [Integration tests](testing/integration.md)
-- OAuth setup and acceptance: [Google](development/google-oauth.md), [Yandex](development/yandex-oauth.md)
-- Real-service acceptance: [Mail.ru](testing/mailru.md), [iCloud](testing/icloud.md)
-- [Packaging and releases](release/packaging.md)
-- [Documentation placement and media workflow](documentation.md)
+- [Integration tests](testing/integration.md) — Russian
+- Maintainer setup (Russian): [Google](development/google-oauth.md),
+  [Yandex](development/yandex-oauth.md), [advanced rclone configuration](development/icloud-rclone.md)
+- Acceptance checklists (Russian): [Mail.ru](testing/mailru.md), [iCloud](testing/icloud.md)
+- [Packaging and releases](release/packaging.md) — Russian
+- [Documentation and media workflow](documentation.md) — Russian

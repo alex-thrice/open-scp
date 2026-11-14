@@ -58,4 +58,4 @@ native export и источники Mail.ru/Яндекс без безопасн
 
 Тестовые endpoint разрешены только через main-конфигурацию; development Electron требует
 `OPENSCP_GOOGLE_FIXTURE=1` и loopback `OPENSCP_TEST_GOOGLE_ENDPOINT`. Packaged-сборка их игнорирует.
-Реальный smoke и OAuth verification — отдельные пункты [приёмки](../user/google.md).
+Реальный smoke и OAuth verification — отдельные пункты [приёмки](../development/google-oauth.md).

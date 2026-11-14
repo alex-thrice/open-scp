@@ -1,47 +1,60 @@
-# Подключение Google Диска
+# Connect Google Drive
 
-[Начало работы](getting-started.ru.md) · [Вся документация](../README.md)
+[Русский](google.ru.md) · [Getting started](getting-started.md) · [All documentation](../README.md)
 
-## Вход
+## Sign in
 
-1. Откройте **Подключения → Подключение → Google Диск**.
-2. Задайте понятное имя профиля и нажмите **Войти в Google**.
-3. Выберите аккаунт и подтвердите доступ в системном браузере. Пароль Google
-   вводится только на стороне Google, в OpenSCP он не передаётся.
-4. Вернитесь в OpenSCP, проверьте подключение и сохраните профиль.
-5. Выберите профиль в списке источников над нужной панелью.
-6. Откройте папку назначения в другой панели и используйте F5 для копирования.
+1. Open **Connections → Connection → Google Drive**.
+2. Name the profile and choose **Sign in to Google**.
+3. Select your existing Google Account and review the requested access in your
+   system browser. Enter your Google password only on Google's sign-in page.
+4. Return to OpenSCP, test the connection and save the profile.
+5. Select the profile in the source picker above the panel you want to connect.
+6. Open a destination in the other panel and press F5 to copy files.
 
-Вход выполняется через приложение OpenSCP с вашим существующим аккаунтом Google.
-Сейчас ожидается подтверждение Google, поэтому доступ пока может быть ограничен.
-Если вход недоступен, проверьте сведения о релизе и статус поддержки Google Диска.
+OpenSCP handles sign-in with your existing Google Account. Google verification is
+pending, so access may currently be limited. If sign-in is unavailable, check the
+release information and Google Drive support status.
 
-## Файлы, экспорт, корзина и повтор передачи
+## Files, documents and trash
 
-Панель открывает My Drive. ID различает одноимённые файлы; короткий ID виден в строке,
-полный — при наведении. При неоднозначной замене выберите ID назначения в очереди.
-Переименование и корзина применяются к выбранному объекту. Переходы используют сохранённые
-ID; текст адреса показывает понятные имена и доступен только для чтения.
+The panel opens My Drive. File IDs distinguish items with identical names. A short
+ID appears in the row; hover to see the full ID. If an overwrite is ambiguous,
+select the destination ID in the queue. Rename and trash actions apply to the
+selected object. Navigation follows saved IDs while the read-only address shows
+readable folder names.
 
-Google Docs, Sheets, Slides и Drawings открываются через команду «Экспорт документа…»:
-выберите формат и передайте в другую панель. API ограничивает экспорт 10 МиБ. Запись
-бинарного файла поверх Google-документа запрещена. Ярлыки показаны отдельно и не обходятся.
-Если обе панели подключены к Google, для документов доступна обычная команда «Копировать».
-Имя с расширением `.txt` тоже может принадлежать Google-документу: настоящий тип указан
-в подсказке рядом с ID. Новая копия в пределах одного аккаунта создаётся напрямую.
-Между разными аккаунтами Docs, Sheets и Slides передаются через DOCX, XLSX и PPTX с обратным
-импортом в исходный тип Google; имя сохраняется. Экспорт должен укладываться в 10 МиБ.
-История изменений и комментарии таким способом не переносятся; особенности оформления
-зависят от преобразования Google. Доступ к исходному файлу автоматически не меняется.
-Shared Drives и отдельное дерево «Доступные мне» в T33 не поддерживаются.
-Ограничения конкретного файла учитываются в командах и повторно проверяются перед API-запросом.
+Use **Export document…** for Google Docs, Sheets, Slides and Drawings: choose a
+format and transfer the exported file to the other panel. The export limit is
+10 MiB. Uploading a binary file over a Google document is not supported. Shortcuts
+are listed separately and are not followed.
 
-«Переместить в корзину» не удаляет файл навсегда. Восстановление и очистка корзины выполняются
-в Google Диске. Загрузка обычных файлов идёт чанками до 1 МиБ, без локальной промежуточной копии.
-«Продолжить» проверяет исходный файл и смещение upload-сессии текущего запуска. После истечения
-сессии, изменения источника или для источника без безопасного offset используйте «Начать заново».
-Неопределённая финализация требует проверки результата. После перезапуска прерванные передачи не продолжаются автоматически.
+When both panels are connected to Google, documents also support **Copy**. A name
+ending in `.txt` may still belong to a Google document; its actual type appears
+beside the ID in the tooltip. Within the same account, a new copy is created
+directly. Between accounts, Docs, Sheets and Slides pass through DOCX, XLSX and
+PPTX and are imported back into their original Google document type, keeping the
+name. The export must fit within 10 MiB. Revision history and comments are not
+transferred; formatting depends on Google's conversion. Source sharing permissions
+are not changed automatically.
 
-«Выйти» удаляет локальные токены и отключает профили. Для полного отзыва разрешения удалите OpenSCP
-в [подключениях аккаунта Google](https://myaccount.google.com/connections); повторный доступ
-потребует входа. Для смены аккаунта сначала выйдите. Импорт и clone не переносят токены/привязку.
+Shared Drives and a separate Shared with me tree are not supported. Available
+commands respect object permissions and check them again before the operation.
+
+**Move to trash** does not permanently delete a file. Restore files or empty trash
+using Google Drive.
+
+## Interrupted transfers and sign-out
+
+Regular file uploads use chunks up to 1 MiB without an intermediate local copy.
+**Resume** checks the source and the current upload session's offset. Use
+**Restart** when the session has expired, the source has changed or the source
+cannot safely resume from an offset. If finalization is uncertain, inspect the
+destination before retrying. Interrupted transfers do not resume automatically
+after an application restart.
+
+**Sign out** removes local tokens and disconnects the profile's sessions. To revoke
+authorization completely, remove OpenSCP from
+[Google Account connections](https://myaccount.google.com/connections).
+Sign out before switching accounts. Profile imports and duplicates do not carry
+Google tokens or the account association.
