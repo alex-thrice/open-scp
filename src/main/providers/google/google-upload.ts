@@ -63,6 +63,7 @@ export const googleUploadStream = (
   session: GoogleUploadSession,
   options: WriteOptions,
   beforeClose: () => Promise<void>,
+  onComplete: () => void,
 ): WritableStream<Uint8Array> => {
   let buffer = Buffer.allocUnsafe(Math.min(googleChunkSize, session.total - session.offset));
   let buffered = 0;
@@ -141,6 +142,7 @@ export const googleUploadStream = (
         } while (!session.completed);
         buffer = Buffer.alloc(0);
         buffered = 0;
+        onComplete();
       },
       abort: () => {
         aborted = true;

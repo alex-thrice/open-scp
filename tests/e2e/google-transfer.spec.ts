@@ -102,6 +102,30 @@ test('copies TXT files and Google documents between two accounts in both directi
       await expect(left.getByRole('button', { name: /^Copy to /u })).toBeDisabled();
       restricted.capabilities[capability] = true;
     }
+    await right.getByRole('row', { name: 'one.txt', exact: true }).click();
+    await right.getByRole('button', { name: 'Rename', exact: true }).click();
+    const rename = window.getByRole('dialog', { name: 'Rename', exact: true });
+    await rename.getByLabel('Name', { exact: true }).fill('renamed-one.txt');
+    await rename.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await right.getByRole('row', { name: 'renamed-one.txt', exact: true }).click();
+    await window.keyboard.press('Delete');
+    await window
+      .getByRole('dialog', { name: 'Move to trash', exact: true })
+      .getByRole('button', { name: 'Confirm', exact: true })
+      .click();
+    await expect(right.getByRole('row', { name: 'renamed-one.txt', exact: true })).toHaveCount(0);
+    await left.getByRole('row', { name: 'one.txt', exact: true }).click();
+    await copySelection(window, left);
+    await expect(window.getByText(/^Completed ·/u)).toHaveCount(5);
+    await expect(right.getByRole('row', { name: 'one.txt', exact: true })).toBeVisible();
+    const copies = [...(fixture.accounts.get('two')?.values() ?? [])].filter(
+      (entry) => entry.name === 'one.txt' || entry.name === 'renamed-one.txt',
+    );
+    expect(copies).toHaveLength(2);
+    expect(copies.filter((entry) => entry.trashed)).toHaveLength(1);
+    expect(copies.every((entry) => entry.content.toString() === 'TXT content from one.')).toBe(
+      true,
+    );
   } finally {
     await application?.close();
     await fixture.close();
