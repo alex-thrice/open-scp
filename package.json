@@ -26,6 +26,7 @@
     "package:mac": "node scripts/package.mjs --mac",
     "package:signed": "node scripts/package.mjs --signed",
     "icons": "node scripts/generate-icons.mjs",
+    "docs:media": "pnpm build && node scripts/capture-documentation.mjs",
     "licenses:check": "node scripts/generate-license-notices.mjs",
     "test:packaging": "node --test tests/packaging/*.test.mjs",
     "test:packaged": "playwright test tests/e2e/packaged-smoke.spec.ts",
