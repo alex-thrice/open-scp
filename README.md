@@ -45,10 +45,10 @@ The release page lists the packages actually available for that version.
 
 ### Additional tools for specific features
 
-| Feature                      | Install separately                                                                                                                                       |
-| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| iCloud Drive on any platform | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → iCloud Drive / rclone**                                                 |
-| SSH terminal on Windows      | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); set the path to `putty.exe` in **Settings → Advanced → SSH terminal** if needed |
+| Feature                       | Install separately                                                                                                                                       |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Drive and iCloud Drive | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → Google Drive / iCloud Drive / rclone**                                  |
+| SSH terminal on Windows       | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); set the path to `putty.exe` in **Settings → Advanced → SSH terminal** if needed |
 
 These programs are not bundled with OpenSCP. SFTP browsing and file transfers work
 without PuTTY; it is needed only to open the separate SSH terminal on Windows.
@@ -77,11 +77,13 @@ before accepting it.
 | S3 / compatible storage     | Region, bucket and access keys; a custom endpoint for services such as MinIO    |
 | Mail.ru Cloud               | Account email and an external application password with Cloud access            |
 | Yandex Disk                 | Sign in to your Yandex ID in your browser                                       |
-| Google Drive                | Sign in to your Google Account in your browser                                  |
+| Google Drive                | Separately installed rclone and a configured Google Drive remote                |
 | iCloud Drive — experimental | Separately installed rclone; account setup is available from OpenSCP            |
 
-Google Drive sign-in is handled by OpenSCP. Google verification is pending, so
-access may currently be limited.
+Google Drive uses a connection you configure in rclone with your own OAuth client.
+See the [Google Drive guide](docs/user/google.md) for setup and limitations.
+Google and iCloud remain separate connection types, with a distinct remote for
+each account. Native Google documents and shortcuts are currently hidden.
 
 Cloud integrations have additional limitations and real-account acceptance checks
 remain open. Read the service guides before relying on a new connection for important files.
@@ -96,7 +98,8 @@ Despite the application name, the SCP protocol is not currently supported.
   [Google Drive](docs/user/google.md), [iCloud Drive](docs/user/icloud.md)
 - [All documentation](docs/README.md)
 
-Saved passwords and OAuth tokens use the operating system's protected storage.
+Passwords and Yandex OAuth tokens saved by OpenSCP use the operating system's
+protected storage. Google and iCloud credentials are managed separately by rclone.
 Profile exports exclude passwords and tokens, but still contain connection details;
 review them before sharing.
 

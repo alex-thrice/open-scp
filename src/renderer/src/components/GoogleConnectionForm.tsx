@@ -1,12 +1,10 @@
-import { googleDisplayPath, googleRootPath } from '@shared/models/google-path';
-import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { GoogleConnectionProfile } from '@shared/models/connection-profile';
 import type { WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import type { WorkspaceRunner } from './useWorkspaceService';
 import { Dialog } from './Dialog';
 import { useProfileConnectionTest } from './useProfileConnectionTest';
-import { GoogleAuthorizationControls } from './GoogleAuthorizationControls';
 
 export const GoogleConnectionForm = ({
   profile,
@@ -31,25 +29,38 @@ export const GoogleConnectionForm = ({
 }) => {
   const { t } = useTranslation();
   const formId = useId();
-  const form = useRef<HTMLFormElement>(null);
-  const authorizeSubmission = useRef(false);
   const [createdId, setCreatedId] = useState<string>();
   const [saving, setSaving] = useState(false);
   const [invalid, setInvalid] = useState(false);
-  const id = profile?.id ?? createdId;
-  const authorization = snapshot.googleAuthorizations?.find((entry) => entry.profileId === id);
-  const waiting = authorization?.state === 'waiting' || authorization?.state === 'exchanging';
+  const [refreshing, setRefreshing] = useState(false);
+  const [selection, setSelection] = useState(profile ? (profile.remote ?? '') : undefined);
+  const runRef = useRef(run);
+  runRef.current = run;
+  const remotes = [...new Set(snapshot.googleRemotes ?? [])].sort((left, right) =>
+    left.localeCompare(right),
+  );
+  const remote = selection ?? remotes[0] ?? '';
+  const isMissing = !!remote && !remotes.includes(remote);
   const connectionTest = useProfileConnectionTest(run, errorKey);
   const busy = saving || connectionTest.isTesting;
+  const canSave = snapshot.rcloneAvailable === true && !!remote && !isMissing;
+  useEffect(() => {
+    let disposed = false;
+    setRefreshing(true);
+    void runRef.current({ action: 'refresh-rclone' }).finally(() => {
+      if (!disposed) setRefreshing(false);
+    });
+    return () => {
+      disposed = true;
+    };
+  }, []);
   const close = () => {
-    if (busy) return;
-    if (id && waiting) void run({ action: 'cancel-google-authorization', profileId: id });
-    onClose();
+    if (!busy && !refreshing) onClose();
   };
   const save = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (busy || refreshing || !canSave) return;
     const target = event.currentTarget;
-    const authorize = authorizeSubmission.current;
     const test = connectionTest.isTestSubmission();
     connectionTest.reset();
     if (!target.checkValidity()) {
@@ -63,8 +74,9 @@ export const GoogleConnectionForm = ({
       const result = await run({
         action: 'save-google-profile',
         profile: {
-          id: id ?? null,
+          id: profile?.id ?? createdId ?? null,
           name: String(data.get('name')),
+          remote,
           initialDirectory: String(data.get('initialDirectory')),
           timeout: Number(data.get('timeout')),
         },
@@ -72,9 +84,7 @@ export const GoogleConnectionForm = ({
       if (!result?.savedProfileId) return;
       setCreatedId(result.savedProfileId);
       if (afterSave && !(await afterSave(result))) return;
-      if (authorize)
-        await run({ action: 'authorize-google-profile', profileId: result.savedProfileId });
-      else if (test) await connectionTest.test(result.savedProfileId);
+      if (test) await connectionTest.test(result.savedProfileId);
       else (onConfirm ?? onClose)();
     } finally {
       setSaving(false);
@@ -84,111 +94,129 @@ export const GoogleConnectionForm = ({
     <Dialog
       title={t('ui.connections')}
       onClose={close}
-      notice={
-        connectionTest.feedback ??
-        (authorization?.errorKey ? (
-          <p role="alert" className="connection-feedback connection-feedback--error">
-            {t(authorization.errorKey)}
-          </p>
-        ) : null)
-      }
+      notice={connectionTest.feedback}
       footer={
         <>
-          <button type="button" disabled={busy} onClick={close}>
+          <button type="button" disabled={busy || refreshing} onClick={close}>
             {t('connections.cancel')}
           </button>
           <button
             type="button"
-            disabled={busy || waiting}
+            disabled={busy || refreshing || !canSave}
             form={formId}
             onClick={(event) => connectionTest.submitTest(event.currentTarget.form)}
           >
             {t('connections.test')}
           </button>
-          <button className="primary" type="submit" disabled={busy || waiting} form={formId}>
+          <button
+            className="primary"
+            type="submit"
+            disabled={busy || refreshing || !canSave}
+            form={formId}
+          >
             {t('connections.save')}
           </button>
         </>
       }
     >
       {editorControls ? (
-        <button className="back-button" type="button" disabled={busy} onClick={close}>
+        <button className="back-button" type="button" disabled={busy || refreshing} onClick={close}>
           ← {t('ui.backProfiles')}
         </button>
       ) : null}
       {invalid ? <p role="alert">{t('library.validation')}</p> : null}
+      {profile && !profile.remote ? <p role="status">{t('google.reconfigure')}</p> : null}
+      <p className="muted small">{t('google.setupHint')}</p>
+      {!snapshot.rcloneAvailable && !refreshing ? (
+        <p role="status">{t('google.rcloneUnavailable')}</p>
+      ) : null}
       <form
         id={formId}
-        ref={form}
         noValidate
         onInput={connectionTest.reset}
         onSubmit={(event) => void save(event)}
       >
-        <label>
-          {t('connections.name')}
-          <input
-            name="name"
-            data-dialog-autofocus
-            defaultValue={profile?.name ?? initialName ?? ''}
-            maxLength={200}
-            required
-            disabled={waiting}
-          />
-        </label>
-        {editorControls}
-        <GoogleAuthorizationControls
-          profileId={id}
-          snapshot={snapshot}
-          run={run}
-          disabled={busy}
-          onAuthorize={() => {
-            authorizeSubmission.current = true;
-            try {
-              form.current?.requestSubmit();
-            } finally {
-              authorizeSubmission.current = false;
-            }
-          }}
-        />
-        <details className="advanced-fields">
-          <summary>{t('ui.advanced')}</summary>
+        <fieldset className="icloud-profile-fields" disabled={busy}>
           <label>
-            {t('connections.initialDirectory')}
-            <select
-              name="initialDirectory"
-              defaultValue={profile?.initialDirectory ?? googleRootPath}
-              title={t('google.initialDirectoryHint')}
+            {t('connections.name')}
+            <input
+              name="name"
+              data-dialog-autofocus
+              defaultValue={profile?.name ?? initialName ?? ''}
+              maxLength={200}
               required
-              disabled={waiting}
+            />
+          </label>
+          {editorControls}
+          <label>
+            {t('google.remote')}
+            <select
+              aria-label={t('google.remote')}
+              name="remote"
+              value={remote}
+              disabled={refreshing || !remotes.length}
+              onChange={(event) => setSelection(event.currentTarget.value)}
+              required
             >
-              {[
-                ...new Set([
-                  googleRootPath,
-                  profile?.initialDirectory ?? googleRootPath,
-                  ...snapshot.sessions
-                    .filter((session) => session.profileId === id && session.kind === 'google')
-                    .map((session) => session.currentPath ?? googleRootPath),
-                ]),
-              ].map((path) => (
-                <option key={path} value={path}>
-                  {googleDisplayPath(path)}
+              {!remote ? (
+                <option value="">
+                  {t(
+                    refreshing
+                      ? 'icloud.loadingRemotes'
+                      : remotes.length
+                        ? 'google.chooseRemote'
+                        : 'google.noRemotes',
+                  )}
+                </option>
+              ) : null}
+              {isMissing ? (
+                <option value={remote} disabled>
+                  {remote} ({t('icloud.remoteUnavailable')})
+                </option>
+              ) : null}
+              {remotes.map((name) => (
+                <option key={name} value={name}>
+                  {name}
                 </option>
               ))}
             </select>
           </label>
-          <label>
-            {t('connections.timeout')}
-            <input
-              name="timeout"
-              type="number"
-              defaultValue={profile?.timeout ?? 30000}
-              min={1000}
-              max={120000}
-              required
-              disabled={waiting}
-            />
-          </label>
-        </details>
+          <small>{t('google.remoteHint')}</small>
+          <button
+            type="button"
+            disabled={refreshing}
+            onClick={() => {
+              setRefreshing(true);
+              void run({ action: 'refresh-rclone' }).finally(() => setRefreshing(false));
+            }}
+          >
+            {t('icloud.refreshRemotes')}
+          </button>
+          <details className="advanced-fields">
+            <summary>{t('ui.advanced')}</summary>
+            <label>
+              {t('connections.initialDirectory')}
+              <input
+                name="initialDirectory"
+                defaultValue={
+                  profile?.initialDirectory?.startsWith('/') ? profile.initialDirectory : '/'
+                }
+                required
+              />
+            </label>
+            <label>
+              {t('connections.timeout')}
+              <input
+                name="timeout"
+                type="number"
+                defaultValue={profile?.timeout ?? 60000}
+                min={1000}
+                max={120000}
+                required
+              />
+            </label>
+          </details>
+        </fieldset>
       </form>
     </Dialog>
   );

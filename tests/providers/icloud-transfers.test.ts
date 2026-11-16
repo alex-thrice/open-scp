@@ -12,7 +12,6 @@ import { startICloudFixture } from '../fixtures/icloud-harness';
 import type { ICloudProvider } from '../../src/main/providers/icloud/icloud-provider';
 import { createYandexHarness } from '../fixtures/yandex-harness';
 import { createGoogleHarness } from '../fixtures/google-harness';
-import { googleChildPath, googleRootPath } from '../../src/shared/models/google-path';
 
 const path = (value: string) => createRemoteProviderPath('icloud', value);
 describe('iCloud common transfer queue', () => {
@@ -123,18 +122,14 @@ describe('iCloud common transfer queue', () => {
     const yandexHarness = await createYandexHarness();
     const googleHarness = await createGoogleHarness();
     const yandex = yandexHarness.provider();
-    const google = googleHarness.provider();
+    const google = googleHarness.create();
     try {
       await yandexHarness.authorize();
-      await googleHarness.authorize();
       await yandex.connect();
       await google.connect();
       await writeFile(join(fixture.root, 'icloud', 'sample.txt'), 'cross-cloud content');
       const yandexPath = createRemoteProviderPath('yandex', '/sample.txt');
-      const googlePath = createRemoteProviderPath(
-        'google',
-        googleChildPath(googleRootPath, 'sample.txt'),
-      );
+      const googlePath = createRemoteProviderPath('google', '/sample.txt');
       for (const [provider, destinationPath] of [
         [yandex, yandexPath],
         [google, googlePath],
@@ -150,7 +145,7 @@ describe('iCloud common transfer queue', () => {
         const uploaded = (
           await provider.list(
             provider.kind === 'google'
-              ? createRemoteProviderPath('google', googleRootPath)
+              ? createRemoteProviderPath('google', '/')
               : createRemoteProviderPath('yandex', '/'),
           )
         ).find((entry) => entry.name === 'sample.txt');

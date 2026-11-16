@@ -10,12 +10,6 @@ export default defineConfig(({ mode }) => {
   return {
     main: {
       define: {
-        __OPENSCP_GOOGLE_CLIENT_ID__: JSON.stringify(
-          environment.OPENSCP_GOOGLE_CLIENT_ID?.trim() ?? '',
-        ),
-        __OPENSCP_GOOGLE_CLIENT_SECRET__: JSON.stringify(
-          environment.OPENSCP_GOOGLE_CLIENT_SECRET?.trim() ?? '',
-        ),
         __OPENSCP_YANDEX_CLIENT_ID__: JSON.stringify(
           environment.OPENSCP_YANDEX_CLIENT_ID?.trim() ?? '',
         ),

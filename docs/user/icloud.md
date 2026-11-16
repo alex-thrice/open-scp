@@ -9,7 +9,7 @@ Real-account and platform acceptance checks remain open.
 ## Set up rclone in OpenSCP
 
 1. Download rclone for your system and extract it into a permanent folder.
-2. Open **Settings → Advanced → iCloud Drive / rclone**.
+2. Open **Settings → Advanced → Google Drive / iCloud Drive / rclone**.
 3. Select the executable or its folder using **Choose rclone…**, then save. On
    Windows, for example, select `C:\Tools\rclone\rclone.exe`. Leaving the path empty
    enables automatic detection.

@@ -30,21 +30,22 @@ Docker build cache. Лицензии и CREDITS включены в тестов
 
 ## Только фиктивные credentials
 
-T33 использует `tests/fixtures/google-fixture.ts`: desktop OAuth/PKCE с Bearer, ID-дерево
-с одинаковыми именами, capabilities, native export и resumable sessions. Unit/Electron без
-реального Google-аккаунта; cross-provider SFTP/FTP/S3 требуют Docker.
+Google Drive использует фиктивный процесс rclone без настоящего Google-аккаунта.
+Проверяются типы remotes `drive`/`iclouddrive`, обычные пути и файловые операции,
+потоковые передачи, отмена, повтор с начала, отказ для дубликатов имён, скрытие
+native-документов и миграция прежних OAuth-профилей. Транспорт Google OAuth/API
+прежнего T33 удалён; его HTTP-стенд больше не используется.
 
 ```sh
 pnpm exec vitest run google
-pnpm exec vitest run --config vitest.integration.config.ts tests/integration/google-transfers.test.ts
 pnpm build
 pnpm exec playwright test tests/e2e/google-transfer.spec.ts
 ```
 
-Проверяются точный ID при замене, запрет native overwrite/shortcut traversal, права, корзина,
-потоковые файлы, отмена/resume с проверкой offset и источника, истечение сессии, quota/rate,
-refresh/отзыв, clone/import, Electron restart и явный export PDF.
-Реальный smoke и публичная OAuth verification: [чеклист Google](../development/google-oauth.md).
+Google OAuth client и Google-токены не нужны для автоматических тестов OpenSCP.
+Реальные remotes, аккаунты и платформы проверяются отдельно:
+[чеклист Google/rclone](../development/google-oauth.md). Приёмка не подразумевает
+обход правил Google; пользовательская конфигурация rclone имеет свои ограничения.
 
 T32 использует `tests/fixtures/yandex-fixture.ts` с фиктивным Client ID и токенами на случайном
 loopback-порту. Реальный браузер/аккаунт для этих проверок не нужен. Модульные и Electron-тесты

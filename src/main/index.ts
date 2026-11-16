@@ -40,7 +40,7 @@ import { openSshTerminal } from './external/ssh-terminal';
 import { normalizeMacApplicationPath, openEditor } from './external/editor';
 import { applicationErrorCodes } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
-import { createGoogleConfiguration } from './oauth/google-configuration';
+import { discoverGoogleAvailability } from './providers/google/google-availability';
 import { createYandexConfiguration } from './oauth/yandex-configuration';
 import { fitWindowBounds, readWindowState, type PersistedWindowState } from './window-state';
 import { loadAutoUpdater, UpdateService } from './updates/update-service';
@@ -274,10 +274,10 @@ app.whenReady().then(async () => {
     localRootPath: localBrowsePaths.rootPath,
   });
   const profileStore = new ProfileStore(database, credentials);
-  const icloudAvailability = await discoverICloudAvailability(
-    undefined,
-    profileStore.getSetting('rclone-path'),
-  );
+  const [icloudAvailability, googleAvailability] = await Promise.all([
+    discoverICloudAvailability(undefined, profileStore.getSetting('rclone-path')),
+    discoverGoogleAvailability(undefined, profileStore.getSetting('rclone-path')),
+  ]);
   let applicationCloseApproved = false;
   let readActiveTransfers = (): boolean => false;
   const closeGuard: ApplicationCloseGuard = {
@@ -342,8 +342,9 @@ app.whenReady().then(async () => {
     },
     applyApplicationLanguage,
     {
-      rcloneAvailable: icloudAvailability.available,
+      rcloneAvailable: icloudAvailability.available || googleAvailability.available,
       icloudRemotes: icloudAvailability.remotes,
+      googleRemotes: googleAvailability.remotes,
       pickRclone: async () => {
         const result = await dialog.showOpenDialog({
           properties: ['openFile'],
@@ -354,10 +355,6 @@ app.whenReady().then(async () => {
         return result.canceled ? null : (result.filePaths[0] ?? null);
       },
       dragDirectory: join(app.getPath('userData'), 'drag-files'),
-      google: {
-        ...createGoogleConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
-        callbackLanguage: oauthCallbackLanguage,
-      },
       yandex: {
         ...createYandexConfiguration(app.isPackaged, (url) => shell.openExternal(url)),
         callbackLanguage: oauthCallbackLanguage,

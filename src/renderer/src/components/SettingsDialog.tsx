@@ -44,6 +44,7 @@ export const SettingsDialog = ({
   rclonePath,
   rcloneAvailable,
   icloudRemoteCount,
+  googleRemoteCount = 0,
   rememberPaths,
   updateSettings,
   transferSettings,
@@ -61,6 +62,7 @@ export const SettingsDialog = ({
   readonly rclonePath: string | null;
   readonly rcloneAvailable: boolean;
   readonly icloudRemoteCount: number;
+  readonly googleRemoteCount?: number;
   readonly rememberPaths: boolean;
   readonly updateSettings: UpdateSettings;
   readonly transferSettings: TransferSettings;
@@ -525,6 +527,11 @@ export const SettingsDialog = ({
                   { count: icloudRemoteCount },
                 )}
               </p>
+              {rcloneAvailable ? (
+                <p role="status" className="muted">
+                  {t('google.configuredRemotes', { count: googleRemoteCount })}
+                </p>
+              ) : null}
               <label>
                 {t('icloud.executablePath')}
                 <input

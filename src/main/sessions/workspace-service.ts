@@ -44,20 +44,7 @@ import { discoverICloudAvailability } from '../providers/icloud/icloud-availabil
 import { ICloudConfiguration } from '../providers/icloud/icloud-configuration';
 import { GoogleProvider } from '../providers/google/google-provider';
 import { GoogleConnection } from '../providers/google/google-connection';
-import {
-  GoogleAuthorization,
-  type GoogleConfiguration,
-} from '../providers/google/google-authorization';
-import {
-  googleRootPath,
-  googleChildPath,
-  googleParentPath,
-  googlePathName,
-  googleDisplayPath,
-  parseGooglePath,
-  formatGooglePath,
-} from '@shared/models/google-path';
-import { createGoogleProviderPath } from '@shared/models/provider-path';
+import { discoverGoogleAvailability } from '../providers/google/google-availability';
 import { YandexProvider } from '../providers/yandex/yandex-provider';
 import { YandexConnection } from '../providers/yandex/yandex-connection';
 import {
@@ -91,15 +78,13 @@ import {
   type UpdateState,
 } from '@shared/models/application-update';
 
-const sourcePathGoogleName = (path: string) =>
-  path.startsWith(googleRootPath) ? googlePathName(path) : posix.basename(path);
-
 export interface WorkspaceExternalActions {
   readonly rcloneAvailable?: boolean;
   readonly icloudRemotes?: readonly string[];
+  readonly googleRemotes?: readonly string[];
   readonly pickRclone?: () => Promise<string | null>;
   readonly icloudLaunch?: RcloneLauncher;
-  readonly google?: GoogleConfiguration;
+  readonly googleLaunch?: RcloneLauncher;
   readonly yandex?: YandexConfiguration;
   readonly mailruEndpoint?: string;
   readonly dragDirectory?: string;
@@ -211,9 +196,9 @@ const readRecentPaths = (value: string | undefined): string[] => {
 export class WorkspaceService {
   private rcloneAvailable: boolean;
   private icloudRemotes: readonly string[];
-  private icloudAvailabilityVersion = 0;
+  private googleRemotes: readonly string[];
+  private rcloneAvailabilityVersion = 0;
   private readonly icloudConfiguration: ICloudConfiguration;
-  private readonly google: GoogleAuthorization;
   private readonly yandex: YandexAuthorization;
   public readonly transfers: TransferEngine;
   public readonly externalDrags: ExternalDragService;
@@ -248,20 +233,11 @@ export class WorkspaceService {
   ) {
     this.rcloneAvailable = externalActions.rcloneAvailable ?? false;
     this.icloudRemotes = externalActions.icloudRemotes ?? [];
+    this.googleRemotes = externalActions.googleRemotes ?? [];
     this.icloudConfiguration = new ICloudConfiguration((profile) => {
       const path = this.store.getSetting('rclone-path');
       return this.externalActions.icloudLaunch ?? createRcloneLauncher(profile, () => path);
     });
-    this.google = new GoogleAuthorization(
-      store,
-      credentials,
-      externalActions.google ?? {
-        clientId: '',
-        openBrowser: async () => {
-          throw new ApplicationError(applicationErrorCodes.oauthConfiguration);
-        },
-      },
-    );
     this.yandex = new YandexAuthorization(
       store,
       credentials,
@@ -406,9 +382,8 @@ export class WorkspaceService {
         ),
       profiles: [...this.store.list()],
       icloudRemotes: [...this.icloudRemotes],
+      googleRemotes: [...this.googleRemotes],
       rcloneAvailable: this.rcloneAvailable,
-      googleOAuthConfigured: this.google.configured,
-      googleAuthorizations: this.google.snapshots(),
       yandexOAuthConfigured: this.yandex.configured,
       yandexAuthorizations: this.yandex.snapshots(),
       language: language === 'en' || language === 'ru' ? language : null,
@@ -431,13 +406,14 @@ export class WorkspaceService {
                 : null,
               passwordRequired:
                 !(provider instanceof ICloudProvider) &&
+                !(provider instanceof GoogleProvider) &&
                 provider.connection.profile.authentication.method === 'password' &&
                 (provider.connection.failureCode === applicationErrorCodes.credentialRequired ||
                   provider.connection.failureCode === applicationErrorCodes.authenticationFailed ||
                   provider.connection.failureCode ===
                     applicationErrorCodes.mailruWebdavAccessDenied),
               authorizationRequired:
-                (provider instanceof YandexProvider || provider instanceof GoogleProvider) &&
+                provider instanceof YandexProvider &&
                 provider.connection.failureCode === applicationErrorCodes.oauthRequired,
               pathFallback: this.pathFallbacks.get(workspaceId) ?? false,
               ...(provider instanceof FtpProvider ? { insecure: true } : {}),
@@ -472,7 +448,6 @@ export class WorkspaceService {
   public dispose(): void {
     this.icloudConfiguration.dispose();
     this.yandex.dispose();
-    this.google.dispose();
     for (const edit of this.profileEdits.values()) edit.rollback();
     this.profileEdits.clear();
     for (const provider of this.profileTests.values()) void provider.disconnect();
@@ -532,7 +507,11 @@ export class WorkspaceService {
       );
     if (profile.kind === 'google')
       return new GoogleProvider(
-        new GoogleConnection(profile, this.google.vault, this.externalActions.google?.apiEndpoint),
+        new GoogleConnection(
+          profile,
+          this.externalActions.googleLaunch ??
+            createRcloneLauncher(profile, () => this.store.getSetting('rclone-path')),
+        ),
       );
     if (profile.kind === 'yandex')
       return new YandexProvider(
@@ -594,10 +573,7 @@ export class WorkspaceService {
               profile.bucket ?? '',
               profile.initialPrefix ? s3Prefix(profile.initialPrefix) : '',
             )
-          : this.remotePath(
-              provider,
-              profile.initialDirectory ?? (profile.kind === 'google' ? googleRootPath : '/'),
-            );
+          : this.remotePath(provider, profile.initialDirectory ?? '/');
       if (initialPath.provider !== 's3') {
         const initial = await provider.stat(initialPath);
         if (initial.kind !== 'directory')
@@ -738,74 +714,6 @@ export class WorkspaceService {
         })),
       };
     }
-    if (provider instanceof GoogleProvider) {
-      const profile = provider.connection.profile;
-      const preferred =
-        requested ??
-        (this.currentPathProfiles.get(workspaceId) === profile.id
-          ? this.currentPaths.get(workspaceId)
-          : undefined) ??
-        this.recentPaths(profile.id)[0] ??
-        profile.initialDirectory ??
-        googleRootPath;
-      const candidates = [preferred];
-      if (requested === null) {
-        let parent = preferred;
-        while (parent !== googleRootPath) {
-          parent = googleParentPath(parent);
-          candidates.push(parent);
-        }
-        candidates.push(googleRootPath);
-      }
-      provider.connection.setDirectoryLoading(true);
-      try {
-        let failure: unknown;
-        for (const currentPath of [...new Set(candidates)]) {
-          try {
-            const path = createGoogleProviderPath(currentPath);
-            const entries = await provider.list(path);
-            const directory = await provider.stat(path);
-            const segments = parseGooglePath(currentPath).segments;
-            this.pathFallbacks.set(workspaceId, requested === null && currentPath !== preferred);
-            return {
-              currentPath,
-              displayPath: googleDisplayPath(currentPath),
-              google: directory.google,
-              breadcrumbs: [
-                { label: 'My Drive', path: googleRootPath },
-                ...segments.map((segment, index) => ({
-                  label: segment.name,
-                  path: formatGooglePath(segments.slice(0, index + 1)),
-                })),
-              ],
-              parentPath: currentPath === googleRootPath ? null : googleParentPath(currentPath),
-              entries: entries.map((entry) => ({
-                name: entry.name,
-                path: entry.path.provider === 'google' ? entry.path.path : '',
-                google: entry.google,
-                kind: entry.kind,
-                size: entry.size,
-                modifiedAt: entry.modifiedAt ?? null,
-                permissions: null,
-              })),
-            };
-          } catch (error) {
-            failure = error;
-            if (
-              requested !== null ||
-              !(error instanceof ProviderError) ||
-              ![providerErrorCodes.notFound, providerErrorCodes.accessDenied].includes(
-                error.code as typeof providerErrorCodes.notFound,
-              )
-            )
-              throw error;
-          }
-        }
-        throw failure;
-      } finally {
-        provider.connection.setDirectoryLoading(false);
-      }
-    }
     const profile = provider.connection.profile;
     const preferredPath = posix.resolve(
       '/',
@@ -905,17 +813,25 @@ export class WorkspaceService {
     return this.transfers.hasActive(workspaceId) || this.externalDrags.hasActive(workspaceId);
   }
 
-  private async refreshICloudAvailability(): Promise<void> {
+  private async refreshRcloneAvailability(): Promise<void> {
     this.rcloneAvailable = false;
     this.icloudRemotes = [];
-    const version = ++this.icloudAvailabilityVersion;
-    const availability = await discoverICloudAvailability(
-      this.externalActions.icloudLaunch,
-      this.store.getSetting('rclone-path'),
-    );
-    if (version === this.icloudAvailabilityVersion) {
-      this.rcloneAvailable = availability.available;
+    this.googleRemotes = [];
+    const version = ++this.rcloneAvailabilityVersion;
+    const [availability, googleAvailability] = await Promise.all([
+      discoverICloudAvailability(
+        this.externalActions.icloudLaunch,
+        this.store.getSetting('rclone-path'),
+      ),
+      discoverGoogleAvailability(
+        this.externalActions.googleLaunch,
+        this.store.getSetting('rclone-path'),
+      ),
+    ]);
+    if (version === this.rcloneAvailabilityVersion) {
+      this.rcloneAvailable = availability.available || googleAvailability.available;
       this.icloudRemotes = availability.remotes;
+      this.googleRemotes = googleAvailability.remotes;
     }
   }
 
@@ -942,7 +858,6 @@ export class WorkspaceService {
       request.profile.id &&
       (this.profileTests.has(request.profile.id) ||
         this.yandex.isAuthorizing(request.profile.id) ||
-        this.google.isAuthorizing(request.profile.id) ||
         [...this.sessions].some(
           ([id, provider]) =>
             this.profile(provider).id === request.profile.id &&
@@ -1006,9 +921,7 @@ export class WorkspaceService {
         if (!edit || this.profileTests.has(edit.profileId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         if (request.result === 'cancel') {
-          this.google.cancel(edit.profileId);
           this.yandex.cancel(edit.profileId);
-          this.google.vault.changed(edit.profileId);
           this.yandex.vault.changed(edit.profileId);
           this.pendingTestHosts.delete(edit.profileId);
           edit.rollback();
@@ -1071,18 +984,20 @@ export class WorkspaceService {
           this.icloudConfiguration.active ||
           [...this.sessions].some(
             ([workspaceId, provider]) =>
-              provider.kind === 'icloud' &&
+              (provider.kind === 'icloud' || provider.kind === 'google') &&
               (this.hasActiveTransfers(workspaceId) || this.mutating.has(workspaceId)),
           ) ||
-          [...this.profileTests.values()].some((provider) => provider.kind === 'icloud')
+          [...this.profileTests.values()].some(
+            (provider) => provider.kind === 'icloud' || provider.kind === 'google',
+          )
         )
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         this.store.setSetting('rclone-path', request.path ?? '');
-        await this.refreshICloudAvailability();
+        await this.refreshRcloneAvailability();
         break;
       }
       case 'refresh-rclone':
-        await this.refreshICloudAvailability();
+        await this.refreshRcloneAvailability();
         break;
       case 'start-icloud-configuration':
         icloudConfiguration = await this.icloudConfiguration.start(
@@ -1091,15 +1006,15 @@ export class WorkspaceService {
           request.appleId,
           request.password,
         );
-        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        if (icloudConfiguration.status === 'complete') await this.refreshRcloneAvailability();
         break;
       case 'continue-icloud-configuration':
         icloudConfiguration = await this.icloudConfiguration.continue(request.id, request.answer);
-        if (icloudConfiguration.status === 'complete') await this.refreshICloudAvailability();
+        if (icloudConfiguration.status === 'complete') await this.refreshRcloneAvailability();
         break;
       case 'cancel-icloud-configuration':
         await this.icloudConfiguration.cancel(request.id);
-        await this.refreshICloudAvailability();
+        await this.refreshRcloneAvailability();
         break;
       case 'set-editor-path':
         if (request.path && !isAbsolute(request.path))
@@ -1240,7 +1155,6 @@ export class WorkspaceService {
         if (!profile) throw new ApplicationError(applicationErrorCodes.providerNotFound);
         const reference = profileSecretReference(profile);
         if (
-          profile.kind === 'google' ||
           profile.kind === 'yandex' ||
           (reference &&
             !this.store.database
@@ -1348,39 +1262,10 @@ export class WorkspaceService {
           ...draft,
           id: draft.id ?? randomUUID(),
           kind: 'google',
-          authentication:
-            previous?.kind === 'google'
-              ? previous.authentication
-              : { method: 'oauth', secret: { id: randomUUID(), storage: 'safe-storage' } },
         };
         savedProfileId = this.store.save(profile).id;
         break;
       }
-      case 'authorize-google-profile':
-      case 'forget-google-authorization': {
-        if (
-          [...this.sessions].some(
-            ([id, provider]) =>
-              this.profile(provider).id === request.profileId &&
-              (this.hasActiveTransfers(id) || this.mutating.has(id)),
-          ) ||
-          this.profileTests.has(request.profileId)
-        )
-          throw new ApplicationError(applicationErrorCodes.providerConflict);
-        if (request.action === 'authorize-google-profile') this.google.authorize(request.profileId);
-        else {
-          for (const [id, provider] of this.sessions)
-            if (this.profile(provider).id === request.profileId) {
-              await provider.disconnect();
-              this.sessions.delete(id);
-            }
-          this.google.forget(request.profileId);
-        }
-        break;
-      }
-      case 'cancel-google-authorization':
-        this.google.cancel(request.profileId);
-        break;
       case 'save-yandex-profile': {
         const draft = request.profile;
         const previous = this.store.list().find((profile) => profile.id === draft.id);
@@ -1578,7 +1463,6 @@ export class WorkspaceService {
       }
       case 'delete-profile': {
         this.yandex.cancel(request.profileId);
-        this.google.cancel(request.profileId);
         if (this.profileTests.has(request.profileId))
           throw new ApplicationError(applicationErrorCodes.providerConflict);
         this.pendingTestHosts.delete(request.profileId);
@@ -1624,7 +1508,6 @@ export class WorkspaceService {
           throw new ApplicationError(applicationErrorCodes.providerUnsupported);
         this.pendingPasswords.delete(request.workspaceId);
         if (provider instanceof YandexProvider) this.yandex.cancel(provider.connection.profile.id);
-        if (provider instanceof GoogleProvider) this.google.cancel(provider.connection.profile.id);
         await provider.disconnect();
         break;
       }
@@ -1766,7 +1649,7 @@ export class WorkspaceService {
           ? basename(request.sourcePath)
           : remoteSource.provider === 's3'
             ? s3Name(remoteSource.key)
-            : sourcePathGoogleName(request.sourcePath);
+            : posix.basename(request.sourcePath);
         if (
           !name ||
           name.includes('\\') ||
@@ -1789,12 +1672,10 @@ export class WorkspaceService {
           destinationPath: isUpload
             ? remoteSource.provider === 's3'
               ? createS3ProviderPath(remoteSource.bucket, `${s3Prefix(remoteSource.key)}${name}`)
-              : remoteSource.provider === 'google'
-                ? createGoogleProviderPath(googleChildPath(request.destinationDirectory, name))
-                : createRemoteProviderPath(
-                    remoteSource.provider,
-                    posix.join(request.destinationDirectory, name),
-                  )
+              : createRemoteProviderPath(
+                  remoteSource.provider,
+                  posix.join(request.destinationDirectory, name),
+                )
             : createLocalProviderPath(join(request.destinationDirectory, name)),
         });
         break;
@@ -1809,47 +1690,33 @@ export class WorkspaceService {
         const name =
           sourcePath.provider === 's3'
             ? s3Name(sourcePath.key)
-            : sourcePathGoogleName(request.sourcePath);
+            : posix.basename(request.sourcePath);
         if (!name || /[\\/\0]/u.test(name) || name === '.' || name === '..')
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
         const destinationPath =
           parent.provider === 's3'
             ? createS3ProviderPath(parent.bucket, `${s3Prefix(parent.key)}${name}`)
-            : parent.provider === 'google'
-              ? createGoogleProviderPath(googleChildPath(request.destinationDirectory, name))
-              : createRemoteProviderPath(
-                  parent.provider,
-                  posix.join(request.destinationDirectory, name),
-                );
+            : createRemoteProviderPath(
+                parent.provider,
+                posix.join(request.destinationDirectory, name),
+              );
         const sourceProfile = this.profile(source);
         const targetProfile = this.profile(destination);
-        if (
-          sourcePath.provider === 'google' &&
-          parent.provider === 'google' &&
-          sourceProfile.kind === 'google' &&
-          targetProfile.kind === 'google' &&
-          (sourceProfile.id === targetProfile.id ||
-            (sourceProfile.accountId && sourceProfile.accountId === targetProfile.accountId))
-        ) {
-          const sourceId = parseGooglePath(sourcePath.path).segments.at(-1)?.id;
-          if (
-            sourceId &&
-            parseGooglePath(parent.path).segments.some((segment) => segment.id === sourceId)
-          )
-            throw new ApplicationError(applicationErrorCodes.providerConflict);
-        }
         const sameServer =
-          sourceProfile.kind === 'sftp' && targetProfile.kind === 'sftp'
-            ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
-              sourceProfile.port === targetProfile.port
-            : sourceProfile.kind === 'ftp' && targetProfile.kind === 'ftp'
+          (sourceProfile.kind === 'google' && targetProfile.kind === 'google') ||
+          (sourceProfile.kind === 'icloud' && targetProfile.kind === 'icloud')
+            ? sourceProfile.remote !== undefined && sourceProfile.remote === targetProfile.remote
+            : sourceProfile.kind === 'sftp' && targetProfile.kind === 'sftp'
               ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
                 sourceProfile.port === targetProfile.port
-              : sourceProfile.kind === 'mailru' && targetProfile.kind === 'mailru'
-                ? sourceProfile.username.toLowerCase() === targetProfile.username.toLowerCase()
-                : sourceProfile.kind === 's3' &&
-                  targetProfile.kind === 's3' &&
-                  (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
+              : sourceProfile.kind === 'ftp' && targetProfile.kind === 'ftp'
+                ? sourceProfile.host.toLowerCase() === targetProfile.host.toLowerCase() &&
+                  sourceProfile.port === targetProfile.port
+                : sourceProfile.kind === 'mailru' && targetProfile.kind === 'mailru'
+                  ? sourceProfile.username.toLowerCase() === targetProfile.username.toLowerCase()
+                  : sourceProfile.kind === 's3' &&
+                    targetProfile.kind === 's3' &&
+                    (sourceProfile.endpoint ?? 'aws') === (targetProfile.endpoint ?? 'aws');
         const original =
           sourcePath.provider === 's3'
             ? formatS3Path(sourcePath)
