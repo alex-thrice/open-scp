@@ -1,9 +1,110 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { LocalDirectoryEntry } from '@shared/ipc/contracts';
 import { describe, expect, it, vi } from 'vitest';
 import { VirtualFileList } from './VirtualFileList';
 
 describe('VirtualFileList', () => {
+  const createEntry = (name: string): LocalDirectoryEntry => ({
+    name,
+    path: `/${name}`,
+    kind: 'file',
+    modifiedAt: null,
+    size: 1n,
+  });
+
+  it('keeps the focused file and range anchor when preceding entries change', () => {
+    const entries = ['b.txt', 'c.txt', 'd.txt'].map(createEntry);
+    const onSelectionChange = vi.fn();
+    const properties = {
+      onOpenDirectory: vi.fn(),
+      onSelectionChange,
+      selectedPaths: ['/c.txt'],
+    };
+    const { rerender } = render(<VirtualFileList entries={entries} {...properties} />);
+    fireEvent.click(screen.getByRole('row', { name: 'c.txt' }));
+
+    rerender(<VirtualFileList entries={[createEntry('a.txt'), ...entries]} {...properties} />);
+    const focused = screen.getByRole('row', { name: 'c.txt' });
+    expect(document.activeElement).toBe(focused);
+    expect(focused.tabIndex).toBe(0);
+    expect(screen.getByRole('row', { name: 'b.txt' }).tabIndex).toBe(-1);
+
+    rerender(
+      <VirtualFileList entries={[createEntry('a.txt'), ...entries.slice(1)]} {...properties} />,
+    );
+    expect(document.activeElement).toBe(focused);
+    expect(focused.tabIndex).toBe(0);
+    fireEvent.click(screen.getByRole('row', { name: 'd.txt' }), { shiftKey: true });
+    expect(onSelectionChange).toHaveBeenLastCalledWith(['/c.txt', '/d.txt']);
+  });
+
+  it('moves keyboard focus to the next surviving file when the focused file disappears', () => {
+    const entries = ['a.txt', 'b.txt', 'c.txt'].map(createEntry);
+    const onOpenFile = vi.fn();
+    const onSelectionChange = vi.fn();
+    const properties = { onOpenDirectory: vi.fn(), onOpenFile, onSelectionChange };
+    const { rerender } = render(
+      <VirtualFileList entries={entries} selectedPaths={['/b.txt']} {...properties} />,
+    );
+    fireEvent.click(screen.getByRole('row', { name: 'b.txt' }));
+
+    rerender(
+      <VirtualFileList
+        entries={entries.filter((entry) => entry.name !== 'b.txt')}
+        selectedPaths={[]}
+        {...properties}
+      />,
+    );
+    const next = screen.getByRole('row', { name: 'c.txt' });
+    expect(document.activeElement).toBe(next);
+    expect(next.tabIndex).toBe(0);
+    expect(onSelectionChange).toHaveBeenLastCalledWith(['/c.txt']);
+    fireEvent.keyDown(next, { key: 'Enter' });
+    expect(onOpenFile).toHaveBeenCalledWith('/c.txt');
+  });
+
+  it('does not steal focus from another control while refreshing entries', () => {
+    const entries = ['a.txt', 'b.txt'].map(createEntry);
+    const onOpenDirectory = vi.fn();
+    const view = (currentEntries: LocalDirectoryEntry[]) => (
+      <>
+        <input aria-label="Rename file" />
+        <VirtualFileList entries={currentEntries} onOpenDirectory={onOpenDirectory} />
+      </>
+    );
+    const { rerender } = render(view(entries));
+    fireEvent.click(screen.getByRole('row', { name: 'a.txt' }));
+    const input = screen.getByRole('textbox', { name: 'Rename file' });
+    act(() => input.focus());
+
+    rerender(view(entries.slice(1)));
+    expect(document.activeElement).toBe(input);
+  });
+
+  it('clamps the viewport after a large deletion and keeps normal refreshes scrolled', () => {
+    const entries = Array.from({ length: 100 }, (_, index) => createEntry(`file-${index}.txt`));
+    const onOpenDirectory = vi.fn();
+    const { container, rerender } = render(
+      <VirtualFileList entries={entries} onOpenDirectory={onOpenDirectory} />,
+    );
+    const viewport = container.querySelector<HTMLDivElement>('.file-list__viewport');
+    if (!viewport) throw new Error('The list viewport is missing.');
+    fireEvent.click(screen.getByRole('row', { name: 'file-0.txt' }));
+    fireEvent.scroll(viewport, { target: { scrollTop: 2500 } });
+    rerender(
+      <VirtualFileList
+        entries={[...entries, createEntry('new.txt')]}
+        onOpenDirectory={onOpenDirectory}
+      />,
+    );
+    expect(viewport.scrollTop).toBe(2500);
+    expect(document.activeElement).toBe(document.body);
+
+    rerender(<VirtualFileList entries={entries.slice(0, 3)} onOpenDirectory={onOpenDirectory} />);
+    expect(viewport.scrollTop).toBe(0);
+    expect(screen.getAllByTestId('file-row')).toHaveLength(3);
+  });
+
   it('starts a native drag for selected local files and preserves internal drags for folders and remote files', () => {
     const desktop = window.desktop;
     const startFileDrag = vi.fn(async () => ({

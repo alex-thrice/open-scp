@@ -19,6 +19,8 @@ import type {
   IpcResponseEnvelope,
   LocalDirectoryEntry,
   LocalDirectoryListing,
+  LocalDirectoryWatchRequest,
+  LocalDirectoryChangedEvent,
   LocalDrive,
   RuntimeInfo,
   RuntimePlatform,
@@ -149,6 +151,19 @@ const isApplicationMenuCommandEvent = (
   typeof value.payload.command === 'string' &&
   applicationMenuCommands.has(value.payload.command as ApplicationMenuCommand);
 
+const isLocalDirectoryChangedEvent = (
+  value: unknown,
+): value is IpcEventEnvelope<LocalDirectoryChangedEvent> =>
+  isRecord(value) &&
+  isCorrelationId(value.correlationId) &&
+  isRecord(value.payload) &&
+  typeof value.payload.subscriptionId === 'string' &&
+  value.payload.subscriptionId.length > 0 &&
+  value.payload.subscriptionId.length <= 128 &&
+  typeof value.payload.path === 'string' &&
+  value.payload.path.length > 0 &&
+  value.payload.path.length <= 32_768;
+
 const parseResponse = <Data>(
   value: unknown,
   correlationId: string,
@@ -267,6 +282,30 @@ export const createDesktopApi = (
         if (isAppReadyEvent(payload)) {
           listener(payload);
         }
+      }),
+    setLocalDirectoryWatch: async (
+      request: LocalDirectoryWatchRequest,
+    ): Promise<IpcResponseEnvelope<null>> => {
+      const correlationId = createCorrelationId();
+      try {
+        const response = await bridge.invoke(ipcRequestChannels.setLocalDirectoryWatch, {
+          correlationId,
+          payload: request,
+        });
+        return parseResponse(response, correlationId, (value): value is null => value === null);
+      } catch {
+        return {
+          correlationId,
+          error: getSafeApplicationError(applicationErrorCodes.ipcUnavailable),
+          ok: false,
+        };
+      }
+    },
+    onLocalDirectoryChanged: (
+      listener: (event: IpcEventEnvelope<LocalDirectoryChangedEvent>) => void,
+    ): (() => void) =>
+      bridge.subscribe(ipcEventChannels.localDirectoryChanged, (payload: unknown) => {
+        if (isLocalDirectoryChangedEvent(payload)) listener(payload);
       }),
     onApplicationMenuCommand: (
       listener: (event: IpcEventEnvelope<ApplicationMenuCommandEvent>) => void,

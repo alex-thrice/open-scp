@@ -10,6 +10,71 @@ import { createDesktopApi, type PreloadIpcBridge } from '../../src/preload/deskt
 const correlationId = '00000000-0000-4000-8000-000000000001';
 
 describe('preload desktop API', () => {
+  it('sets and clears local directory watches through a fixed channel', async () => {
+    const invoke = vi.fn(async (): Promise<unknown> => ({ correlationId, ok: true, data: null }));
+    const desktopApi = createDesktopApi(
+      { invoke, subscribe: vi.fn(() => () => undefined) },
+      () => correlationId,
+    );
+    const request = { subscriptionId: 'left', path: 'C:\\files' };
+    expect(await desktopApi.setLocalDirectoryWatch(request)).toEqual({
+      correlationId,
+      ok: true,
+      data: null,
+    });
+    expect(invoke).toHaveBeenCalledWith(ipcRequestChannels.setLocalDirectoryWatch, {
+      correlationId,
+      payload: request,
+    });
+    await desktopApi.setLocalDirectoryWatch({ ...request, path: null });
+    expect(invoke).toHaveBeenLastCalledWith(ipcRequestChannels.setLocalDirectoryWatch, {
+      correlationId,
+      payload: { subscriptionId: 'left', path: null },
+    });
+    invoke.mockResolvedValue({ correlationId, ok: true, data: {} });
+    expect(await desktopApi.setLocalDirectoryWatch(request)).toMatchObject({
+      ok: false,
+      error: { code: 'INVALID_IPC_RESPONSE' },
+    });
+    invoke.mockRejectedValue(new Error('Disconnected'));
+    expect(await desktopApi.setLocalDirectoryWatch(request)).toMatchObject({
+      ok: false,
+      error: { code: 'IPC_UNAVAILABLE' },
+    });
+  });
+
+  it('validates directory change events and returns the bridge cleanup', () => {
+    let deliver: ((payload: unknown) => void) | undefined;
+    const cleanup = vi.fn();
+    const subscribe = vi.fn((_channel: string, listener: (payload: unknown) => void) => {
+      deliver = listener;
+      return cleanup;
+    });
+    const desktopApi = createDesktopApi({ invoke: vi.fn(), subscribe }, () => correlationId);
+    const listener = vi.fn();
+    const unsubscribe = desktopApi.onLocalDirectoryChanged(listener);
+    expect(subscribe).toHaveBeenCalledWith(
+      ipcEventChannels.localDirectoryChanged,
+      expect.any(Function),
+    );
+    const event = { correlationId, payload: { subscriptionId: 'left', path: 'C:\\files' } };
+    for (const malformed of [
+      null,
+      { ...event, correlationId: 'invalid' },
+      { ...event, payload: { subscriptionId: '', path: 'C:\\files' } },
+      { ...event, payload: { subscriptionId: 'x'.repeat(129), path: 'C:\\files' } },
+      { ...event, payload: { subscriptionId: 'left', path: null } },
+      { ...event, payload: { subscriptionId: 'left', path: '' } },
+      { ...event, payload: { subscriptionId: 'left', path: 'x'.repeat(32_769) } },
+    ])
+      deliver?.(malformed);
+    expect(listener).not.toHaveBeenCalled();
+    deliver?.(event);
+    expect(listener).toHaveBeenCalledWith(event);
+    unsubscribe();
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
   it('starts native drags through a fixed channel and validates the acknowledgement', async () => {
     const invoke = vi.fn(async (): Promise<unknown> => ({ correlationId, ok: true, data: null }));
     const desktopApi = createDesktopApi(

@@ -22,6 +22,3 @@ Signed candidate требует `APP_BUNDLE_ID`, `APP_PRODUCT_NAME` (OpenSCP), `
 Настройки новой идентичности хранятся отдельно. Для переноса используйте экспорт/импорт
 профилей без секретов и повторно задайте credentials; автоматическая миграция Keychain
 не заявляется.
-
-Более поздние решения перечислены в `IMPLEMENTATION_PLAN.md`: updater, crash telemetry,
-минимальные версии ОС, дополнительные S3-системы и keyboard-interactive SFTP authentication.

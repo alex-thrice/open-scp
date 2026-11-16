@@ -40,6 +40,12 @@ const desktopApi: DesktopApi = Object.freeze({
   }),
   onAppReady: () => () => undefined,
   onApplicationMenuCommand: () => () => undefined,
+  onLocalDirectoryChanged: () => () => undefined,
+  setLocalDirectoryWatch: async () => ({
+    correlationId: '00000000-0000-4000-8000-000000000001',
+    ok: false as const,
+    error: { code: 'IPC_UNAVAILABLE' as const, messageKey: 'errors.ipc.unavailable' as const },
+  }),
   runtime: 'electron',
 });
 

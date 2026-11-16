@@ -26,6 +26,16 @@ export interface LocalDirectoryRequest {
   readonly path: string | null;
 }
 
+export interface LocalDirectoryWatchRequest {
+  readonly subscriptionId: string;
+  readonly path: string | null;
+}
+
+export interface LocalDirectoryChangedEvent {
+  readonly subscriptionId: string;
+  readonly path: string;
+}
+
 export interface LocalDrive {
   readonly icon?: string | undefined;
   readonly label: string;
@@ -98,6 +108,7 @@ export interface IpcRequestMap {
   readonly [ipcRequestChannels.workspace]: WorkspaceRequest;
   readonly [ipcRequestChannels.getRuntimeInfo]: EmptyIpcRequest;
   readonly [ipcRequestChannels.listLocalDirectory]: LocalDirectoryRequest;
+  readonly [ipcRequestChannels.setLocalDirectoryWatch]: LocalDirectoryWatchRequest;
   readonly [ipcRequestChannels.listLocalDrives]: EmptyIpcRequest;
 }
 
@@ -105,12 +116,14 @@ export interface IpcResponseMap {
   readonly [ipcRequestChannels.workspace]: WorkspaceResult;
   readonly [ipcRequestChannels.getRuntimeInfo]: RuntimeInfo;
   readonly [ipcRequestChannels.listLocalDirectory]: LocalDirectoryListing;
+  readonly [ipcRequestChannels.setLocalDirectoryWatch]: null;
   readonly [ipcRequestChannels.listLocalDrives]: readonly LocalDrive[];
 }
 
 export interface IpcEventMap {
   readonly [ipcEventChannels.appReady]: AppReadyEvent;
   readonly [ipcEventChannels.applicationMenuCommand]: ApplicationMenuCommandEvent;
+  readonly [ipcEventChannels.localDirectoryChanged]: LocalDirectoryChangedEvent;
 }
 
 export type IpcRequestFor<Channel extends keyof IpcRequestMap> = IpcRequestMap[Channel];

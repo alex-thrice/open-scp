@@ -57,7 +57,10 @@ export const VirtualFileList = ({
   const [sortDirection, setSortDirection] = useState<SortDirection>('ascending');
   const [sortKey, setSortKey] = useState<SortKey>('name');
   const anchor = useRef(0);
+  const anchorPath = useRef<string | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(0);
+  const focusedPath = useRef<string | null>(null);
+  const focusedRowReference = useRef<HTMLElement | null>(null);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchMatchPosition, setSearchMatchPosition] = useState(0);
@@ -89,6 +92,58 @@ export const VirtualFileList = ({
 
     return result;
   }, [entries, i18n.language, i18n.resolvedLanguage, sortDirection, sortKey]);
+  const previousSortedEntries = useRef(sortedEntries);
+
+  useLayoutEffect(() => {
+    const viewport = viewportReference.current;
+    const entriesChanged = previousSortedEntries.current !== sortedEntries;
+    previousSortedEntries.current = sortedEntries;
+    if (!viewport || !entriesChanged) return;
+
+    const currentIndex = sortedEntries.findIndex((entry) => entry.path === focusedPath.current);
+    const nextIndex =
+      currentIndex < 0
+        ? Math.max(0, Math.min(focusedIndex, sortedEntries.length - 1))
+        : currentIndex;
+    focusedPath.current = sortedEntries[nextIndex]?.path ?? null;
+    if (nextIndex !== focusedIndex) setFocusedIndex(nextIndex);
+    const currentAnchor = sortedEntries.findIndex((entry) => entry.path === anchorPath.current);
+    anchor.current =
+      currentAnchor < 0
+        ? Math.max(0, Math.min(anchor.current, sortedEntries.length - 1))
+        : currentAnchor;
+    anchorPath.current = sortedEntries[anchor.current]?.path ?? null;
+
+    const height = viewport.clientHeight || viewportHeight;
+    const maximumScroll = Math.max(0, sortedEntries.length * rowHeight - height);
+    if (viewport.scrollTop > maximumScroll) {
+      viewport.scrollTop = maximumScroll;
+      setScrollTop(maximumScroll);
+    }
+
+    const previousFocusedRow = focusedRowReference.current;
+    if (
+      !previousFocusedRow ||
+      previousFocusedRow.isConnected ||
+      document.activeElement !== document.body ||
+      sortedEntries.length === 0
+    )
+      return;
+
+    if (nextIndex * rowHeight < viewport.scrollTop) viewport.scrollTop = nextIndex * rowHeight;
+    if ((nextIndex + 1) * rowHeight > viewport.scrollTop + height)
+      viewport.scrollTop = (nextIndex + 1) * rowHeight - height;
+    setScrollTop(viewport.scrollTop);
+    const nextPath = sortedEntries[nextIndex]?.path;
+    const restoreFocus = (): void => {
+      if (!viewport.isConnected || document.activeElement !== document.body) return;
+      const nextRow = viewport.querySelector<HTMLElement>(`[data-entry-index="${nextIndex}"]`);
+      if (nextRow?.dataset.entryPath === nextPath) nextRow?.focus({ preventScroll: true });
+    };
+    if (viewport.querySelector(`[data-entry-index="${nextIndex}"]`)) restoreFocus();
+    else requestAnimationFrame(restoreFocus);
+  }, [focusedIndex, rowHeight, sortedEntries, viewportHeight]);
+
   const findSearchMatches = (query: string): number[] => {
     const normalizedQuery = query.toLocaleLowerCase(i18n.resolvedLanguage ?? i18n.language);
     if (!normalizedQuery) return [];
@@ -142,6 +197,7 @@ export const VirtualFileList = ({
         .map((item) => item.path);
     else {
       anchor.current = index;
+      anchorPath.current = entry.path;
       next = toggle
         ? selection.includes(entry.path)
           ? selection.filter((path) => path !== entry.path)
@@ -150,12 +206,14 @@ export const VirtualFileList = ({
     }
     onSelect?.(entry.path);
     onSelectionChange?.(next);
+    focusedPath.current = entry.path;
     setFocusedIndex(index);
   };
   const scrollToRow = (index: number): number => {
     const viewport = viewportReference.current;
     if (!viewport) return 0;
     const bounded = Math.max(0, Math.min(index, sortedEntries.length - 1));
+    focusedPath.current = sortedEntries[bounded]?.path ?? null;
     setFocusedIndex(bounded);
     if (bounded * rowHeight < viewport.scrollTop) viewport.scrollTop = bounded * rowHeight;
     if ((bounded + 1) * rowHeight > viewport.scrollTop + viewport.clientHeight)
@@ -216,6 +274,18 @@ export const VirtualFileList = ({
   };
 
   const onScroll = (event: UIEvent<HTMLDivElement>): void => {
+    const focusedRow = focusedRowReference.current;
+    const nextStart = Math.max(
+      Math.floor(event.currentTarget.scrollTop / rowHeight) - overscanRowCount,
+      0,
+    );
+    const focusedEntryIndex = Number(focusedRow?.dataset.entryIndex);
+    if (
+      !focusedRow?.isConnected ||
+      focusedEntryIndex < nextStart ||
+      focusedEntryIndex >= nextStart + visibleRowCount
+    )
+      focusedRowReference.current = null;
     setScrollTop(event.currentTarget.scrollTop);
   };
 
@@ -301,6 +371,7 @@ export const VirtualFileList = ({
                   }
                   className="file-list__row"
                   data-entry-index={entryIndex}
+                  data-entry-path={entry.path}
                   data-testid="file-row"
                   data-selected={selection.includes(entry.path)}
                   aria-selected={selection.includes(entry.path)}
@@ -312,9 +383,14 @@ export const VirtualFileList = ({
                   onContextMenu={() => {
                     if (!selection.includes(entry.path)) select(entryIndex, false, false);
                   }}
-                  onFocus={() => {
+                  onFocus={(event) => {
+                    focusedRowReference.current = event.currentTarget;
+                    focusedPath.current = entry.path;
                     setFocusedIndex(entryIndex);
                     if (!selection.length) select(entryIndex, false, false);
+                  }}
+                  onBlur={() => {
+                    focusedRowReference.current = null;
                   }}
                   draggable={
                     !!dragSource &&

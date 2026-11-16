@@ -4,6 +4,8 @@ import type {
   IpcEventEnvelope,
   IpcResponseEnvelope,
   LocalDirectoryListing,
+  LocalDirectoryWatchRequest,
+  LocalDirectoryChangedEvent,
   LocalDrive,
   RuntimeInfo,
 } from '@shared/ipc/contracts';
@@ -19,6 +21,12 @@ export interface DesktopApi {
     path: string | null,
   ) => Promise<IpcResponseEnvelope<LocalDirectoryListing>>;
   readonly listLocalDrives: () => Promise<IpcResponseEnvelope<readonly LocalDrive[]>>;
+  readonly setLocalDirectoryWatch: (
+    request: LocalDirectoryWatchRequest,
+  ) => Promise<IpcResponseEnvelope<null>>;
+  readonly onLocalDirectoryChanged: (
+    listener: (event: IpcEventEnvelope<LocalDirectoryChangedEvent>) => void,
+  ) => () => void;
   readonly onAppReady: (listener: (event: IpcEventEnvelope<AppReadyEvent>) => void) => () => void;
   readonly onApplicationMenuCommand: (
     listener: (event: IpcEventEnvelope<ApplicationMenuCommandEvent>) => void,
