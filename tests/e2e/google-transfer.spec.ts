@@ -1,281 +1,130 @@
-import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication } from '@playwright/test';
-import { googleFixtureEntry } from '../fixtures/google-fixture';
-import { googleChildPath, googleRootPath } from '../../src/shared/models/google-path';
-import { startGoogleFixture } from '../fixtures/google-fixture';
-import { copySelection, finishProfile, newConnection, openConnection } from './workspace-ui';
+import type { DesktopApi } from '../../src/shared/desktop-api';
+import { ipcRequestChannels } from '../../src/shared/ipc/channels';
+import type { WorkspaceSnapshot } from '../../src/shared/ipc/workspace';
+import { finishProfile, newConnection, openConnection } from './workspace-ui';
 import { nativeKeyringLaunchOptions } from './electron-launch';
 
-test('copies TXT files and Google documents between two accounts in both directions', async () => {
-  test.setTimeout(90000);
-  const fixture = await startGoogleFixture();
-  const localRoot = await mkdtemp(join(tmpdir(), 'openscp-google-copy-ui-'));
-  const userData = await mkdtemp(join(tmpdir(), 'openscp-google-copy-user-'));
+test('keeps two Google rclone accounts separate from iCloud connections', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'openscp-google-rclone-ui-'));
+  const userData = await mkdtemp(join(tmpdir(), 'openscp-google-rclone-user-'));
+  const packagedPath = process.env.OPENSCP_PACKAGED_EXE;
   let application: ElectronApplication | undefined;
   try {
     application = await electron.launch({
-      ...nativeKeyringLaunchOptions(),
+      ...nativeKeyringLaunchOptions(packagedPath),
       args: [
         '--disable-gpu',
         '--in-process-gpu',
         '--no-sandbox',
         `--user-data-dir=${userData}`,
-        resolve('out/main/index.js'),
+        ...(packagedPath ? [] : [resolve('out/main/index.js')]),
       ],
       env: {
         ...process.env,
         OPENSCP_DISABLE_HARDWARE_ACCELERATION: '1',
-        OPENSCP_LOCAL_ROOT: localRoot,
-        OPENSCP_GOOGLE_FIXTURE: '1',
-        OPENSCP_TEST_GOOGLE_ENDPOINT: fixture.endpoint,
+        OPENSCP_LOCAL_ROOT: root,
+        OPENSCP_RCLONE_PATH: join(root, 'missing-rclone.exe'),
       },
     });
-    const window = await application.firstWindow();
-    for (const account of ['one', 'two']) {
-      fixture.nextAccount = account;
-      const form = await newConnection(window, 'google');
-      await form.getByLabel('Profile name').fill(`Google ${account}`);
-      await form.getByRole('button', { name: 'Sign in to Google', exact: true }).click();
-      await expect(
-        form.getByText(`Google account: fixture-${account}@example.test`, { exact: true }),
-      ).toBeVisible();
-      await finishProfile(window, form);
-      const file = googleFixtureEntry(`${account}.txt`, `TXT content from ${account}.`);
-      file.mimeType = 'text/plain';
-      fixture.accounts.get(account)?.set(file.id, file);
-      const document = googleFixtureEntry(`${account}-document.txt`, 'Native document content.');
-      document.mimeType = 'application/vnd.google-apps.document';
-      fixture.accounts.get(account)?.set(document.id, document);
-    }
-    await openConnection(window, 'left', 'Google one');
-    await openConnection(window, 'right', 'Google two');
-    const left = window.getByTestId('left-panel');
-    const right = window.getByTestId('right-panel');
-    await left.getByRole('row', { name: 'one.txt', exact: true }).click();
-    await expect(left.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
-    await copySelection(window, left);
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(1);
-    await expect(right.getByRole('row', { name: 'one.txt', exact: true })).toBeVisible();
-    expect(
-      [...(fixture.accounts.get('two')?.values() ?? [])]
-        .find((entry) => entry.name === 'one.txt')
-        ?.content.toString(),
-    ).toBe('TXT content from one.');
-    await right.getByRole('row', { name: 'two.txt', exact: true }).click();
-    await expect(right.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
-    await copySelection(window, right);
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
-    await expect(left.getByRole('row', { name: 'two.txt', exact: true })).toBeVisible();
-    expect(
-      [...(fixture.accounts.get('one')?.values() ?? [])]
-        .find((entry) => entry.name === 'two.txt')
-        ?.content.toString(),
-    ).toBe('TXT content from two.');
-    for (const [source, destination, account, count] of [
-      [left, right, 'one', 3],
-      [right, left, 'two', 4],
-    ] as const) {
-      const name = `${account}-document.txt`;
-      await source.getByRole('row', { name, exact: true }).click();
-      await expect(source.getByRole('button', { name: /^Copy to /u })).toBeEnabled();
-      await copySelection(window, source);
-      await expect(window.getByText(/^Completed ·/u)).toHaveCount(count);
-      await expect(destination.getByRole('row', { name, exact: true })).toBeVisible();
-      const copied = [
-        ...(fixture.accounts.get(account === 'one' ? 'two' : 'one')?.values() ?? []),
-      ].find((entry) => entry.name === name);
-      expect(copied?.mimeType).toBe('application/vnd.google-apps.document');
-      expect(copied?.content.toString()).toContain(
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      );
-    }
-    const restricted = [...(fixture.accounts.get('one')?.values() ?? [])].find(
-      (entry) => entry.name === 'one-document.txt',
+    const page = await application.firstWindow();
+    const snapshot = await page.evaluate(async () => {
+      const response = await (Reflect.get(globalThis, 'desktop') as DesktopApi).workspace({
+        action: 'snapshot',
+      });
+      if (!response.ok) throw new Error(response.error.code);
+      return response.data.snapshot;
+    });
+    await application.evaluate(
+      ({ ipcMain }, { channel, snapshot }) => {
+        const state: WorkspaceSnapshot = {
+          ...snapshot,
+          rcloneAvailable: true,
+          googleRemotes: ['google-personal', 'google-work'],
+          icloudRemotes: ['apple-account'],
+        };
+        ipcMain.removeHandler(channel);
+        ipcMain.handle(channel, (_event, request) => {
+          const payload = request.payload;
+          const data: Record<string, unknown> = {
+            snapshot: state,
+            listing: null,
+            privateKeyPath: null,
+          };
+          if (payload.action === 'begin-profile-edit')
+            data.profileEditId = 'b13670f7-c900-41d8-a6b0-c4b1f7f961ba';
+          else if (payload.action === 'save-google-profile') {
+            state.profiles = [...state.profiles, { ...payload.profile, kind: 'google' }];
+            data.savedProfileId = payload.profile.id;
+          } else if (payload.action === 'connect') {
+            const profile = state.profiles.find((item) => item.id === payload.profileId);
+            if (profile)
+              state.sessions = [
+                ...state.sessions.filter((item) => item.workspaceId !== payload.workspaceId),
+                {
+                  workspaceId: payload.workspaceId,
+                  profileId: profile.id,
+                  name: profile.name,
+                  kind: profile.kind,
+                  state: 'connected',
+                  hostKey: null,
+                  currentPath: '/',
+                },
+              ];
+          } else if (payload.action === 'list') {
+            const session = state.sessions.find((item) => item.workspaceId === payload.workspaceId);
+            const profile = state.profiles.find((item) => item.id === session?.profileId);
+            if (profile?.kind === 'google')
+              data.listing = {
+                breadcrumbs: [{ label: '/', path: '/' }],
+                currentPath: '/',
+                parentPath: null,
+                entries: [
+                  {
+                    name: `${profile.remote}.txt`,
+                    path: `/${profile.remote}.txt`,
+                    kind: 'file',
+                    size: 12n,
+                    modifiedAt: null,
+                    permissions: null,
+                  },
+                ],
+              };
+          }
+          return { correlationId: request.correlationId, ok: true, data };
+        });
+      },
+      { channel: ipcRequestChannels.workspace, snapshot },
     );
-    if (!restricted) throw new Error('No source document');
-    for (const capability of ['canCopy', 'canDownload']) {
-      restricted.capabilities[capability] = false;
-      await left.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await left.getByRole('row', { name: restricted.name, exact: true }).click();
-      await expect(left.getByRole('button', { name: /^Copy to /u })).toBeDisabled();
-      restricted.capabilities[capability] = true;
-    }
-    await right.getByRole('row', { name: 'one.txt', exact: true }).click();
-    await right.getByRole('button', { name: 'Rename', exact: true }).click();
-    const rename = window.getByRole('dialog', { name: 'Rename', exact: true });
-    await rename.getByLabel('Name', { exact: true }).fill('renamed-one.txt');
-    await rename.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await right.getByRole('row', { name: 'renamed-one.txt', exact: true }).click();
-    await window.keyboard.press('Delete');
-    await window
-      .getByRole('dialog', { name: 'Move to trash', exact: true })
-      .getByRole('button', { name: 'Confirm', exact: true })
-      .click();
-    await expect(right.getByRole('row', { name: 'renamed-one.txt', exact: true })).toHaveCount(0);
-    await left.getByRole('row', { name: 'one.txt', exact: true }).click();
-    await copySelection(window, left);
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(5);
-    await expect(right.getByRole('row', { name: 'one.txt', exact: true })).toBeVisible();
-    const copies = [...(fixture.accounts.get('two')?.values() ?? [])].filter(
-      (entry) => entry.name === 'one.txt' || entry.name === 'renamed-one.txt',
-    );
-    expect(copies).toHaveLength(2);
-    expect(copies.filter((entry) => entry.trashed)).toHaveLength(1);
-    expect(copies.every((entry) => entry.content.toString() === 'TXT content from one.')).toBe(
-      true,
-    );
-  } finally {
-    await application?.close();
-    await fixture.close();
-    await rm(localRoot, { recursive: true, force: true });
-    await rm(userData, { recursive: true, force: true });
-  }
-});
 
-test('Google browser authorization, queue, restart, sign-out and cancellation', async () => {
-  test.setTimeout(90000);
-  const fixture = await startGoogleFixture();
-  const localRoot = await mkdtemp(join(tmpdir(), 'openscp-google-ui-'));
-  const userData = await mkdtemp(join(tmpdir(), 'openscp-google-user-'));
-  let application: ElectronApplication | undefined;
-  const launch = () =>
-    electron.launch({
-      ...nativeKeyringLaunchOptions(),
-      args: [
-        '--disable-gpu',
-        '--in-process-gpu',
-        '--no-sandbox',
-        `--user-data-dir=${userData}`,
-        resolve('out/main/index.js'),
-      ],
-      env: {
-        ...process.env,
-        OPENSCP_DISABLE_HARDWARE_ACCELERATION: '1',
-        OPENSCP_LOCAL_ROOT: localRoot,
-        OPENSCP_GOOGLE_FIXTURE: '1',
-        OPENSCP_TEST_GOOGLE_ENDPOINT: fixture.endpoint,
-      },
-    });
-  try {
-    await mkdir(join(localRoot, 'downloads'));
-    await writeFile(join(localRoot, 'google-upload.txt'), 'Disposable Google UI content.');
-    application = await launch();
-    let window = await application.firstWindow();
-    const form = await newConnection(window, 'google');
-    await form.getByLabel('Profile name').fill('Disposable Google');
-    await expect(form.getByLabel('Password', { exact: true })).toHaveCount(0);
-    fixture.authorizationMode = 'stall';
-    await form.getByRole('button', { name: 'Sign in to Google', exact: true }).click();
-    await expect(form.getByRole('button', { name: 'Cancel sign-in', exact: true })).toBeVisible();
-    await form.getByRole('button', { name: 'Cancel sign-in', exact: true }).click();
-    await expect(
-      form.getByRole('button', { name: 'Sign in to Google', exact: true }),
-    ).toBeVisible();
-    fixture.authorizationMode = 'normal';
-    await form.getByRole('button', { name: 'Sign in to Google', exact: true }).click();
-    await expect(
-      form.getByText('Google account: fixture-one@example.test', { exact: true }),
-    ).toBeVisible();
-    await form.getByRole('button', { name: 'Test connection', exact: true }).click();
-    await expect(form.locator('.dialog-notice .connection-feedback--success')).toHaveText(
-      'Connection successful. The initial location is accessible.',
+    for (const account of ['personal', 'work']) {
+      const form = await newConnection(page, 'google');
+      const remote = form.getByLabel('Google Drive connection in rclone');
+      await expect(remote).toBeEnabled();
+      await expect(remote.locator('option')).toHaveText(['google-personal', 'google-work']);
+      await expect(form.getByRole('button', { name: 'Sign in to Google' })).toHaveCount(0);
+      await form.getByLabel('Profile name').fill(`Google ${account}`);
+      await remote.selectOption(`google-${account}`);
+      await finishProfile(page, form);
+    }
+    await openConnection(page, 'left', 'Google personal');
+    await openConnection(page, 'right', 'Google work');
+    const left = page.getByTestId('left-panel');
+    const right = page.getByTestId('right-panel');
+    await expect(left.getByRole('row', { name: 'google-personal.txt', exact: true })).toBeVisible();
+    await expect(left.getByRole('row', { name: 'google-work.txt', exact: true })).toHaveCount(0);
+    await expect(right.getByRole('row', { name: 'google-work.txt', exact: true })).toBeVisible();
+    await expect(right.getByRole('row', { name: 'google-personal.txt', exact: true })).toHaveCount(
+      0,
     );
-    await window.screenshot({ path: resolve('tests/fixtures/runtime/google-profile.png') });
-    await finishProfile(window, form);
-    await openConnection(window, 'right', 'Disposable Google');
-    const remote = window.getByTestId('right-panel');
-    const local = window.getByTestId('left-panel');
-    await expect(remote.getByLabel('Current path')).toHaveValue('/My Drive');
-    await local.getByRole('row', { name: 'google-upload.txt', exact: true }).click();
-    await copySelection(window, local);
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(1);
-    await remote.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await remote.getByRole('row', { name: 'google-upload.txt', exact: true }).click();
-    await local.getByRole('row', { name: 'Open downloads' }).dblclick();
-    await copySelection(window, remote);
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(2);
-    expect(await readFile(join(localRoot, 'downloads', 'google-upload.txt'), 'utf8')).toBe(
-      'Disposable Google UI content.',
-    );
-    await window.screenshot({ path: resolve('tests/fixtures/runtime/google-workspace.png') });
-    const tree = fixture.accounts.get('one');
-    if (!tree) throw new Error('No account tree');
-    const first = googleFixtureEntry('duplicate.txt', 'first');
-    const second = googleFixtureEntry('duplicate.txt', 'second');
-    tree.set(first.id, first);
-    tree.set(second.id, second);
-    await writeFile(join(localRoot, 'downloads', 'duplicate.txt'), 'replacement');
-    await local.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await local.getByRole('row', { name: 'duplicate.txt', exact: true }).click();
-    await copySelection(window, local);
-    const conflict = window.getByRole('alertdialog');
-    await expect(conflict).toBeVisible();
-    await expect(conflict.getByRole('button', { name: 'Overwrite', exact: true })).toBeDisabled();
-    await conflict
-      .getByLabel('Choose the file to replace (ID)')
-      .selectOption(googleChildPath(googleRootPath, 'duplicate.txt', second.id));
-    await conflict.getByRole('button', { name: 'Overwrite', exact: true }).click();
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(3);
-    expect(first.content.toString()).toBe('first');
-    expect(second.content.toString()).toBe('replacement');
-    const doc = googleFixtureEntry('Report', 'native');
-    doc.mimeType = 'application/vnd.google-apps.document';
-    tree.set(doc.id, doc);
-    await remote.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await expect(remote.getByRole('row', { name: 'duplicate.txt', exact: true })).toHaveCount(2);
-    await remote.getByRole('row', { name: 'Report', exact: true }).click();
-    await expect(remote.getByRole('button', { name: /^Copy to /u })).toBeDisabled();
-    await remote.getByRole('button', { name: 'Export document…', exact: true }).click();
-    const exporting = window.getByRole('dialog', { name: 'Export document…', exact: true });
-    await exporting.getByLabel('Export format').selectOption('application/pdf');
-    await exporting.getByRole('button', { name: 'Confirm', exact: true }).click();
-    await expect(window.getByText(/^Completed ·/u)).toHaveCount(4);
-    expect(await readFile(join(localRoot, 'downloads', 'Report.pdf'), 'utf8')).toBe(
-      `export:${doc.id}:application/pdf`,
-    );
-    await window.screenshot({ path: resolve('tests/fixtures/runtime/google-export.png') });
-    await application.close();
-    application = undefined;
-    const database = await readFile(join(userData, 'settings.sqlite'));
-    expect(database.includes(Buffer.from('fixture-access-'))).toBe(false);
-    expect(database.includes(Buffer.from('fixture-refresh-'))).toBe(false);
-    const logins = fixture.requests.filter((entry) => entry.path === '/authorize').length;
-    application = await launch();
-    window = await application.firstWindow();
-    await openConnection(window, 'right', 'Disposable Google');
-    await expect(
-      window
-        .getByTestId('right-panel')
-        .getByRole('row', { name: 'google-upload.txt', exact: true }),
-    ).toBeVisible();
-    expect(fixture.requests.filter((entry) => entry.path === '/authorize')).toHaveLength(logins);
-    await window.getByRole('button', { name: 'Connections', exact: true }).click();
-    await window.getByRole('button', { name: 'Edit: Disposable Google', exact: true }).click();
-    const edit = window.getByRole('dialog', { name: 'Connections', exact: true });
-    await edit.getByRole('button', { name: 'Sign out', exact: true }).click();
-    await expect(edit.getByText('Not signed in to Google', { exact: true })).toBeVisible();
-    await edit.getByRole('button', { name: '← All connections', exact: true }).click();
-    await window
-      .getByRole('dialog', { name: 'Connections', exact: true })
-      .getByRole('button', { name: 'Close', exact: true })
-      .last()
-      .click();
-    await openConnection(window, 'right', 'Disposable Google');
-    const login = window.getByRole('dialog', { name: 'Google Drive sign-in', exact: true });
-    await expect(login).toBeVisible();
-    await login.getByRole('button', { name: 'Sign in to Google', exact: true }).click();
-    await expect(login).toHaveCount(0);
-    await expect(
-      window
-        .getByTestId('right-panel')
-        .getByRole('row', { name: 'google-upload.txt', exact: true }),
-    ).toBeVisible();
+    await expect(left.getByRole('textbox', { name: 'Current path', exact: true })).toHaveValue('/');
+    await expect(left.getByRole('textbox', { name: 'Current path', exact: true })).toBeEditable();
   } finally {
     await application?.close();
-    await fixture.close();
-    await rm(localRoot, { recursive: true, force: true });
+    await rm(root, { recursive: true, force: true });
     await rm(userData, { recursive: true, force: true });
   }
 });

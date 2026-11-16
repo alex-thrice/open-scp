@@ -38,13 +38,13 @@ the operating system. Check name conflicts when copying between file systems.
 
 ## Additional tools
 
-| Feature                                  | Separate installation                                                                                |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| iCloud Drive on Windows, macOS and Linux | [rclone](https://rclone.org/downloads/)                                                              |
-| SSH terminal on Windows                  | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html), or a standalone `putty.exe` |
+| Feature                                        | Separate installation                                                                                |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| Google Drive and iCloud Drive on all platforms | [rclone](https://rclone.org/downloads/)                                                              |
+| SSH terminal on Windows                        | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html), or a standalone `putty.exe` |
 
 These programs are not bundled. Configure rclone in **Settings → Advanced →
-iCloud Drive / rclone** and PuTTY in **Settings → Advanced → SSH terminal**.
+Google Drive / iCloud Drive / rclone** and PuTTY in **Settings → Advanced → SSH terminal**.
 An empty path enables automatic detection. PuTTY is only needed for a separate
 terminal window; SFTP file transfers work without it. On macOS and Linux, the
 external SSH terminal uses a system terminal and OpenSSH.

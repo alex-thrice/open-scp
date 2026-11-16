@@ -105,7 +105,12 @@ export const SourcePicker = ({
     ...folders.map((folder) => ({
       name: folder || t('ui.ungrouped'),
       items: snapshot.profiles
-        .filter((item) => item.kind !== 'icloud' || snapshot.icloudRemotes?.includes(item.remote))
+        .filter((item) =>
+          item.kind === 'icloud'
+            ? snapshot.icloudRemotes?.includes(item.remote)
+            : item.kind !== 'google' ||
+              (!!item.remote && snapshot.googleRemotes?.includes(item.remote)),
+        )
         .filter(
           (item) => (snapshot.profileGroups?.[item.id] ?? '') === folder && includes(item.name),
         )
@@ -115,13 +120,12 @@ export const SourcePicker = ({
           detail:
             item.kind === 'sftp' || item.kind === 'ftp'
               ? item.host
-              : item.kind === 'icloud'
+              : item.kind === 'icloud' || item.kind === 'google'
                 ? `${item.remote}:`
                 : item.kind === 'mailru'
                   ? item.username
-                  : item.kind === 'yandex' || item.kind === 'google'
-                    ? (item.accountName ??
-                      t(item.kind === 'google' ? 'google.name' : 'yandex.name'))
+                  : item.kind === 'yandex'
+                    ? (item.accountName ?? t('yandex.name'))
                     : item.bucket || item.endpoint || item.region,
           kind: item.kind,
           image: undefined,

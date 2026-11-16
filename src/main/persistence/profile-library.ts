@@ -12,20 +12,19 @@ export const exportProfiles = (store: ProfileStore, profiles = store.list()): st
         kind: profile.kind,
         group: store.getSetting(`group:${profile.id}`) ?? '',
         profile:
-          profile.kind === 'icloud'
+          profile.kind === 'icloud' || profile.kind === 'google'
             ? {
                 id: null,
                 name: profile.name,
-                remote: profile.remote,
+                ...(profile.remote === undefined ? {} : { remote: profile.remote }),
                 initialDirectory: profile.initialDirectory ?? '/',
                 timeout: profile.timeout ?? 60000,
               }
-            : profile.kind === 'yandex' || profile.kind === 'google'
+            : profile.kind === 'yandex'
               ? {
                   id: null,
                   name: profile.name,
-                  initialDirectory:
-                    profile.initialDirectory ?? (profile.kind === 'google' ? 'gdrive:/' : '/'),
+                  initialDirectory: profile.initialDirectory ?? '/',
                   timeout: profile.timeout ?? 20000,
                 }
               : profile.kind === 's3'
@@ -88,7 +87,10 @@ export const importProfiles = (store: ProfileStore, content: string): number => 
       let profile: ConnectionProfile;
       if (entry.kind === 'icloud') {
         profile = { ...entry.profile, id, kind: 'icloud' };
-      } else if (entry.kind === 'yandex' || entry.kind === 'google') {
+      } else if (entry.kind === 'google') {
+        const { remote, ...draft } = entry.profile;
+        profile = { ...draft, id, kind: 'google', ...(remote === undefined ? {} : { remote }) };
+      } else if (entry.kind === 'yandex') {
         profile = {
           ...entry.profile,
           id,

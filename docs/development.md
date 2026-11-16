@@ -94,7 +94,8 @@ Each root has its own bounded provider. `OPENSCP_LOCAL_ROOT` confines a developm
 or test launch to one directory and prevents enumeration of other drives. Use a
 separate `--user-data-dir` as well when creating public media.
 
-Credentials use Electron safeStorage; insecure backends are refused. Paths and
+Credentials stored by OpenSCP use Electron safeStorage; insecure backends are refused.
+Google and iCloud credentials are managed separately by rclone. Paths and
 transfer state have provider-specific semantics:
 
 - [Provider capabilities](architecture/provider-semantics.md)
@@ -103,33 +104,30 @@ transfer state have provider-specific semantics:
 - [Commander, recovery and security](architecture/commander-recovery.md)
 - [Mail.ru WebDAV](architecture/mailru.md)
 - [Yandex OAuth and REST](architecture/yandex.md)
-- [Google Drive identity and OAuth](architecture/google.md)
+- [Google Drive through rclone](architecture/google.md)
 - [iCloud/rclone decision](adr/0011-icloud-rclone.md)
 
 ## Cloud application configuration
 
-Cloud sign-in in distributed packages depends on the release owner's OAuth client
-configuration. Users of a configured package do not register a new developer project.
-For a custom build, copy the empty keys from `.env.example` into a Git-ignored
-`.env.local` and supply the appropriate values:
+Yandex sign-in in distributed packages depends on the release owner's OAuth client
+configuration. For a custom build, copy the empty key from `.env.example` into a
+Git-ignored `.env.local` and supply the appropriate value:
 
 ```dotenv
 OPENSCP_YANDEX_CLIENT_ID=
-OPENSCP_GOOGLE_CLIENT_ID=
-OPENSCP_GOOGLE_CLIENT_SECRET=
 ```
 
-Google's optional desktop credential is used only if required by that client.
-Vite passes these settings to the main bundle. They cannot be hidden inside a
-distributed desktop application. Never commit downloaded credentials, tokens or real
-environment values. Owner registration and acceptance checklists are in the
-[Yandex](development/yandex-oauth.md) and [Google](development/google-oauth.md) maintainer guides. Public OAuth
-verification remains a separate release concern.
+Vite passes this setting to the main bundle. Never commit credentials, tokens or
+real environment values. Registration and acceptance checks are described in the
+[Yandex maintainer guide](development/yandex-oauth.md).
 
-iCloud uses external rclone and its own configuration. OpenSCP does not bundle or
-update rclone. See the [iCloud guide](user/icloud.md). Environment overrides,
-custom and encrypted configurations, and command-line recovery are documented in
-the [advanced rclone maintainer reference](development/icloud-rclone.md) (Russian).
+Google Drive and iCloud use external rclone and its own configuration. OpenSCP
+does not bundle or update rclone and no longer requires Google OAuth build
+parameters. Google remotes are configured by users with their own OAuth client;
+see the [Google guide](user/google.md). iCloud setup is described in the
+[iCloud guide](user/icloud.md). Environment overrides, custom and encrypted
+configurations, and command-line recovery are documented in the
+[advanced rclone maintainer reference](development/icloud-rclone.md) (Russian).
 
 Architecture decisions and the independent implementation boundary are recorded in
 [ADRs](adr). Unresolved product choices are tracked in

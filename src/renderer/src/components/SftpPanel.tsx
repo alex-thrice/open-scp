@@ -63,8 +63,11 @@ export const SftpPanel = ({
   );
   const requestVersion = useRef(0);
   const session = snapshot.sessions.find((item) => item.workspaceId === workspaceId);
-  const profiles = snapshot.profiles.filter(
-    (profile) => profile.kind !== 'icloud' || snapshot.icloudRemotes?.includes(profile.remote),
+  const profiles = snapshot.profiles.filter((profile) =>
+    profile.kind === 'icloud'
+      ? snapshot.icloudRemotes?.includes(profile.remote)
+      : profile.kind !== 'google' ||
+        (!!profile.remote && snapshot.googleRemotes?.includes(profile.remote)),
   );
   const isS3 = session?.kind === 's3';
   const selectedEntry = listing?.entries.find((entry) => entry.path === selected);

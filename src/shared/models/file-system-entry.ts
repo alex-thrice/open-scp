@@ -4,6 +4,7 @@ import type { GoogleEntry } from './google-entry';
 export type FileSystemEntryKind = 'directory' | 'file' | 'special' | 'symbolic-link';
 
 export interface FileSystemEntry {
+  readonly resourceId?: string;
   readonly google?: GoogleEntry;
   readonly kind: FileSystemEntryKind;
   readonly s3Kind?: 'bucket' | 'prefix' | 'object';

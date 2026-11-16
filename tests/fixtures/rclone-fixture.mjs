@@ -32,9 +32,13 @@ if ((!behavior.command || behavior.command === command) && behavior.exit) {
 const pathFor = (operand) => {
   const index = operand.indexOf(':');
   const remote = operand.slice(0, index);
-  const base = join(root, remote);
+  const base = resolve(root, behavior.remoteRoots?.[remote] ?? remote);
   const path = resolve(base, operand.slice(index + 1));
-  if (!['icloud', 'second'].includes(remote) || relative(base, path).split(sep).includes('..')) {
+  if (
+    !['icloud', 'second', 'google', 'google-work'].includes(remote) ||
+    relative(root, base).split(sep).includes('..') ||
+    relative(base, path).split(sep).includes('..')
+  ) {
     throw Object.assign(new Error('Invalid fixture path'), { code: 'EACCES' });
   }
   return path;
@@ -115,6 +119,8 @@ try {
       ...(behavior.remotes ?? {
         icloud: behavior.remoteType ?? 'iclouddrive',
         second: 'iclouddrive',
+        google: 'drive',
+        'google-work': 'drive',
       }),
       ...Object.fromEntries(Object.entries(configured).map(([name, value]) => [name, value.type])),
     };
@@ -132,11 +138,15 @@ try {
     let result;
     if (args.includes('--stat')) {
       const item = await entry(path, basename(path));
-      result = item.IsDir ? { ...item, Name: '', Path: '' } : item;
+      result = item.IsDir ? { ...item, Name: '', Path: '', ID: undefined } : item;
     } else
       result = await Promise.all(
         (await readdir(path)).map((name) => entry(join(path, name), name)),
       );
+    if (Array.isArray(result) && behavior.duplicateName) {
+      const duplicate = result.find((item) => item.Name === behavior.duplicateName);
+      if (duplicate) result.push({ ...duplicate, ID: `${duplicate.ID}-duplicate` });
+    }
     process.stdout.write(JSON.stringify(result));
   } else if (command === 'mkdir') {
     await mkdir(pathFor(operands[0]), { recursive: true });
@@ -158,6 +168,11 @@ try {
   } else if (command === 'moveto') {
     const from = pathFor(operands[0]);
     const to = pathFor(operands[1]);
+    if (behavior.skipPublish) {
+      await writeFile(to, 'independent');
+      await rm(from);
+      process.exit(0);
+    }
     if (args.includes('--immutable')) {
       let exists = false;
       try {

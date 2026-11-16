@@ -264,17 +264,14 @@ export const ProfileLibrary = ({
                         <small>
                           {item.kind === 'sftp' || item.kind === 'ftp'
                             ? `${item.username}@${item.host}`
-                            : item.kind === 'icloud'
-                              ? `${item.remote}:`
+                            : item.kind === 'icloud' || item.kind === 'google'
+                              ? item.remote
+                                ? `${item.remote}:`
+                                : t('google.chooseRemote')
                               : item.kind === 'mailru'
                                 ? item.username
-                                : item.kind === 'yandex' || item.kind === 'google'
-                                  ? (item.accountName ??
-                                    t(
-                                      item.kind === 'google'
-                                        ? 'google.signedOut'
-                                        : 'yandex.signedOut',
-                                    ))
+                                : item.kind === 'yandex'
+                                  ? (item.accountName ?? t('yandex.signedOut'))
                                   : item.bucket || item.endpoint || item.region}
                         </small>
                       </button>

@@ -73,9 +73,6 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   }),
   z.strictObject({ action: z.literal('cancel-icloud-configuration'), id }),
   z.strictObject({ action: z.literal('save-google-profile'), profile: googleProfileDraftSchema }),
-  z.strictObject({ action: z.literal('authorize-google-profile'), profileId: id }),
-  z.strictObject({ action: z.literal('cancel-google-authorization'), profileId: id }),
-  z.strictObject({ action: z.literal('forget-google-authorization'), profileId: id }),
   z.strictObject({ action: z.literal('set-appearance'), appearance: appearanceSchema }),
   z.strictObject({ action: z.literal('set-confirm-tab-close'), enabled: z.boolean() }),
   z.strictObject({
@@ -294,18 +291,8 @@ export const workspaceSnapshotSchema = z.strictObject({
     .optional(),
   profiles: z.array(connectionProfileSchema),
   icloudRemotes: z.array(icloudRemoteSchema).optional(),
+  googleRemotes: z.array(icloudRemoteSchema).optional(),
   rcloneAvailable: z.boolean().optional(),
-  googleOAuthConfigured: z.boolean().optional(),
-  googleAuthorizations: z
-    .array(
-      z.strictObject({
-        profileId: id,
-        authorized: z.boolean(),
-        state: z.enum(['waiting', 'exchanging', 'authorized', 'failed', 'cancelled', 'signed-out']),
-        errorKey: z.string().nullable(),
-      }),
-    )
-    .optional(),
   yandexOAuthConfigured: z.boolean().optional(),
   yandexAuthorizations: z
     .array(
