@@ -446,7 +446,7 @@ export const resources = {
       queue: {
         empty: 'Transfers will appear here.',
         title: 'Transfer queue',
-        clearHistory: 'Clear finished history',
+        clearHistory: 'Clear finished and failed transfers',
       },
       remotePanel: {
         disconnectedDescription: 'Choose a connection profile to browse a remote system.',
@@ -929,7 +929,7 @@ export const resources = {
       queue: {
         empty: 'Здесь появятся операции передачи.',
         title: 'Очередь передач',
-        clearHistory: 'Очистить историю завершённых',
+        clearHistory: 'Очистить завершённые и ошибочные',
       },
       remotePanel: {
         disconnectedDescription: 'Выберите профиль подключения для просмотра удалённой системы.',

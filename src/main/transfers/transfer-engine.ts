@@ -199,9 +199,10 @@ export class TransferEngine {
   }
   public clearHistory(): void {
     for (const [id, job] of this.jobs)
-      if (['completed', 'cancelled'].includes(job.snapshot.state)) this.jobs.delete(id);
+      if (['completed', 'cancelled', 'failed'].includes(job.snapshot.state)) this.jobs.delete(id);
     for (const [id, record] of this.restored)
-      if (['completed', 'cancelled'].includes(record.snapshot.state)) this.restored.delete(id);
+      if (['completed', 'cancelled', 'failed'].includes(record.snapshot.state))
+        this.restored.delete(id);
     this.persist();
   }
   public hasActive(workspaceId: string): boolean {
@@ -379,12 +380,13 @@ export class TransferEngine {
   ): Promise<bigint> {
     this.check(job);
     const entry = await provider.stat(path, { signal: job.controller.signal });
+    if (entry.kind === 'symbolic-link') return 0n;
     if (entry.kind === 'file' || this.isNativeCopy(job, entry, path)) return entry.size;
     if (entry.kind !== 'directory')
       throw new ApplicationError(applicationErrorCodes.providerUnsupported);
     let total = 0n;
     for (const child of await provider.list(path, { signal: job.controller.signal }))
-      total += await this.size(provider, child.path, job);
+      if (child.kind !== 'symbolic-link') total += await this.size(provider, child.path, job);
     return total;
   }
   private isNativeCopy(job: TransferJob, entry: FileSystemEntry, path: ProviderPath): boolean {
@@ -601,6 +603,7 @@ export class TransferEngine {
     if (job.completed.has(key)) return;
     const { source, destination } = job.request;
     const entry = await source.stat(sourcePath, { signal: job.controller.signal });
+    if (entry.kind === 'symbolic-link') return;
     requested = job.pendingTargets.get(key) ?? requested;
     if (requested.provider === 'local')
       childPath(createLocalProviderPath(dirname(requested.path)), basename(requested.path));
@@ -619,7 +622,8 @@ export class TransferEngine {
         job.targets.set(localPath(requested), target);
       }
       for (const child of await source.list(sourcePath, { signal: job.controller.signal }))
-        await this.copy(job, child.path, childPath(target, child.name));
+        if (child.kind !== 'symbolic-link')
+          await this.copy(job, child.path, childPath(target, child.name));
       return;
     }
     if (this.isNativeCopy(job, entry, sourcePath) && destination.copyFrom) {
@@ -706,6 +710,7 @@ export class TransferEngine {
         }
         const current = await source.stat(sourcePath, { signal: job.controller.signal });
         if (
+          current.kind !== entry.kind ||
           current.size !== entry.size ||
           current.modifiedAt !== entry.modifiedAt ||
           current.versionTag !== entry.versionTag
@@ -767,6 +772,7 @@ export class TransferEngine {
         }
         const current = await source.stat(sourcePath, { signal: job.controller.signal });
         if (
+          current.kind !== entry.kind ||
           current.size !== entry.size ||
           current.modifiedAt !== entry.modifiedAt ||
           current.versionTag !== entry.versionTag
@@ -875,9 +881,10 @@ export class TransferEngine {
       reader.releaseLock();
       writer.releaseLock();
     }
-    const current = await source.stat(sourcePath);
+    const current = await source.stat(sourcePath, { signal: job.controller.signal });
     const written = await destination.stat(partial.temporary);
     if (
+      current.kind !== entry.kind ||
       current.size !== partial.sourceSize ||
       current.modifiedAt !== partial.modifiedAt ||
       current.versionTag !== partial.versionTag ||

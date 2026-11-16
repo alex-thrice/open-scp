@@ -20,7 +20,7 @@ export const TransferQueue = ({
   return (
     <section className="transfer-queue">
       <h2>{t('queue.title')}</h2>
-      {transfers.some((item) => ['completed', 'cancelled'].includes(item.state)) ? (
+      {transfers.some((item) => ['completed', 'cancelled', 'failed'].includes(item.state)) ? (
         <button
           className="queue-clear"
           onClick={() => void run({ action: 'clear-transfer-history' })}
