@@ -1,14 +1,20 @@
-import { realpathSync, watch, type FSWatcher } from 'node:fs';
+import { realpathSync, statSync, watch, type FSWatcher } from 'node:fs';
 import { resolve } from 'node:path';
+
+interface DirectoryIdentity {
+  readonly device: bigint;
+  readonly inode: bigint;
+}
 
 interface WatchedDirectory {
   readonly key: string;
   readonly path: string;
   readonly listeners: Set<() => void>;
   watcher: FSWatcher | undefined;
+  identity: DirectoryIdentity | undefined;
   notificationTimer: ReturnType<typeof setTimeout> | undefined;
   retryTimer: ReturnType<typeof setTimeout> | undefined;
-  shouldReattach: boolean;
+  shouldCheckIdentity: boolean;
 }
 
 const notificationDelay = 150;
@@ -30,17 +36,19 @@ export class LocalDirectoryWatchService {
         path: resolvedPath,
         listeners: new Set(),
         watcher: undefined,
+        identity: undefined,
         notificationTimer: undefined,
         retryTimer: undefined,
-        shouldReattach: false,
+        shouldCheckIdentity: false,
       };
       this.directories.set(key, directory);
     }
     const subscribedDirectory = directory;
     subscribedDirectory.listeners.add(subscription);
-    if (!subscribedDirectory.watcher && !subscribedDirectory.retryTimer) {
-      if (!this.startWatching(subscribedDirectory)) this.scheduleNotification(subscribedDirectory);
-    }
+    if (!subscribedDirectory.watcher && !subscribedDirectory.retryTimer)
+      this.startWatching(subscribedDirectory);
+    // После подписки запрашиваем начальную сверку, не полагаясь на первое системное событие.
+    this.scheduleNotification(subscribedDirectory);
     return () => {
       subscribedDirectory.listeners.delete(subscription);
       if (subscribedDirectory.listeners.size === 0) this.release(subscribedDirectory);
@@ -63,12 +71,18 @@ export class LocalDirectoryWatchService {
       // Раскрываем короткие имена Windows, чтобы libuv сравнивал пути в одинаковом формате.
       const watchPath =
         process.platform === 'win32' ? realpathSync.native(directory.path) : directory.path;
+      const identity = this.readIdentity(watchPath);
+      if (!identity) {
+        this.scheduleRetry(directory);
+        return false;
+      }
       const watcher = watch(watchPath, { persistent: false }, (eventType) => {
         if (directory.watcher !== watcher) return;
-        if (eventType === 'rename') directory.shouldReattach = true;
+        if (eventType === 'rename') directory.shouldCheckIdentity = true;
         this.scheduleNotification(directory);
       });
       directory.watcher = watcher;
+      directory.identity = identity;
       if (directory.retryTimer) clearTimeout(directory.retryTimer);
       directory.retryTimer = undefined;
       const onFailure = () => {
@@ -91,11 +105,20 @@ export class LocalDirectoryWatchService {
     directory.notificationTimer = setTimeout(() => {
       directory.notificationTimer = undefined;
       if (!this.isActive(directory)) return;
-      if (directory.shouldReattach) {
-        directory.shouldReattach = false;
-        // Путь после удаления и создания каталога может указывать на другой inode.
-        this.closeWatcher(directory);
-        this.startWatching(directory);
+      if (directory.shouldCheckIdentity) {
+        directory.shouldCheckIdentity = false;
+        const identity = this.readIdentity(directory.path);
+        const previousIdentity = directory.identity;
+        if (
+          !identity ||
+          !previousIdentity ||
+          identity.device !== previousIdentity.device ||
+          identity.inode !== previousIdentity.inode
+        ) {
+          // Изменения дочерних файлов сохраняют наблюдатель, замена самого каталога требует нового.
+          this.closeWatcher(directory);
+          this.startWatching(directory);
+        }
       }
       for (const listener of directory.listeners) listener();
     }, notificationDelay);
@@ -114,7 +137,17 @@ export class LocalDirectoryWatchService {
   private closeWatcher(directory: WatchedDirectory): void {
     const watcher = directory.watcher;
     directory.watcher = undefined;
+    directory.identity = undefined;
     watcher?.close();
+  }
+
+  private readIdentity(path: string): DirectoryIdentity | undefined {
+    try {
+      const stats = statSync(path, { bigint: true });
+      return stats.isDirectory() ? { device: stats.dev, inode: stats.ino } : undefined;
+    } catch {
+      return undefined;
+    }
   }
 
   private release(directory: WatchedDirectory): void {
