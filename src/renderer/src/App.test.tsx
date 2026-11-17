@@ -139,10 +139,7 @@ const googleProfile: WorkspaceSnapshot['profiles'][number] = {
   id: 'google-one',
   kind: 'google',
   name: 'Google Work',
-  authentication: {
-    method: 'oauth',
-    secret: { id: 'google-secret', storage: 'safe-storage' },
-  },
+  remote: 'google-work',
 };
 const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
   let snapshot: WorkspaceSnapshot = {
@@ -154,6 +151,7 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
     keyboardShortcuts: defaultKeyboardShortcuts,
     profileFolders: ['Work', 'Storage'],
     profileGroups: { 'sftp-one': 'Work', 's3-one': 'Storage' },
+    googleRemotes: ['google-work'],
     ...initial,
   };
   const workspace = vi.fn<DesktopApi['workspace']>(async (request) => {
@@ -198,9 +196,7 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
                   ? formatS3Path(
                       createS3ProviderPath(profile.bucket ?? '', profile.initialPrefix ?? ''),
                     )
-                  : profile.kind === 'google'
-                    ? 'gdrive:/'
-                    : '/',
+                  : '/',
               hostKey: null,
               state: 'connected',
               capabilities: {
@@ -1315,7 +1311,7 @@ describe('App', () => {
         kind: 'google',
         state: 'connected',
         hostKey: null,
-        currentPath: 'gdrive:/',
+        currentPath: '/',
       })),
     });
     setDesktopApi({

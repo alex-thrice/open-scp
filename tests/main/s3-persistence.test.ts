@@ -99,7 +99,7 @@ describe('S3 credentials and durable cleanup journal', () => {
       database.exec('DROP TABLE multipart_cleanup; PRAGMA user_version = 2;');
       migrateDatabase(database);
       migrateDatabase(database);
-      expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
+      expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
       await service.execute({
         action: 'save-s3-profile',
         profile: draft,

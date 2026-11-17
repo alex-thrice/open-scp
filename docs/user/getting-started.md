@@ -17,17 +17,19 @@ for details.
 These tools are installed separately for the features listed below. They are not
 bundled with OpenSCP.
 
-### iCloud Drive: rclone on all platforms
+### Google Drive and iCloud Drive: rclone on all platforms
 
 1. Download [rclone for your system](https://rclone.org/downloads/) and extract it
    into a folder you will keep. On Windows, the executable is `rclone.exe`.
-2. Open **Settings → Advanced → iCloud Drive / rclone** in OpenSCP. Choose the
+2. Open **Settings → Advanced → Google Drive / iCloud Drive / rclone** in OpenSCP. Choose the
    executable or its folder and save. An empty path enables automatic detection.
-3. Check the rclone status. Once it is available, add an iCloud Drive connection
-   and complete Apple sign-in and 2FA. See the [iCloud guide](icloud.md).
+3. Check the rclone status. For Google Drive, configure a Google remote using
+   [the Google guide](google.md), then select it in the Google connection form.
+   For iCloud, add an iCloud Drive connection and complete Apple sign-in and 2FA;
+   see the [iCloud guide](icloud.md).
 
-rclone is required for the experimental iCloud integration, independently of
-whether Apple's own iCloud application is installed. Other OpenSCP connections
+rclone is required for Google Drive and experimental iCloud access, independently
+of whether Apple's own iCloud application is installed. Other OpenSCP connections
 do not require rclone.
 
 ### SSH terminal on Windows: PuTTY
@@ -79,10 +81,10 @@ Use **+** or Ctrl/Command+T to add a tab with its own two panels. Close a connec
 tab to disconnect it. Complete or cancel transfers before exiting the application.
 
 Service guides: [Mail.ru](mailru.md), [Yandex Disk](yandex.md),
-[Google Drive](google.md), [iCloud Drive](icloud.md). Google and Yandex sign-in use
-your existing account in your browser. Google verification is pending, so Google
-Drive access may currently be limited. iCloud needs external rclone and is
-experimental. Plain FTP is unencrypted; FTPS and SCP are not supported.
+[Google Drive](google.md), [iCloud Drive](icloud.md). Yandex sign-in uses your
+existing account in your browser. Google requires a preconfigured rclone remote
+and your own OAuth client; iCloud also needs external rclone and is experimental.
+Plain FTP is unencrypted; FTPS and SCP are not supported.
 
 ## Make it comfortable
 

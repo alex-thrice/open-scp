@@ -392,27 +392,9 @@ export const VirtualFileList = ({
                   onBlur={() => {
                     focusedRowReference.current = null;
                   }}
-                  draggable={
-                    !!dragSource &&
-                    entry.s3Kind !== 'bucket' &&
-                    (!entry.google ||
-                      (entry.google.type === 'binary' && entry.google.canDownload) ||
-                      (entry.google.type === 'folder' && entry.google.canListChildren))
-                  }
+                  draggable={!!dragSource && entry.s3Kind !== 'bucket'}
                   onDragStart={(event) => {
                     if (!dragSource) return;
-                    if (
-                      entries.some(
-                        (item) =>
-                          selection.includes(item.path) &&
-                          item.google &&
-                          ((item.google.type !== 'binary' && item.google.type !== 'folder') ||
-                            (item.google.type === 'binary' && !item.google.canDownload)),
-                      )
-                    ) {
-                      event.preventDefault();
-                      return;
-                    }
                     const paths = selection.includes(entry.path) ? selection : [entry.path];
                     if (dragSource.kind === 'local' && window.desktop.startFileDrag) {
                       const filePaths = new Set(
@@ -444,8 +426,7 @@ export const VirtualFileList = ({
                   key={entry.path}
                   onDoubleClick={() => {
                     if (isDirectory) {
-                      if (!entry.google || entry.google.canListChildren)
-                        onOpenDirectory(entry.path);
+                      onOpenDirectory(entry.path);
                     } else {
                       onOpenFile?.(entry.path);
                     }
@@ -485,8 +466,7 @@ export const VirtualFileList = ({
                     }
                     if (event.key === 'Enter') {
                       if (isDirectory) {
-                        if (!entry.google || entry.google.canListChildren)
-                          onOpenDirectory(entry.path);
+                        onOpenDirectory(entry.path);
                       } else onOpenFile?.(entry.path);
                     }
                   }}
@@ -514,29 +494,12 @@ export const VirtualFileList = ({
                       />
                     </span>
                     <span className="entry-name">{entry.name}</span>
-                    {entry.google ? (
-                      <small
-                        className="entry-kind"
-                        title={`ID: ${entry.google.id} · ${entry.google.mimeType}`}
-                      >
-                        {entry.google.type === 'native'
-                          ? t('google.native')
-                          : entry.google.type === 'shortcut'
-                            ? t('google.shortcut')
-                            : null}{' '}
-                        · {entry.google.id.slice(-8)}
-                      </small>
-                    ) : null}
                     {entry.s3Kind ? (
                       <small className="entry-kind">{t(`s3.kinds.${entry.s3Kind}`)}</small>
                     ) : null}
                   </div>
                   <div className="file-list__cell file-list__cell--size" role="gridcell">
-                    {isDirectory ||
-                    entry.google?.type === 'native' ||
-                    entry.google?.type === 'shortcut'
-                      ? t('common.notAvailable')
-                      : formatSize(entry.size, i18n.language)}
+                    {isDirectory ? t('common.notAvailable') : formatSize(entry.size, i18n.language)}
                   </div>
                   <div className="file-list__cell file-list__cell--modifiedAt" role="gridcell">
                     {entry.modifiedAt === null

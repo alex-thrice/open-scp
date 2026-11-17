@@ -86,8 +86,11 @@ export interface YandexConnectionProfile extends BaseConnectionProfile {
   readonly authentication: { readonly method: 'oauth'; readonly secret: SecretReference };
 }
 
-export interface GoogleConnectionProfile extends Omit<YandexConnectionProfile, 'kind'> {
+export interface GoogleConnectionProfile extends BaseConnectionProfile {
   readonly kind: 'google';
+  readonly remote?: string;
+  readonly initialDirectory?: string;
+  readonly timeout?: number;
 }
 
 export interface ICloudConnectionProfile extends BaseConnectionProfile {

@@ -13,12 +13,13 @@
 
 - [Mail.ru Cloud](user/mailru.md)
 - [Yandex Disk](user/yandex.md)
-- [Google Drive](user/google.md)
+- [Google Drive with rclone](user/google.md)
 - [iCloud Drive with rclone](user/icloud.md) — experimental
 
 These guides assume that you already have a service account. They describe
-sign-in, permission approval and application settings. Google verification is
-pending, so Google Drive access may currently be limited.
+sign-in, permission approval and application settings. Google Drive requires a
+Google remote configured in external rclone with your own OAuth client. Google
+and iCloud connections are listed separately; each account can use its own remote.
 
 ## Development and maintenance
 

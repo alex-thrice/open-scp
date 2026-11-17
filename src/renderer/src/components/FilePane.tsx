@@ -2,14 +2,6 @@ import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from
 import { useTranslation } from 'react-i18next';
 import type { LocalDirectoryListing } from '@shared/ipc/contracts';
 import type { Appearance, WorkspaceResult, WorkspaceSnapshot } from '@shared/ipc/workspace';
-import {
-  googleChildPath,
-  googleDisplayPath,
-  googleExportPath,
-  googleExportFormats,
-  googleNativeCopyFormats,
-} from '@shared/models/google-path';
-import { GoogleAuthorizationControls } from './GoogleAuthorizationControls';
 import { parseS3Path, s3Child } from '@shared/models/s3-path';
 import { defaultKeyboardShortcuts } from '@shared/models/keyboard-shortcuts';
 import {
@@ -97,12 +89,9 @@ export const FilePane = ({
   const shortcuts = snapshot.keyboardShortcuts ?? defaultKeyboardShortcuts;
   const session = snapshot.sessions.find((item) => item.workspaceId === paneId);
   const kind = session?.kind ?? (session ? 'sftp' : 'local');
-  const profile = snapshot.profiles.find((item) => item.id === session?.profileId);
-  const googleAccountId = profile?.kind === 'google' ? profile.accountId : undefined;
-  const yandexAuthorization = (
-    kind === 'google' ? snapshot.googleAuthorizations : snapshot.yandexAuthorizations
-  )?.find((entry) => entry.profileId === session?.profileId);
-  const [exporting, setExporting] = useState(false);
+  const yandexAuthorization = snapshot.yandexAuthorizations?.find(
+    (entry) => entry.profileId === session?.profileId,
+  );
   const reauthorizing = useRef(false);
   useEffect(() => {
     if (
@@ -298,15 +287,10 @@ export const FilePane = ({
   }, [completed, listing, load, ready, operation]);
   const currentPath = listing?.currentPath ?? session?.currentPath ?? initialPath ?? '';
   const isBucketList = isS3 && !!listing && !parseS3Path(listing.currentPath).bucket;
-  const writable =
-    kind === 'local' ||
-    (session?.capabilities?.write === true &&
-      !isBucketList &&
-      (kind !== 'google' || listing?.google?.canAddChildren === true));
+  const writable = kind === 'local' || (session?.capabilities?.write === true && !isBucketList);
   const title = session?.name ?? directoryName(currentPath);
   useEffect(() => {
     onLocation(side, {
-      ...(googleAccountId ? { googleAccountId } : {}),
       ...(kind === 'local' && listing ? { localPath: listing.currentPath } : {}),
       kind,
       path: currentPath,
@@ -314,18 +298,7 @@ export const FilePane = ({
       ready: ready && !!listing && !loading,
       writable,
     });
-  }, [
-    side,
-    kind,
-    currentPath,
-    title,
-    ready,
-    listing,
-    loading,
-    writable,
-    onLocation,
-    googleAccountId,
-  ]);
+  }, [side, kind, currentPath, title, ready, listing, loading, writable, onLocation]);
   const entries =
     listing?.entries.filter((entry) => appearance.showHidden || !entry.name.startsWith('.')) ?? [];
   useLayoutEffect(() => {
@@ -353,27 +326,6 @@ export const FilePane = ({
   const selected = selection.filter((path) => entries.some((entry) => entry.path === path));
   const selectedEntry = entries.find((entry) => entry.path === selected[0]);
   const externalDrag = snapshot.externalDrags?.find((item) => item.workspaceId === paneId);
-  const selectedEntries = entries.filter((entry) => selected.includes(entry.path));
-  const googleCannotRead = selectedEntries.some(
-    (entry) =>
-      entry.google &&
-      ((entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
-        (entry.google.type === 'binary' && !entry.google.canDownload) ||
-        (entry.google.type === 'folder' && !entry.google.canListChildren)),
-  );
-  const sameGoogleAccount = !!googleAccountId && googleAccountId === destination?.googleAccountId;
-  const googleCannotCopy = selectedEntries.some(
-    (entry) =>
-      entry.google &&
-      (entry.google.type === 'native'
-        ? destination?.kind !== 'google' ||
-          !entry.google.canCopy ||
-          (!sameGoogleAccount &&
-            (!entry.google.canDownload || !googleNativeCopyFormats[entry.google.mimeType]))
-        : (entry.google.type !== 'binary' && entry.google.type !== 'folder') ||
-          (entry.google.type === 'binary' && !entry.google.canDownload) ||
-          (entry.google.type === 'folder' && !entry.google.canListChildren)),
-  );
   const invalidSelection =
     !selected.length ||
     entries.some((entry) => selected.includes(entry.path) && entry.s3Kind === 'bucket');
@@ -424,9 +376,7 @@ export const FilePane = ({
     {
       id: 'copy',
       label: t('ui.copyTo', {
-        path: destination?.path.startsWith('gdrive:/')
-          ? googleDisplayPath(destination.path)
-          : destination?.path || t('ui.sourceNotReady'),
+        path: destination?.path || t('ui.sourceNotReady'),
       }),
       shortcut: shortcuts.copy,
       disabled:
@@ -436,7 +386,6 @@ export const FilePane = ({
         loading ||
         !destination?.ready ||
         !destination.writable ||
-        googleCannotCopy ||
         (kind !== 'local' && !session?.capabilities?.read),
       run: () => {
         if (destination)
@@ -455,7 +404,6 @@ export const FilePane = ({
         !ready ||
         busy ||
         loading ||
-        selectedEntries.some((entry) => entry.google && !entry.google.canRename) ||
         (kind !== 'local' && !session?.capabilities?.rename),
       run: () => begin('rename'),
     },
@@ -466,8 +414,6 @@ export const FilePane = ({
       disabled:
         selected.length !== 1 ||
         selectedEntry?.kind !== 'file' ||
-        (!!selectedEntry.google &&
-          (!selectedEntry.google.canWrite || !selectedEntry.google.canDownload)) ||
         !ready ||
         busy ||
         loading ||
@@ -480,14 +426,13 @@ export const FilePane = ({
     },
     {
       id: 'delete',
-      label: t(kind === 'google' ? 'google.trash' : 'operations.delete'),
+      label: t('operations.delete'),
       shortcut: shortcuts.delete,
       disabled:
         invalidSelection ||
         !ready ||
         busy ||
         loading ||
-        selectedEntries.some((entry) => entry.google && !entry.google.canTrash) ||
         (kind !== 'local' && !session?.capabilities?.delete),
       run: () => begin('delete'),
     },
@@ -508,29 +453,12 @@ export const FilePane = ({
       },
     },
   ];
-  if (kind === 'google')
-    commands.push({
-      id: 'export',
-      label: t('google.export'),
-      disabled:
-        busy ||
-        loading ||
-        selected.length !== 1 ||
-        selectedEntry?.google?.type !== 'native' ||
-        !selectedEntry.google.canDownload ||
-        !googleExportFormats[selectedEntry.google.mimeType as keyof typeof googleExportFormats]
-          ?.length ||
-        !destination?.ready ||
-        !destination.writable,
-      run: () => setExporting(true),
-    });
   if (kind !== 'local')
     commands.push({
       id: 'externalDrag',
       label: t('fileDrag.prepare'),
       disabled:
         invalidSelection ||
-        googleCannotRead ||
         selected.length > 100 ||
         entries.some((entry) => selected.includes(entry.path) && entry.kind !== 'file') ||
         !ready ||
@@ -642,15 +570,13 @@ export const FilePane = ({
             className="address-form"
             onSubmit={(event) => {
               event.preventDefault();
-              if (ready && kind !== 'google' && pathInput.current?.value)
-                void load(pathInput.current.value, true);
+              if (ready && pathInput.current?.value) void load(pathInput.current.value, true);
             }}
           >
             <input
               ref={pathInput}
               aria-label={t('ui.editPath')}
               defaultValue={listing?.displayPath ?? currentPath}
-              readOnly={kind === 'google'}
               disabled={!ready}
               title={currentPath}
               spellCheck={false}
@@ -808,15 +734,11 @@ export const FilePane = ({
           </span>
         </footer>
       </CommanderSurface>
-      {session?.authorizationRequired ? (
+      {kind === 'yandex' && session?.authorizationRequired ? (
         <Dialog
-          title={t(kind === 'google' ? 'google.authorizationTitle' : 'yandex.authorizationTitle')}
+          title={t('yandex.authorizationTitle')}
           onClose={() => {
-            void run({
-              action:
-                kind === 'google' ? 'cancel-google-authorization' : 'cancel-yandex-authorization',
-              profileId: session.profileId,
-            });
+            void run({ action: 'cancel-yandex-authorization', profileId: session.profileId });
             void run({ action: 'cancel-connect', workspaceId: paneId });
           }}
           notice={
@@ -827,20 +749,12 @@ export const FilePane = ({
             ) : null
           }
         >
-          <p>{t(kind === 'google' ? 'google.loginHint' : 'yandex.loginHint')}</p>
-          {kind === 'google' ? (
-            <GoogleAuthorizationControls
-              profileId={session.profileId}
-              snapshot={snapshot}
-              run={run}
-            />
-          ) : (
-            <YandexAuthorizationControls
-              profileId={session.profileId}
-              snapshot={snapshot}
-              run={run}
-            />
-          )}
+          <p>{t('yandex.loginHint')}</p>
+          <YandexAuthorizationControls
+            profileId={session.profileId}
+            snapshot={snapshot}
+            run={run}
+          />
         </Dialog>
       ) : null}
       {session?.passwordRequired ? (
@@ -934,19 +848,11 @@ export const FilePane = ({
           <p>{t('commander.selected', { count: pendingCopies.length })}</p>
           <ul className="operation-selection">
             {pendingCopies.map((request) => (
-              <li key={request.sourcePath}>
-                {request.sourcePath.startsWith('gdrive:/')
-                  ? googleDisplayPath(request.sourcePath)
-                  : request.sourcePath}
-              </li>
+              <li key={request.sourcePath}>{request.sourcePath}</li>
             ))}
           </ul>
           <p>{t('commander.destinationPath')}</p>
-          <code>
-            {pendingCopies[0]?.destinationDirectory.startsWith('gdrive:/')
-              ? googleDisplayPath(pendingCopies[0].destinationDirectory)
-              : pendingCopies[0]?.destinationDirectory}
-          </code>
+          <code>{pendingCopies[0]?.destinationDirectory}</code>
           {errorKey ? (
             <p role="alert" className="inline-error">
               {t(errorKey)}
@@ -962,67 +868,9 @@ export const FilePane = ({
           </div>
         </Dialog>
       ) : null}
-      {exporting && selectedEntry?.google && destination ? (
-        <Dialog
-          title={t('google.export')}
-          onClose={() => {
-            if (!busy) setExporting(false);
-          }}
-        >
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (busy) return;
-              const mimeType = String(new FormData(event.currentTarget).get('mimeType'));
-              setBusy(true);
-              void run(
-                copyRequest(
-                  paneId,
-                  kind,
-                  googleExportPath(selectedEntry.path, mimeType),
-                  destinationId,
-                  destination,
-                ),
-              )
-                .then((result) => {
-                  if (result) setExporting(false);
-                })
-                .finally(() => setBusy(false));
-            }}
-          >
-            <label>
-              {t('google.exportFormat')}
-              <select name="mimeType" required disabled={busy}>
-                {(
-                  googleExportFormats[
-                    selectedEntry.google.mimeType as keyof typeof googleExportFormats
-                  ] ?? []
-                ).map((format) => (
-                  <option key={format.mimeType} value={format.mimeType}>
-                    {format.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <p>{t('google.exportLimit')}</p>
-            <div className="dialog-actions">
-              <button type="button" disabled={busy} onClick={() => setExporting(false)}>
-                {t('connections.cancel')}
-              </button>
-              <button type="submit" className="primary" disabled={busy}>
-                {t('operations.confirm')}
-              </button>
-            </div>
-          </form>
-        </Dialog>
-      ) : null}
       {operation ? (
         <Dialog
-          title={t(
-            operation === 'delete' && kind === 'google'
-              ? 'google.trash'
-              : `operations.${operation}`,
-          )}
+          title={t(`operations.${operation}`)}
           onClose={closeOperation}
           initialFocus={operation === 'delete' ? 'button[type="submit"]' : 'input[name="name"]'}
         >
@@ -1039,16 +887,13 @@ export const FilePane = ({
                 if (listing) {
                   const separator =
                     kind === 'local' && listing.currentPath.includes('\\') ? '\\' : '/';
-                  const destinationPath =
-                    kind === 'google'
-                      ? googleChildPath(listing.currentPath, name || 'unused')
-                      : isS3
-                        ? s3Child(
-                            listing.currentPath,
-                            name,
-                            operation === 'mkdir' || selectedEntry?.s3Kind === 'prefix',
-                          )
-                        : `${listing.currentPath.replace(/[\\/]$/u, '')}${separator}${name}`;
+                  const destinationPath = isS3
+                    ? s3Child(
+                        listing.currentPath,
+                        name,
+                        operation === 'mkdir' || selectedEntry?.s3Kind === 'prefix',
+                      )
+                    : `${listing.currentPath.replace(/[\\/]$/u, '')}${separator}${name}`;
                   const paths =
                     operation === 'mkdir' || operation === 'createFile'
                       ? [destinationPath]
@@ -1093,10 +938,10 @@ export const FilePane = ({
           >
             {operation === 'delete' ? (
               <>
-                <p>{t(kind === 'google' ? 'google.trashHint' : 'commander.deleteSelection')}</p>
+                <p>{t('commander.deleteSelection')}</p>
                 <ul className="operation-selection">
                   {selected.map((path) => (
-                    <li key={path}>{kind === 'google' ? googleDisplayPath(path) : path}</li>
+                    <li key={path}>{path}</li>
                   ))}
                 </ul>
                 {isS3 ? (
@@ -1123,7 +968,7 @@ export const FilePane = ({
                   name="name"
                   required
                   autoFocus
-                  pattern={kind === 'google' ? undefined : '[^\\x2f\\x5c]+'}
+                  pattern={'[^\\x2f\\x5c]+'}
                   defaultValue={
                     operation === 'rename'
                       ? selectedEntry?.name

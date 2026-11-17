@@ -12,7 +12,7 @@ export const resources = {
       icloud: {
         name: 'iCloud Drive',
         profile: 'iCloud Drive connection',
-        settings: 'iCloud Drive / rclone',
+        settings: 'Google Drive / iCloud Drive / rclone',
         settingsHint:
           'Choose the rclone executable or its folder. Leave the path empty for automatic detection. Saving this setting immediately refreshes availability and the connection list.',
         ready: 'rclone is ready. Configured iCloud connections: {{count}}.',
@@ -60,23 +60,20 @@ export const resources = {
       google: {
         name: 'Google Drive',
         new: 'New Google Drive',
-        signedOut: 'Not signed in to Google',
-        signIn: 'Sign in to Google',
-        signOut: 'Sign out',
-        cancelLogin: 'Cancel sign-in',
-        waiting: 'Complete sign-in in your browser.',
-        connectedAs: 'Google account: {{account}}',
-        authorizationTitle: 'Google Drive sign-in',
-        loginHint: 'Sign in with Google in your browser.',
-        initialDirectoryHint: 'Open a folder in a connected panel to select it here.',
-        export: 'Export document…',
-        exportFormat: 'Export format',
-        exportLimit: 'Google export is limited to 10 MiB. Shortcuts are not followed.',
-        trash: 'Move to trash',
-        trashHint: 'Selected items will be moved to Google Drive trash.',
+        profile: 'Google Drive connection',
+        remote: 'Google Drive connection in rclone',
+        chooseRemote: 'Choose a Google Drive connection',
+        noRemotes: 'No configured Google Drive connections found',
+        setupHint:
+          'Configure Google Drive in rclone first, then choose its connection here. Each account can use a separate connection.',
+        remoteHint:
+          'Only Google Drive connections are listed. The connection name identifies the rclone configuration; it may differ from the account email.',
+        rcloneUnavailable:
+          'Install rclone and select its executable in Settings → Advanced → Google Drive / iCloud Drive / rclone.',
+        reconfigure:
+          'This profile used the previous Google sign-in. Choose a configured rclone connection to use it again.',
+        configuredRemotes: 'Configured Google Drive connections: {{count}}.',
         chooseTarget: 'Choose the file to replace (ID)',
-        native: 'Google document',
-        shortcut: 'Shortcut',
       },
       yandex: {
         name: 'Yandex Disk',
@@ -323,7 +320,7 @@ export const resources = {
       errors: {
         icloud: {
           unavailable:
-            'rclone could not be started. Install it and select its executable in Settings → Advanced → iCloud Drive / rclone, or add it to PATH.',
+            'rclone could not be started. Install it and select its executable in Settings → Advanced → Google Drive / iCloud Drive / rclone, or add it to PATH.',
           configuration:
             'The rclone configuration could not be read or updated. Check the connection name, configuration password and rclone version.',
           authentication:
@@ -493,7 +490,7 @@ export const resources = {
       icloud: {
         name: 'iCloud Drive',
         profile: 'Подключение iCloud Drive',
-        settings: 'iCloud Drive / rclone',
+        settings: 'Google Диск / iCloud Drive / rclone',
         settingsHint:
           'Укажите файл rclone или папку с программой. Пустой путь включает автоматический поиск. При сохранении доступность и список подключений обновляются сразу.',
         ready: 'rclone найден. Настроенных подключений iCloud: {{count}}.',
@@ -539,23 +536,20 @@ export const resources = {
       google: {
         name: 'Google Диск',
         new: 'Новый Google Диск',
-        signedOut: 'Вход в Google не выполнен',
-        signIn: 'Войти в Google',
-        signOut: 'Выйти',
-        cancelLogin: 'Отменить вход',
-        waiting: 'Завершите вход в браузере.',
-        connectedAs: 'Аккаунт Google: {{account}}',
-        authorizationTitle: 'Вход в Google Диск',
-        loginHint: 'Войдите в Google через системный браузер.',
-        initialDirectoryHint: 'Откройте папку в подключённой панели, чтобы выбрать её здесь.',
-        export: 'Экспорт документа…',
-        exportFormat: 'Формат экспорта',
-        exportLimit: 'Экспорт Google ограничен 10 МиБ. Ярлыки не обходятся.',
-        trash: 'Переместить в корзину',
-        trashHint: 'Выбранные объекты будут перемещены в корзину Google Диска.',
+        profile: 'Подключение Google Диска',
+        remote: 'Подключение Google Диска в rclone',
+        chooseRemote: 'Выберите подключение Google Диска',
+        noRemotes: 'Настроенных подключений Google Диска не найдено',
+        setupHint:
+          'Сначала настройте Google Диск в rclone, затем выберите его подключение здесь. Для каждого аккаунта можно использовать отдельное подключение.',
+        remoteHint:
+          'В списке только подключения Google Диска. Имя обозначает конфигурацию rclone и может отличаться от email аккаунта.',
+        rcloneUnavailable:
+          'Установите rclone и укажите путь в Настройки → Дополнительно → Google Диск / iCloud Drive / rclone.',
+        reconfigure:
+          'Этот профиль использовал прежний вход в Google. Выберите настроенное подключение rclone для дальнейшей работы.',
+        configuredRemotes: 'Настроенных подключений Google Диска: {{count}}.',
         chooseTarget: 'Выберите заменяемый файл (ID)',
-        native: 'Документ Google',
-        shortcut: 'Ярлык',
       },
       yandex: {
         name: 'Яндекс Диск',
@@ -802,7 +796,7 @@ export const resources = {
       errors: {
         icloud: {
           unavailable:
-            'Не удалось запустить rclone. Установите его и укажите путь в Настройки → Дополнительно → iCloud Drive / rclone либо добавьте программу в PATH.',
+            'Не удалось запустить rclone. Установите его и укажите путь в Настройки → Дополнительно → Google Диск / iCloud Drive / rclone либо добавьте программу в PATH.',
           configuration:
             'Не удалось прочитать или обновить конфигурацию rclone. Проверьте имя подключения, пароль конфигурации и версию rclone.',
           authentication:

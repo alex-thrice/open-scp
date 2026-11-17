@@ -6,6 +6,15 @@ import { mailruProfileDraftSchema } from './mailru-profile';
 import { googleProfileDraftSchema } from './google-profile';
 import { yandexProfileDraftSchema } from './yandex-profile';
 import { icloudProfileDraftSchema } from './icloud-profile';
+import { googleDirectoryPathSchema } from './google-path';
+
+const googleArchiveProfileSchema = googleProfileDraftSchema.extend({
+  remote: googleProfileDraftSchema.shape.remote.optional(),
+  initialDirectory: z.union([
+    googleProfileDraftSchema.shape.initialDirectory,
+    googleDirectoryPathSchema.transform(() => '/'),
+  ]),
+});
 
 export const profileArchiveSchema = z.strictObject({
   version: z.literal(1),
@@ -20,7 +29,7 @@ export const profileArchiveSchema = z.strictObject({
         }),
         z.strictObject({
           kind: z.literal('google'),
-          profile: googleProfileDraftSchema.refine((profile) => profile.id === null),
+          profile: googleArchiveProfileSchema.refine((profile) => profile.id === null),
           group: z.string().max(100),
         }),
         z.strictObject({

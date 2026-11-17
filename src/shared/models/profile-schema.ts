@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import type { ConnectionProfile } from './connection-profile';
 import { mailruPathSchema } from './mailru-profile';
-import { googleDirectoryPathSchema } from './google-path';
+import { googleProfileDraftSchema } from './google-profile';
 import { yandexPathSchema } from './yandex-profile';
 import { icloudProfileDraftSchema } from './icloud-profile';
 
@@ -17,15 +17,12 @@ export const connectionProfileSchema = z
       initialDirectory: icloudProfileDraftSchema.shape.initialDirectory.optional(),
       timeout: icloudProfileDraftSchema.shape.timeout.optional(),
     }),
-    z.strictObject({
+    googleProfileDraftSchema.omit({ id: true }).extend({
       id: z.string().uuid(),
-      name: z.string().trim().min(1).max(200),
       kind: z.literal('google'),
-      initialDirectory: googleDirectoryPathSchema.optional(),
-      timeout: z.number().int().min(1000).max(120000).optional(),
-      accountId: z.string().min(1).max(200).optional(),
-      accountName: z.string().min(1).max(320).optional(),
-      authentication: z.strictObject({ method: z.literal('oauth'), secret: secretReference }),
+      remote: googleProfileDraftSchema.shape.remote.optional(),
+      initialDirectory: googleProfileDraftSchema.shape.initialDirectory.optional(),
+      timeout: googleProfileDraftSchema.shape.timeout.optional(),
     }),
     z.strictObject({
       id: z.string().uuid(),
@@ -114,6 +111,17 @@ export const connectionProfileSchema = z
     }),
   ])
   .transform((profile): ConnectionProfile => {
+    if (profile.kind === 'google')
+      return {
+        id: profile.id,
+        name: profile.name,
+        kind: profile.kind,
+        ...(profile.remote === undefined ? {} : { remote: profile.remote }),
+        ...(profile.initialDirectory === undefined
+          ? {}
+          : { initialDirectory: profile.initialDirectory }),
+        ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
+      };
     if (profile.kind === 'icloud')
       return {
         id: profile.id,
@@ -125,7 +133,7 @@ export const connectionProfileSchema = z
           : { initialDirectory: profile.initialDirectory }),
         ...(profile.timeout === undefined ? {} : { timeout: profile.timeout }),
       };
-    if (profile.kind === 'yandex' || profile.kind === 'google')
+    if (profile.kind === 'yandex')
       return {
         id: profile.id,
         name: profile.name,

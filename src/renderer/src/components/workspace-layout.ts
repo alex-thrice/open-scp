@@ -1,10 +1,8 @@
-import { googlePathName } from '@shared/models/google-path';
 import type { WorkspaceRequest, WorkspaceSnapshot } from '@shared/ipc/workspace';
 import type { IconName } from './Icon';
 
 export type PaneSide = 'left' | 'right';
 export interface PaneLocation {
-  readonly googleAccountId?: string;
   readonly localPath?: string;
   readonly path: string;
   readonly title: string;
@@ -44,12 +42,10 @@ export const protocolIcon = (kind: PaneLocation['kind']): IconName =>
                 ? 'Plug'
                 : 'HardDrive';
 export const directoryName = (path: string): string =>
-  path.startsWith('gdrive:/')
-    ? googlePathName(path)
-    : path
-        .replace(/[\\/]+$/u, '')
-        .split(/[\\/]/u)
-        .at(-1) || path;
+  path
+    .replace(/[\\/]+$/u, '')
+    .split(/[\\/]/u)
+    .at(-1) || path;
 export const workspaceTitle = (
   left: PaneLocation | undefined,
   right: PaneLocation | undefined,

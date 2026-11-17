@@ -136,7 +136,7 @@ describe('persistence and credentials', () => {
     database.prepare('INSERT INTO settings VALUES (?, ?)').run('language', 'ru');
     migrateDatabase(database);
     migrateDatabase(database);
-    expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(3);
+    expect(database.prepare('PRAGMA user_version').get()?.user_version).toBe(4);
     expect(database.prepare('SELECT value FROM settings').get()?.value).toBe('ru');
     database.close();
   });

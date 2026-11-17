@@ -1,498 +1,194 @@
 // @vitest-environment node
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createGoogleHarness, googleFixtureProfile, required } from '../fixtures/google-harness';
-import { googleFixtureEntry } from '../fixtures/google-fixture';
+import { spawn } from 'node:child_process';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { GoogleConnection } from '../../src/main/providers/google/google-connection';
+import { GoogleProvider } from '../../src/main/providers/google/google-provider';
+import { discoverGoogleAvailability } from '../../src/main/providers/google/google-availability';
+import { discoverICloudAvailability } from '../../src/main/providers/icloud/icloud-availability';
 import { createGoogleProviderPath as path } from '../../src/shared/models/provider-path';
-import {
-  googleChildPath,
-  googleExportPath,
-  googleRootPath,
-  parseGooglePath,
-  googleNativeCopyFormats,
-} from '../../src/shared/models/google-path';
-import { Readable } from 'node:stream';
-import type { IncomingMessage, ClientRequest } from 'node:http';
-import { HttpClient } from '../../src/main/oauth/http-client';
-import { GoogleApi } from '../../src/main/providers/google/google-api';
-import { googleChunkSize } from '../../src/main/providers/google/google-upload';
+import { googleFixtureProfile, startGoogleFixture } from '../fixtures/google-fixture';
 
-describe('Google Drive API provider', () => {
-  let harness: Awaited<ReturnType<typeof createGoogleHarness>>;
-  let provider: ReturnType<typeof harness.provider>;
+describe('Google Drive through configured rclone remotes', () => {
+  let fixture: Awaited<ReturnType<typeof startGoogleFixture>>;
+  let provider: GoogleProvider;
   beforeEach(async () => {
-    harness = await createGoogleHarness();
-    await harness.authorize();
-    provider = harness.provider();
-    await provider.connect();
+    fixture = await startGoogleFixture();
+    provider = fixture.create();
   });
   afterEach(async () => {
-    vi.restoreAllMocks();
     await provider.disconnect();
-    await harness.close();
+    await fixture.close();
   });
-  const root = path(googleRootPath);
-  const read = async (address: string, offset = 0) =>
-    Buffer.from(
-      await new Response(await provider.openRead(path(address), { offset })).arrayBuffer(),
-    );
-  const put = async (address: string, content: Buffer) => {
-    const writer = (
-      await provider.openWrite(path(address), {
-        overwrite: false,
-        expectedSize: BigInt(content.length),
-      })
-    ).getWriter();
-    await writer.write(content);
-    await writer.close();
-  };
-  it.each(['rename', 'trash', 'rename-and-trash'] as const)(
-    'creates a fresh file at a previously uploaded name after %s',
-    async (action) => {
-      const address = googleChildPath(googleRootPath, 'Test1.txt');
-      await put(address, Buffer.from('first'));
-      const original = await provider.stat(path(address));
-      let previous = original.path;
-      if (action !== 'trash') {
-        const renamed = path(googleChildPath(googleRootPath, 'Test3.txt'));
-        await provider.rename(original.path, renamed);
-        previous = (await provider.stat(renamed)).path;
-      }
-      if (action !== 'rename') await provider.delete(previous, { recursive: false });
-      await expect(provider.list(root)).resolves.toHaveLength(action === 'rename' ? 1 : 0);
 
-      await put(address, Buffer.from('second'));
-      const replacement = await provider.stat(path(address));
-      expect(replacement.google?.id).not.toBe(original.google?.id);
-      expect(
-        (
-          await read(
-            required(replacement.path.provider === 'google' ? replacement.path.path : undefined),
-          )
-        ).toString(),
-      ).toBe('second');
-      expect(
-        required(harness.fixture.accounts.get('one'))
-          .get(required(original.google?.id))
-          ?.content.toString(),
-      ).toBe('first');
-    },
-  );
-  it.each(['rename', 'trash'] as const)(
-    'creates a fresh folder at a previously created name after %s',
-    async (action) => {
-      const address = path(googleChildPath(googleRootPath, 'folder'));
-      await provider.createDirectory(address);
-      const original = await provider.stat(address);
-      if (action === 'rename')
-        await provider.rename(original.path, path(googleChildPath(googleRootPath, 'renamed')));
-      else await provider.delete(original.path, { recursive: false });
-
-      await provider.createDirectory(address);
-      const replacement = await provider.stat(address);
-      expect(replacement.kind).toBe('directory');
-      expect(replacement.google?.id).not.toBe(original.google?.id);
-    },
-  );
-  it('retains the reserved ID for an interrupted upload until a restart succeeds', async () => {
-    const address = googleChildPath(googleRootPath, 'interrupted');
-    const writer = (
-      await provider.openWrite(path(address), { overwrite: false, expectedSize: 5n })
-    ).getWriter();
-    await writer.write(Buffer.from('first'));
-    await writer.abort();
-
-    await put(address, Buffer.from('retry'));
-    const creates = harness.fixture.requests.filter(
-      (request) => request.method === 'POST' && request.query.get('uploadType') === 'resumable',
-    );
-    expect(creates).toHaveLength(2);
-    expect(creates[0]?.json).toMatchObject({ id: (await provider.stat(path(address))).google?.id });
-    expect(creates[1]?.json).toEqual(creates[0]?.json);
-    expect(
-      harness.fixture.requests.filter((request) => request.path.endsWith('/generateIds')),
-    ).toHaveLength(1);
-  });
-  it('copies native documents directly within an account without exporting or changing the original', async () => {
-    const tree = required(harness.fixture.accounts.get('one'));
-    const doc = googleFixtureEntry('source.txt', 'native');
-    doc.mimeType = 'application/vnd.google-apps.document';
-    doc.capabilities.canDownload = false;
-    tree.set(doc.id, doc);
-    await provider.copyFrom(
-      provider,
-      path(googleChildPath(googleRootPath, doc.name, doc.id)),
-      path(googleChildPath(googleRootPath, 'copied.txt')),
-    );
-    const copied = await provider.stat(path(googleChildPath(googleRootPath, 'copied.txt')));
-    expect(copied.google?.type).toBe('native');
-    expect(copied.google?.id).not.toBe(doc.id);
-    expect(doc.name).toBe('source.txt');
-    expect(harness.fixture.requests.some((request) => request.path.endsWith('/copy'))).toBe(true);
-    expect(harness.fixture.requests.some((request) => request.path.endsWith('/export'))).toBe(
-      false,
-    );
-  });
-  it.each(Object.entries(googleNativeCopyFormats))(
-    'copies %s into another account with its native type and original name',
-    async (mimeType, exportMimeType) => {
-      const profile = googleFixtureProfile();
-      harness.store.save(profile);
-      harness.fixture.nextAccount = 'two';
-      await harness.authorize(profile.id);
-      const destination = harness.provider(profile.id);
-      await destination.connect();
-      const doc = googleFixtureEntry('named.txt', 'native');
-      doc.mimeType = mimeType;
-      required(harness.fixture.accounts.get('one')).set(doc.id, doc);
-      try {
-        await destination.copyFrom(
-          provider,
-          path(googleChildPath(googleRootPath, doc.name, doc.id)),
-          path(googleChildPath(googleRootPath, doc.name)),
-        );
-        const copied = await destination.stat(path(googleChildPath(googleRootPath, doc.name)));
-        expect(copied.google?.mimeType).toBe(mimeType);
-        expect(copied.google?.id).not.toBe(doc.id);
-        expect(
-          required(harness.fixture.accounts.get('two'))
-            .get(required(copied.google?.id))
-            ?.content.toString(),
-        ).toBe(`export:${doc.id}:${exportMimeType}`);
-        expect(
-          harness.fixture.requests.filter(
-            (request) => request.query.get('uploadType') === 'multipart',
-          ),
-        ).toHaveLength(1);
-        expect(harness.fixture.requests.some((request) => request.path.endsWith('/copy'))).toBe(
-          false,
-        );
-        expect(doc.trashed).toBe(false);
-      } finally {
-        await destination.disconnect();
-      }
-    },
-  );
-  it('rejects a prohibited native copy and a stale source before publishing', async () => {
-    const doc = googleFixtureEntry('source', 'native');
-    doc.mimeType = 'application/vnd.google-apps.document';
-    required(harness.fixture.accounts.get('one')).set(doc.id, doc);
-    const source = path(googleChildPath(googleRootPath, doc.name, doc.id));
-    const target = path(googleChildPath(googleRootPath, 'copied'));
-    doc.capabilities.canCopy = false;
-    await expect(provider.copyFrom(provider, source, target)).rejects.toMatchObject({
-      code: 'PROVIDER_ACCESS_DENIED',
+  it('discovers Google and iCloud separately and rejects a remote of the other type', async () => {
+    expect(await discoverGoogleAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: ['google', 'google-work'],
     });
-    doc.capabilities.canCopy = true;
-    await expect(
-      provider.copyFrom(provider, source, target, { sourceVersionTag: 'outdated' }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
-    expect(
-      harness.fixture.requests.some(
-        (request) => request.method === 'POST' && request.path.endsWith('/copy'),
+    expect(await discoverICloudAvailability(fixture.launch)).toEqual({
+      available: true,
+      remotes: ['icloud', 'second'],
+    });
+    const wrong = fixture.create('icloud');
+    await expect(wrong.connect()).rejects.toMatchObject({ code: 'RCLONE_CONFIGURATION' });
+    await wrong.disconnect();
+    const legacy = new GoogleProvider(
+      new GoogleConnection(
+        { id: googleFixtureProfile().id, name: 'Legacy Google', kind: 'google' },
+        fixture.launch,
       ),
-    ).toBe(false);
-  });
-  it('does not replace a missing explicit target ID with a newly created object', async () => {
-    await expect(
-      provider.openWrite(path(googleChildPath(googleRootPath, 'missing', 'missing-id')), {
-        overwrite: true,
-        expectedSize: 3n,
-      }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' });
-    expect(harness.fixture.sessions.size).toBe(0);
-  });
-  it('rejects incomplete binary metadata instead of silently copying an empty file', async () => {
-    harness.fixture.overrides.set('GET /drive/v3/files/incomplete', {
-      status: 200,
-      body: {
-        id: 'incomplete',
-        name: 'file',
-        mimeType: 'application/octet-stream',
-        parents: ['root-id'],
-        version: '1',
-        capabilities: { canDownload: true },
-      },
-    });
-    await expect(
-      provider.openRead(path(googleChildPath(googleRootPath, 'file', 'incomplete'))),
-    ).rejects.toMatchObject({ code: 'PROVIDER_IO_ERROR' });
-  });
-  it('honors a partial acknowledgement of the final chunk', async () => {
-    const address = googleChildPath(googleRootPath, 'partial');
-    harness.fixture.partialChunkOnce = 512;
-    await put(address, Buffer.alloc(1024, 0x5a));
-    const actual = await provider.stat(path(address));
-    expect(
-      (await read((actual.path as { path: string }).path)).equals(Buffer.alloc(1024, 0x5a)),
-    ).toBe(true);
-    expect(harness.fixture.chunkSizes).toEqual([1024, 512]);
-  });
-  it('sends no bearer header to a validated signed host and rejects a hostile redirect', async () => {
-    const requests: { url: URL; headers: Readonly<Record<string, string>> }[] = [];
-    let location = 'https://download.googleusercontent.com/file?signature=fixture';
-    vi.spyOn(HttpClient.prototype, 'start').mockImplementation((url, _method, headers) => {
-      requests.push({ url, headers });
-      const response = Object.assign(Readable.from([]), {
-        statusCode: requests.length === 1 ? 302 : 200,
-        headers: requests.length === 1 ? { location } : {},
-      }) as unknown as IncomingMessage;
-      return {
-        request: { end: () => undefined } as unknown as ClientRequest,
-        response: Promise.resolve(response),
-        abort: () => undefined,
-      };
-    });
-    const api = new GoogleApi(
-      async () => 'fixture-token',
-      () => undefined,
-      2000,
-      harness.fixture.endpoint,
     );
-    try {
-      await api.media('file-id', 0);
-      expect(requests[0]?.headers.Authorization).toBe('Bearer fixture-token');
-      expect(requests[1]?.headers.Authorization).toBeUndefined();
-      requests.length = 0;
-      location = 'https://download.googleusercontent.com.evil.example/file';
-      await expect(api.media('file-id', 0)).rejects.toMatchObject({
+    await expect(legacy.connect()).rejects.toMatchObject({ code: 'RCLONE_CONFIGURATION' });
+    await legacy.disconnect();
+  });
+
+  it('keeps multiple Google accounts independent and normalizes startup failures', async () => {
+    const other = fixture.create('google-work');
+    await writeFile(join(fixture.root, 'google', 'personal.txt'), 'personal');
+    await writeFile(join(fixture.root, 'google-work', 'work.txt'), 'work');
+    await provider.connect();
+    await other.connect();
+    expect(await provider.list(path('/'))).toMatchObject([{ name: 'personal.txt' }]);
+    expect(await other.list(path('/'))).toMatchObject([{ name: 'work.txt' }]);
+    await provider.disconnect();
+    expect(other.connectionState).toBe('connected');
+    await other.disconnect();
+    const missing = new GoogleProvider(
+      new GoogleConnection(googleFixtureProfile(), (args) =>
+        spawn('openscp-rclone-missing', [...args], { stdio: 'pipe', windowsHide: true }),
+      ),
+    );
+    await expect(missing.connect()).rejects.toMatchObject({ code: 'RCLONE_UNAVAILABLE' });
+    await missing.disconnect();
+  });
+
+  it('uses Google-safe flags and preserves ordinary file names and paths', async () => {
+    await mkdir(join(fixture.root, 'google', 'Documents'));
+    await writeFile(join(fixture.root, 'google', 'Documents', 'Test1.txt'), 'content');
+    await provider.connect();
+    expect(await provider.list(path('/Documents'))).toMatchObject([
+      { name: 'Test1.txt', path: path('/Documents/Test1.txt'), kind: 'file' },
+    ]);
+    expect(fixture.commands.every((args) => args.includes('--drive-skip-gdocs'))).toBe(true);
+    expect(fixture.commands.every((args) => args.includes('--drive-skip-shortcuts'))).toBe(true);
+    expect(fixture.commands.every((args) => args.includes('--drive-use-trash=true'))).toBe(true);
+    expect(fixture.commands.every((args) => args.includes('--drive-import-formats='))).toBe(true);
+    for (const invalid of ['gdrive:/id~name', '/../outside', '/a\\b', '/a//b'])
+      await expect(provider.stat(path(invalid))).rejects.toMatchObject({
         code: 'PROVIDER_INVALID_PATH',
       });
-      expect(requests).toHaveLength(1);
+  });
+
+  it('preserves directory IDs from parent listings when stat roots are synthetic', async () => {
+    await mkdir(join(fixture.root, 'google', 'Documents'));
+    await provider.connect();
+    expect(await provider.stat(path('/'))).toMatchObject({ kind: 'directory', name: '/' });
+    expect((await provider.stat(path('/'))).resourceId).toBeUndefined();
+    const directory = (await provider.list(path('/')))[0];
+    expect(directory?.resourceId).toBeTruthy();
+    expect(await provider.stat(path('/Documents'))).toMatchObject({
+      name: 'Documents',
+      resourceId: directory?.resourceId,
+    });
+    expect(
+      fixture.commands.some((args) => args.includes('--stat') && args.includes('google:Documents')),
+    ).toBe(false);
+  });
+
+  it('identifies the same resources through remotes with matching and nested roots', async () => {
+    await mkdir(join(fixture.root, 'google', 'Documents', 'Nested'), { recursive: true });
+    await writeFile(join(fixture.root, 'google', 'Documents', 'Nested', 'file.txt'), 'content');
+    await fixture.behavior({ remoteRoots: { 'google-work': 'google' } });
+    const alias = fixture.create('google-work');
+    try {
+      await provider.connect();
+      await alias.connect();
+      expect((await alias.stat(path('/Documents'))).resourceId).toBe(
+        (await provider.stat(path('/Documents'))).resourceId,
+      );
+      await fixture.behavior({ remoteRoots: { 'google-work': 'google/Documents' } });
+      expect((await alias.stat(path('/Nested/file.txt'))).resourceId).toBe(
+        (await provider.stat(path('/Documents/Nested/file.txt'))).resourceId,
+      );
     } finally {
-      api.close();
+      await alias.disconnect();
     }
   });
-  it('paginates duplicate names and uses IDs for stat, rename, trash and exact overwrite', async () => {
-    const tree = required(harness.fixture.accounts.get('one'));
-    const first = googleFixtureEntry('одинаковый #~?.txt', 'first');
-    const second = googleFixtureEntry(first.name, 'second');
-    tree.set(first.id, first);
-    tree.set(second.id, second);
-    tree.set('third', googleFixtureEntry('third', '3', 'root-id', 'third'));
-    const entries = await provider.list(root);
-    expect(entries).toHaveLength(3);
-    expect(
-      new Set(entries.map((entry) => (entry.path.provider === 'google' ? entry.path.path : '')))
-        .size,
-    ).toBe(3);
-    const firstPath = googleChildPath(googleRootPath, first.name, first.id);
-    const secondPath = googleChildPath(googleRootPath, second.name, second.id);
+
+  it('reports expired Google authorization without exposing subprocess diagnostics', async () => {
+    await fixture.behavior({
+      command: 'lsjson',
+      exit: 1,
+      stderr: 'oauth2 invalid_grant token-canary',
+    });
+    const error: unknown = await provider.connect().catch((failure: unknown) => failure);
+    expect(error).toMatchObject({ code: 'RCLONE_AUTHENTICATION' });
+    expect(String(error)).not.toContain('token-canary');
+    expect(provider.connection.failureCode).toBe('RCLONE_AUTHENTICATION');
+  });
+
+  it('blocks duplicate names and ambiguous ancestor directories before reading or mutating', async () => {
+    await mkdir(join(fixture.root, 'google', 'Duplicate'));
+    await writeFile(join(fixture.root, 'google', 'Duplicate', 'file.txt'), 'original');
+    await provider.connect();
+    await fixture.behavior({ duplicateName: 'Duplicate' });
+    await expect(provider.list(path('/'))).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
+    await expect(provider.openRead(path('/Duplicate/file.txt'))).rejects.toMatchObject({
+      code: 'PROVIDER_CONFLICT',
+    });
     await expect(
-      provider.stat(path(googleChildPath(googleRootPath, first.name))),
-    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
-    expect((await read(firstPath)).toString()).toBe('first');
-    expect((await read(secondPath, 3)).toString()).toBe('ond');
+      provider.delete(path('/Duplicate/file.txt'), { recursive: false }),
+    ).rejects.toMatchObject({
+      code: 'PROVIDER_CONFLICT',
+    });
+    await expect(
+      provider.openWrite(path('/Duplicate/new.txt'), { overwrite: false }),
+    ).rejects.toMatchObject({
+      code: 'PROVIDER_CONFLICT',
+    });
+    expect(await readFile(join(fixture.root, 'google', 'Duplicate', 'file.txt'), 'utf8')).toBe(
+      'original',
+    );
+    expect(
+      fixture.commands.some((args) => ['cat', 'rcat', 'deletefile'].includes(args[0] ?? '')),
+    ).toBe(false);
+  });
+
+  it('stages streamed writes, preserves the destination on cancellation and detects concurrent changes', async () => {
+    await provider.connect();
+    const target = join(fixture.root, 'google', 'file.txt');
+    await writeFile(target, 'original');
+    const aborted = (await provider.openWrite(path('/file.txt'), { overwrite: true })).getWriter();
+    await aborted.write(Buffer.from('replacement'));
+    await aborted.abort();
+    expect(await readFile(target, 'utf8')).toBe('original');
     const writer = (
-      await provider.openWrite(path(secondPath), { overwrite: true, expectedSize: 3n })
+      await provider.openWrite(path('/file.txt'), { overwrite: true, expectedSize: 3n })
     ).getWriter();
     await writer.write(Buffer.from('new'));
-    await writer.close();
-    expect(first.content.toString()).toBe('first');
-    expect(second.content.toString()).toBe('new');
-    await provider.rename(path(firstPath), path(googleChildPath(googleRootPath, 'renamed')));
-    expect(first.name).toBe('renamed');
-    await provider.delete(path(secondPath), { recursive: false });
-    expect(second.trashed).toBe(true);
-    expect(first.trashed).toBe(false);
-    expect(harness.fixture.requests.filter((request) => request.method === 'DELETE')).toHaveLength(
-      0,
+    await writeFile(target, 'changed independently');
+    await expect(writer.close()).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
+    expect(await readFile(target, 'utf8')).toBe('changed independently');
+    expect(await readdir(join(fixture.root, 'google'))).toEqual(['file.txt']);
+    expect(provider.capabilities).toMatchObject({
+      resumeRead: false,
+      resumeWrite: false,
+      serverSideCopy: false,
+    });
+  });
+
+  it('requires the staged object identity after publication instead of accepting a skipped move', async () => {
+    await provider.connect();
+    await fixture.behavior({ skipPublish: true });
+    const writer = (
+      await provider.openWrite(path('/published.txt'), { overwrite: false, expectedSize: 11n })
+    ).getWriter();
+    await writer.write(Buffer.from('replacement'));
+    await expect(writer.close()).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
+    expect(await readFile(join(fixture.root, 'google', 'published.txt'), 'utf8')).toBe(
+      'independent',
     );
-  });
-  it('validates My Drive ancestry, permissions, native docs and never traverses shortcuts', async () => {
-    const tree = required(harness.fixture.accounts.get('one'));
-    const foreign = googleFixtureEntry('foreign', 'secret', 'other-root');
-    tree.set(foreign.id, foreign);
-    await expect(
-      provider.stat(path(googleChildPath(googleRootPath, foreign.name, foreign.id))),
-    ).rejects.toMatchObject({ code: 'PROVIDER_NOT_FOUND' });
-    const denied = googleFixtureEntry('denied', 'secret');
-    denied.capabilities = {};
-    tree.set(denied.id, denied);
-    const deniedPath = path(googleChildPath(googleRootPath, denied.name, denied.id));
-    await expect(provider.openRead(deniedPath)).rejects.toMatchObject({
-      code: 'PROVIDER_ACCESS_DENIED',
-    });
-    await expect(provider.delete(deniedPath, { recursive: false })).rejects.toMatchObject({
-      code: 'PROVIDER_ACCESS_DENIED',
-    });
-    await expect(
-      provider.openWrite(deniedPath, { overwrite: true, expectedSize: 1n }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
-    const doc = googleFixtureEntry('Документ', 'native');
-    doc.mimeType = 'application/vnd.google-apps.document';
-    tree.set(doc.id, doc);
-    const docPath = googleChildPath(googleRootPath, doc.name, doc.id);
-    expect((await provider.stat(path(docPath))).kind).toBe('special');
-    await expect(provider.openRead(path(docPath))).rejects.toMatchObject({
-      code: 'PROVIDER_ACCESS_DENIED',
-    });
-    await expect(
-      provider.openWrite(path(docPath), { overwrite: true, expectedSize: 1n }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_CONFLICT' });
-    const exported = googleExportPath(docPath, 'application/pdf');
-    const info = await provider.stat(path(exported));
-    expect(info.name).toBe('Документ.pdf');
-    expect((await read(exported)).toString()).toBe(`export:${doc.id}:application/pdf`);
-    expect(info.size).toBe(BigInt((await read(exported)).length));
-    const shortcut = googleFixtureEntry('link', '');
-    shortcut.mimeType = 'application/vnd.google-apps.shortcut';
-    tree.set(shortcut.id, shortcut);
-    const link = path(googleChildPath(googleRootPath, shortcut.name, shortcut.id));
-    expect((await provider.stat(link)).kind).toBe('symbolic-link');
-    await expect(provider.list(link)).rejects.toMatchObject({ code: 'PROVIDER_ACCESS_DENIED' });
-    const nested = googleChildPath(
-      googleChildPath(googleRootPath, shortcut.name, shortcut.id),
-      'target',
-      foreign.id,
-    );
-    await expect(provider.stat(path(nested))).rejects.toMatchObject({
-      code: 'PROVIDER_INVALID_PATH',
-    });
-  });
-  it('creates folders and empty files, bounds upload chunks and resumes at the acknowledged offset', async () => {
-    const folder = path(googleChildPath(googleRootPath, 'folder'));
-    await provider.createDirectory(folder);
-    const actual = await provider.stat(folder);
-    expect(actual.kind).toBe('directory');
-    const folderPath = required(actual.path.provider === 'google' ? actual.path.path : undefined);
-    await put(googleChildPath(folderPath, 'empty'), Buffer.alloc(0));
-    const address = googleChildPath(folderPath, 'large');
-    const content = Buffer.alloc(3 * googleChunkSize + 19, 0x5a);
-    let progress = 0;
-    const writer = (
-      await provider.openWrite(path(address), {
-        expectedSize: BigInt(content.length),
-        overwrite: false,
-        onProgress: (bytes) => {
-          progress += bytes;
-        },
-      })
-    ).getWriter();
-    await writer.write(content.subarray(0, 2 * googleChunkSize + 65536));
-    await writer.abort();
-    expect(progress).toBe(2 * googleChunkSize);
-    const offset = await provider.resumeWriteOffset(path(address), {
-      expectedSize: BigInt(content.length),
-      overwrite: false,
-    });
-    expect(offset).toBe(progress);
-    const resumed = (
-      await provider.openWrite(path(address), {
-        expectedSize: BigInt(content.length),
-        overwrite: false,
-        offset,
-      })
-    ).getWriter();
-    await resumed.write(content.subarray(offset));
-    await resumed.close();
-    const result = await provider.stat(path(address));
-    expect(result.size).toBe(BigInt(content.length));
-    expect((await read((result.path as { path: string }).path)).equals(content)).toBe(true);
-    expect(Math.max(...harness.fixture.chunkSizes)).toBeLessThanOrEqual(googleChunkSize);
-    expect(
-      harness.fixture.requests.some((request) => request.path === '/drive/v3/files/generateIds'),
-    ).toBe(true);
-  });
-  it('preserves unsent bytes after a partial acknowledgement while filling chunks from small source buffers', async () => {
-    const address = googleChildPath(googleRootPath, 'partial-large');
-    const content = Buffer.alloc(2 * googleChunkSize + 17);
-    for (let index = 0; index < content.length; index += 1) content[index] = index % 251;
-    harness.fixture.partialChunkOnce = 262144;
-    let progress = 0;
-    const writer = (
-      await provider.openWrite(path(address), {
-        expectedSize: BigInt(content.length),
-        overwrite: false,
-        onProgress: (bytes) => {
-          progress += bytes;
-        },
-      })
-    ).getWriter();
-    for (let offset = 0; offset < content.length; offset += 65537)
-      await writer.write(content.subarray(offset, offset + 65537));
-    expect((await provider.list(root)).some((entry) => entry.name === 'partial-large')).toBe(false);
-    await writer.close();
-    expect(progress).toBe(content.length);
-    const actual = await provider.stat(path(address));
-    expect((await read((actual.path as { path: string }).path)).equals(content)).toBe(true);
-    expect(harness.fixture.chunkSizes).toEqual([
-      googleChunkSize,
-      googleChunkSize,
-      googleChunkSize - 262144 + 17,
-    ]);
-  });
-  it('holds an exact final chunk until close and discards it on cancellation', async () => {
-    const writer = (
-      await provider.openWrite(path(googleChildPath(googleRootPath, 'cancel-final')), {
-        expectedSize: BigInt(googleChunkSize),
-        overwrite: false,
-      })
-    ).getWriter();
-    await writer.write(Buffer.alloc(googleChunkSize, 0x5a));
-    expect(harness.fixture.chunkSizes).toEqual([]);
-    await writer.abort();
-    expect(harness.fixture.chunkSizes).toEqual([]);
-    expect((await provider.list(root)).some((entry) => entry.name === 'cancel-final')).toBe(false);
-  });
-  it('rejects forged upload locations and impossible offsets and reports an expired session', async () => {
-    const address = path(googleChildPath(googleRootPath, 'file'));
-    harness.fixture.sessionLocation = 'https://attacker.example/upload?upload_id=x';
-    await expect(
-      provider.openWrite(address, { expectedSize: 4000000n, overwrite: false }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_INVALID_PATH' });
-    harness.fixture.sessionLocation = undefined;
-    const writer = (
-      await provider.openWrite(address, { expectedSize: 4000000n, overwrite: false })
-    ).getWriter();
-    await writer.write(Buffer.alloc(2000000));
-    await writer.abort();
-    harness.fixture.rangeOverride = 'bytes=0-3999999';
-    await expect(
-      provider.resumeWriteOffset(address, { expectedSize: 4000000n, overwrite: false }),
-    ).rejects.toMatchObject({ code: 'PROVIDER_IO_ERROR' });
-    harness.fixture.rangeOverride = undefined;
-    harness.fixture.expireSessions = true;
-    await expect(
-      provider.resumeWriteOffset(address, { expectedSize: 4000000n, overwrite: false }),
-    ).rejects.toMatchObject({ code: 'UNSAFE_RESUME' });
-  });
-  it.each([
-    [403, 'storageQuotaExceeded', 'PROVIDER_QUOTA_EXCEEDED'],
-    [403, 'rateLimitExceeded', 'PROVIDER_RATE_LIMITED'],
-    [403, 'insufficientFilePermissions', 'PROVIDER_ACCESS_DENIED'],
-    [429, '', 'PROVIDER_RATE_LIMITED'],
-  ] as const)('normalizes %s %s', async (status, reason, code) => {
-    harness.fixture.overrides.set('GET /drive/v3/files', {
-      status,
-      body: { error: { errors: [{ reason }] } },
-      headers: { 'Retry-After': '0' },
-    });
-    await expect(provider.list(root)).rejects.toMatchObject({ code });
-  });
-  it('strictly validates ID addresses and isolates bearer credentials from signed redirects', async () => {
-    const name = 'слэш/\\ #?~';
-    const address = googleChildPath(googleRootPath, name, 'test-id');
-    expect(parseGooglePath(address).segments[0]?.name).toBe(name);
-    for (const invalid of [
-      'gdrive:/name',
-      'gdrive:/~new/id~child',
-      'gdrive:/id~a?token=x',
-      'gdrive:/id~%61',
-      'gdrive:/id~a/../x',
-      'https://evil',
-    ])
-      expect(() => parseGooglePath(invalid)).toThrow();
-    const api = new GoogleApi(
-      async () => 'fixture',
-      () => undefined,
-      2000,
-      harness.fixture.endpoint,
-    );
-    expect(() =>
-      api.session(
-        'https://www.googleapis.com.evil/upload/drive/v3/files?uploadType=resumable&upload_id=x',
-      ),
-    ).toThrow();
-    api.close();
   });
 });
