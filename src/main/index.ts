@@ -19,6 +19,12 @@ import { discoverICloudAvailability } from './providers/icloud/icloud-availabili
 import { dirname, join, resolve } from 'node:path';
 import { ipcEventChannels, ipcRequestChannels } from '@shared/ipc/channels';
 import { createFileDragHandler } from './ipc/file-drag-handler';
+import {
+  createLocalDirectoryWatchHandler,
+  type LocalDirectoryWatchHandler,
+} from './ipc/local-directory-watch-handler';
+import { LocalDirectoryWatchService } from './providers/local/local-directory-watch-service';
+import { correlationIdSchema } from './ipc/schemas';
 import type {
   AppReadyEvent,
   ApplicationMenuCommand,
@@ -38,7 +44,7 @@ import { configureTextInputContextMenu } from './text-input-context-menu';
 import { menuResources } from '@shared/localization/menu-resources';
 import { openSshTerminal } from './external/ssh-terminal';
 import { normalizeMacApplicationPath, openEditor } from './external/editor';
-import { applicationErrorCodes } from '@shared/errors/application-error';
+import { applicationErrorCodes, getSafeApplicationError } from '@shared/errors/application-error';
 import { ApplicationError } from './ipc/application-error';
 import { discoverGoogleAvailability } from './providers/google/google-availability';
 import { createYandexConfiguration } from './oauth/yandex-configuration';
@@ -274,6 +280,8 @@ app.whenReady().then(async () => {
     localRootPath: localBrowsePaths.rootPath,
   });
   const profileStore = new ProfileStore(database, credentials);
+  const localDirectoryWatches = new LocalDirectoryWatchService();
+  const localDirectoryWatchHandlers = new Map<number, LocalDirectoryWatchHandler>();
   const [icloudAvailability, googleAvailability] = await Promise.all([
     discoverICloudAvailability(undefined, profileStore.getSetting('rclone-path')),
     discoverGoogleAvailability(undefined, profileStore.getSetting('rclone-path')),
@@ -398,6 +406,9 @@ app.whenReady().then(async () => {
   readActiveTransfers = () =>
     workspaceService.transfers.hasAnyActive() || workspaceService.externalDrags.hasActive();
   app.once('will-quit', () => {
+    for (const handler of localDirectoryWatchHandlers.values()) handler.dispose();
+    localDirectoryWatchHandlers.clear();
+    localDirectoryWatches.dispose();
     workspaceService.dispose();
     database.close();
   });
@@ -432,6 +443,46 @@ app.whenReady().then(async () => {
     },
     { ...dependencies, workspace: (request) => workspaceService.execute(request) },
   );
+  ipcMain.handle(ipcRequestChannels.setLocalDirectoryWatch, (event, request: unknown) => {
+    const sender = event.sender;
+    const isAllowed = (): boolean =>
+      !sender.isDestroyed() && [...mainWindows].some((window) => window.webContents === sender);
+    if (!isAllowed() || event.senderFrame !== sender.mainFrame) {
+      const correlationId = correlationIdSchema.safeParse(
+        typeof request === 'object' && request !== null
+          ? Reflect.get(request, 'correlationId')
+          : undefined,
+      );
+      return {
+        correlationId: correlationId.success ? correlationId.data : randomUUID(),
+        ok: false,
+        error: getSafeApplicationError(applicationErrorCodes.invalidIpcPayload),
+      };
+    }
+    let handler = localDirectoryWatchHandlers.get(sender.id);
+    if (!handler) {
+      handler = createLocalDirectoryWatchHandler({
+        isAllowed,
+        validateDirectory: async (path) => dependencies.listLocalDirectory({ path }),
+        subscribe: (path, listener) => localDirectoryWatches.subscribe(path, listener),
+        sendChanged: (notification) => {
+          if (isAllowed()) sender.send(ipcEventChannels.localDirectoryChanged, notification);
+        },
+      });
+      localDirectoryWatchHandlers.set(sender.id, handler);
+      const dispose = (): void => {
+        localDirectoryWatchHandlers.get(sender.id)?.dispose();
+        localDirectoryWatchHandlers.delete(sender.id);
+        sender.removeListener('destroyed', dispose);
+        sender.removeListener('render-process-gone', dispose);
+        sender.removeListener('did-start-loading', dispose);
+      };
+      sender.once('destroyed', dispose);
+      sender.once('render-process-gone', dispose);
+      sender.once('did-start-loading', dispose);
+    }
+    return handler.handle(request);
+  });
   ipcMain.handle(ipcRequestChannels.startFileDrag, (event, request: unknown) => {
     const isAllowed = () =>
       !event.sender.isDestroyed() &&

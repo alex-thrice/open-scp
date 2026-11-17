@@ -69,6 +69,12 @@ const createDesktopApi = (listLocalDirectory: DesktopApi['listLocalDirectory']):
     }),
     onAppReady: () => () => undefined,
     onApplicationMenuCommand: () => () => undefined,
+    onLocalDirectoryChanged: () => () => undefined,
+    setLocalDirectoryWatch: async () => ({
+      correlationId,
+      ok: false,
+      error: { code: 'IPC_UNAVAILABLE', messageKey: 'errors.ipc.unavailable' },
+    }),
     runtime: 'electron',
   };
 
@@ -551,7 +557,9 @@ describe('App', () => {
       'listLocalDrives',
       'onAppReady',
       'onApplicationMenuCommand',
+      'onLocalDirectoryChanged',
       'runtime',
+      'setLocalDirectoryWatch',
       'workspace',
     ]);
     expect(Object.isFrozen(window.desktop)).toBe(true);

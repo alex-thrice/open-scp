@@ -19,6 +19,7 @@ import { SourcePicker } from './SourcePicker';
 import { VirtualFileList } from './VirtualFileList';
 import { ExternalDragStatus } from './ExternalDragStatus';
 import type { WorkspaceRunner } from './useWorkspaceService';
+import { useLocalDirectoryWatch } from './useLocalDirectoryWatch';
 import { readFileDrop } from './file-drop';
 import {
   copyRequest,
@@ -138,6 +139,7 @@ export const FilePane = ({
   const hasSuccessfulListing = useRef(false);
   const attemptedPath = useRef<string | null>(initialPathReference.current);
   const fileFocusOrigin = useRef<Element | null>(null);
+  const backgroundLoadError = useRef<string | null>(null);
   const load = useCallback(
     async (path: string | null, focusFiles = false) => {
       const pane = panel.current;
@@ -151,6 +153,7 @@ export const FilePane = ({
           : null;
       attemptedPath.current = path;
       const request = ++version.current;
+      backgroundLoadError.current = null;
       setLoading(true);
       setLoadError(null);
       setPathFallback(false);
@@ -214,6 +217,63 @@ export const FilePane = ({
       version.current++;
     };
   }, [load, ready, kind, initialized]);
+  const refreshLocalDirectory = useCallback(
+    async (isCurrent: () => boolean) => {
+      const path = listing?.currentPath;
+      if (!path) return;
+      const request = version.current;
+      const response = await window.desktop.listLocalDirectory(path);
+      if (!isCurrent() || request !== version.current) return;
+      const preserveEmptyListFocus = (hasEntries: boolean): void => {
+        const pane = panel.current;
+        const list = pane?.querySelector('.file-list-shell');
+        if (!!list === hasEntries) return;
+        const focused = document.activeElement;
+        if (
+          focused === pane ||
+          focused === pane?.querySelector('.commander-surface') ||
+          list?.contains(focused)
+        )
+          fileFocusOrigin.current = focused;
+      };
+      if (response.ok) {
+        preserveEmptyListFocus(
+          response.data.entries.some(
+            (entry) => appearance.showHidden || !entry.name.startsWith('.'),
+          ),
+        );
+        setListing(response.data);
+        const existingPaths = new Set(response.data.entries.map((entry) => entry.path));
+        setSelection((current) =>
+          current.filter((selectedPath) => existingPaths.has(selectedPath)),
+        );
+        if (backgroundLoadError.current !== null) {
+          const previousError = backgroundLoadError.current;
+          backgroundLoadError.current = null;
+          setLoadError((current) => (current === previousError ? null : current));
+        }
+      } else {
+        backgroundLoadError.current = response.error.messageKey;
+        setLoadError(response.error.messageKey);
+        if (
+          response.error.code === 'PROVIDER_NOT_FOUND' ||
+          response.error.code === 'PROVIDER_INVALID_PATH'
+        ) {
+          preserveEmptyListFocus(false);
+          setListing((current) => (current ? { ...current, entries: [] } : current));
+          setSelection([]);
+        }
+      }
+    },
+    [appearance.showHidden, listing?.currentPath],
+  );
+  useLocalDirectoryWatch({
+    subscriptionId: paneId,
+    path: kind === 'local' ? (listing?.currentPath ?? null) : null,
+    isActive,
+    paused: loading || busy || operation !== null || pendingCopies.length > 0,
+    refresh: refreshLocalDirectory,
+  });
   const completed = snapshot.transfers
     .filter((transfer) => transfer.state === 'completed')
     .map((transfer) => transfer.id)
