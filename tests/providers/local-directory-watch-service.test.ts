@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { execFileSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { realpathSync, watch, type FSWatcher, type WatchListener } from 'node:fs';
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
@@ -246,7 +246,7 @@ describe('LocalDirectoryWatchService', () => {
       const directoryPath = join(rootPath, 'watched-directory');
       await mkdir(directoryPath);
       const canonicalPath = realpathSync.native(directoryPath);
-      const aliasPath = execFileSync(
+      const shortPathResult = spawnSync(
         process.env.ComSpec ?? 'cmd.exe',
         ['/d', '/c', 'for %I in ("%OPENSCP_WATCH_TEST_PATH%") do @echo %~sI'],
         {
@@ -255,7 +255,11 @@ describe('LocalDirectoryWatchService', () => {
           windowsVerbatimArguments: true,
           env: { ...process.env, OPENSCP_WATCH_TEST_PATH: directoryPath },
         },
-      ).trim();
+      );
+      if (shortPathResult.error) throw shortPathResult.error;
+      expect(shortPathResult.status).toBe(0);
+      const aliasPath = shortPathResult.stdout.trim();
+      expect(aliasPath).not.toBe('');
       if (aliasPath.toLowerCase() === canonicalPath.toLowerCase()) {
         context.skip('The fixture volume does not provide an 8.3 directory alias.');
         return;
