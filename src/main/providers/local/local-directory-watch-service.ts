@@ -1,4 +1,4 @@
-import { watch, type FSWatcher } from 'node:fs';
+import { realpathSync, watch, type FSWatcher } from 'node:fs';
 import { resolve } from 'node:path';
 
 interface WatchedDirectory {
@@ -60,7 +60,10 @@ export class LocalDirectoryWatchService {
     if (!this.isActive(directory)) return false;
     if (directory.watcher) return true;
     try {
-      const watcher = watch(directory.path, { persistent: false }, (eventType) => {
+      // Раскрываем короткие имена Windows, чтобы libuv сравнивал пути в одинаковом формате.
+      const watchPath =
+        process.platform === 'win32' ? realpathSync.native(directory.path) : directory.path;
+      const watcher = watch(watchPath, { persistent: false }, (eventType) => {
         if (directory.watcher !== watcher) return;
         if (eventType === 'rename') directory.shouldReattach = true;
         this.scheduleNotification(directory);

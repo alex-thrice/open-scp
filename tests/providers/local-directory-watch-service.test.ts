@@ -1,6 +1,7 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
-import { watch, type FSWatcher, type WatchListener } from 'node:fs';
+import { realpathSync, watch, type FSWatcher, type WatchListener } from 'node:fs';
 import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
@@ -19,6 +20,7 @@ const createService = (): LocalDirectoryWatchService => {
 };
 
 const mockWatchers = () => {
+  vi.spyOn(realpathSync, 'native').mockImplementation((path) => String(path));
   const callbacks: WatchListener<string>[] = [];
   const watchers: ReturnType<typeof createWatcher>[] = [];
   const createWatcher = () =>
@@ -39,6 +41,7 @@ const mockWatchers = () => {
 beforeEach(async () => {
   const originalFs = await vi.importActual<typeof import('node:fs')>('node:fs');
   vi.mocked(watch).mockReset().mockImplementation(originalFs.watch);
+  vi.spyOn(realpathSync, 'native').mockReset().mockImplementation(originalFs.realpathSync.native);
 });
 
 afterEach(async () => {
@@ -155,6 +158,47 @@ describe('LocalDirectoryWatchService', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
+  it.skipIf(process.platform !== 'win32')(
+    'canonicalizes Windows native watch paths again when recovering a logical short path',
+    () => {
+      vi.useFakeTimers();
+      const { watchers } = mockWatchers();
+      const aliasPath = resolve('SHORT~1', 'WATCH~1');
+      const canonicalPath = resolve('Long directory name', 'Watched directory');
+      const recreatedPath = resolve('Long directory name', 'Recreated watched directory');
+      const nativeRealpath = vi
+        .mocked(realpathSync.native)
+        .mockReturnValueOnce(canonicalPath)
+        .mockImplementationOnce(() => {
+          throw new Error('Directory temporarily unavailable.');
+        })
+        .mockReturnValueOnce(recreatedPath);
+      const service = createService();
+      const listener = vi.fn();
+      service.subscribe(aliasPath, listener);
+
+      expect(watch).toHaveBeenNthCalledWith(
+        1,
+        canonicalPath,
+        { persistent: false },
+        expect.any(Function),
+      );
+      watchers[0]?.emit('error', new Error('Directory removed.'));
+      vi.advanceTimersByTime(1000);
+      expect(watch).toHaveBeenCalledOnce();
+      vi.advanceTimersByTime(1150);
+      expect(watch).toHaveBeenNthCalledWith(
+        2,
+        recreatedPath,
+        { persistent: false },
+        expect.any(Function),
+      );
+      expect(nativeRealpath).toHaveBeenCalledTimes(3);
+      for (const call of nativeRealpath.mock.calls) expect(call).toEqual([aliasPath]);
+      expect(listener).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it('observes external file creation, modification, rename and deletion', async () => {
     const path = await mkdtemp(join(tmpdir(), 'openscp-watch-'));
     temporaryDirectories.push(path);
@@ -193,4 +237,47 @@ describe('LocalDirectoryWatchService', () => {
     await writeFile(join(path, 'recreated.txt'), 'new inode');
     await vi.waitFor(() => expect(listener).toHaveBeenCalled(), { timeout: 3000 });
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'observes long-path operations through a Windows 8.3 directory alias and recovers after recreation',
+    async (context) => {
+      const rootPath = await mkdtemp(join(tmpdir(), 'openscp-short-path-regression-'));
+      temporaryDirectories.push(rootPath);
+      const directoryPath = join(rootPath, 'watched-directory');
+      await mkdir(directoryPath);
+      const canonicalPath = realpathSync.native(directoryPath);
+      const aliasPath = execFileSync(
+        process.env.ComSpec ?? 'cmd.exe',
+        ['/d', '/c', 'for %I in ("%OPENSCP_WATCH_TEST_PATH%") do @echo %~sI'],
+        {
+          encoding: 'utf8',
+          windowsHide: true,
+          windowsVerbatimArguments: true,
+          env: { ...process.env, OPENSCP_WATCH_TEST_PATH: directoryPath },
+        },
+      ).trim();
+      if (aliasPath.toLowerCase() === canonicalPath.toLowerCase()) {
+        context.skip('The fixture volume does not provide an 8.3 directory alias.');
+        return;
+      }
+      expect(realpathSync.native(aliasPath).toLowerCase()).toBe(canonicalPath.toLowerCase());
+      const service = createService();
+      const listener = vi.fn();
+      service.subscribe(aliasPath, listener);
+      const filePath = join(canonicalPath, 'file.txt');
+      const renamedPath = join(canonicalPath, 'renamed.txt');
+      const expectChange = async (operation: () => Promise<unknown>) => {
+        listener.mockClear();
+        await operation();
+        await vi.waitFor(() => expect(listener).toHaveBeenCalled(), { timeout: 3000 });
+      };
+
+      await expectChange(() => writeFile(filePath, 'created through the long path'));
+      await expectChange(() => rename(filePath, renamedPath));
+      await expectChange(() => rm(renamedPath));
+      await expectChange(() => rm(canonicalPath, { recursive: true }));
+      await expectChange(() => mkdir(canonicalPath));
+      await expectChange(() => writeFile(join(canonicalPath, 'recreated.txt'), 'recreated'));
+    },
+  );
 });
