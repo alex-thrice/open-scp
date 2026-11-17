@@ -5,7 +5,7 @@
 ## Using OpenSCP
 
 - [Getting started](user/getting-started.md)
-- [Install rclone and PuTTY](user/getting-started.md#additional-tools)
+- [Install rclone and choose an SSH client](user/getting-started.md#additional-tools)
 - [Files, tabs and keyboard shortcuts](user/commander.md)
 - [Installation, updates and platform notes](user/platforms.md)
 

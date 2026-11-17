@@ -5,7 +5,7 @@
 ## Работа с OpenSCP
 
 - [Начало работы](user/getting-started.ru.md)
-- [Установка rclone и PuTTY](user/getting-started.ru.md#дополнительные-программы)
+- [Установка rclone и выбор SSH-клиента](user/getting-started.ru.md#дополнительные-программы)
 - [Файлы, вкладки и горячие клавиши](user/commander.ru.md)
 - [Установка, обновления и особенности платформ](user/platforms.ru.md)
 

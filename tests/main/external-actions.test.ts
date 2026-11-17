@@ -59,6 +59,7 @@ describe('workspace external actions', () => {
       await service.execute({ action: 'connect', workspaceId: right, profileId: profile.id });
       await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
       expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, {
+        windowsClient: 'openssh',
         directory: '/home/fixture',
       });
 
@@ -71,10 +72,24 @@ describe('workspace external actions', () => {
       ).rejects.toBeDefined();
       await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
       expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, {
+        windowsClient: 'openssh',
         directory: "/opt/my app/it's here",
       });
       await service.execute({ action: 'open-ssh-terminal', workspaceId: right });
-      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, { directory: '/var/www' });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, null, {
+        windowsClient: 'openssh',
+        directory: '/var/www',
+      });
+
+      const puttyPath = 'C:\\Tools\\PuTTY\\putty.exe';
+      await service.execute({ action: 'set-putty-path', path: puttyPath });
+      await service.execute({ action: 'set-ssh-terminal-client', client: 'putty' });
+      await service.execute({ action: 'open-ssh-terminal', workspaceId: right });
+      expect(openSshTerminal).toHaveBeenLastCalledWith(profile, puttyPath, {
+        windowsClient: 'putty',
+        directory: '/var/www',
+      });
+      await service.execute({ action: 'set-ssh-terminal-client', client: 'openssh' });
 
       const otherProfile = store.save({
         ...profile,
@@ -83,13 +98,54 @@ describe('workspace external actions', () => {
       });
       await service.execute({ action: 'connect', workspaceId: left, profileId: otherProfile.id });
       await service.execute({ action: 'open-ssh-terminal', workspaceId: left });
-      expect(openSshTerminal).toHaveBeenLastCalledWith(otherProfile, null, {
+      expect(openSshTerminal).toHaveBeenLastCalledWith(otherProfile, puttyPath, {
+        windowsClient: 'openssh',
         directory: '/srv/new',
       });
     } finally {
       service.dispose();
       database.close();
       vi.restoreAllMocks();
+    }
+  });
+
+  it('keeps a legacy PuTTY path and restores an explicit SSH client after restarting', async () => {
+    const database = openDatabase(':memory:');
+    const credentials = new CredentialService(database, {
+      isEncryptionAvailable: () => true,
+      encryptString: (value) => Buffer.from(value),
+      decryptString: (value) => Buffer.from(value).toString(),
+    });
+    const store = new ProfileStore(database, credentials);
+    const createService = () =>
+      new WorkspaceService(
+        store,
+        credentials,
+        async () => [],
+        async () => null,
+      );
+    const first = createService();
+    let restored: WorkspaceService | undefined;
+    try {
+      expect(first.snapshot().sshTerminalClient).toBe('openssh');
+      const puttyPath = 'C:\\Tools\\PuTTY\\putty.exe';
+      store.setSetting('putty-path', puttyPath);
+      expect(first.snapshot().sshTerminalClient).toBe('putty');
+      store.setSetting('ssh-terminal-client', 'unknown');
+      expect(first.snapshot().sshTerminalClient).toBe('putty');
+      await first.execute({ action: 'set-ssh-terminal-client', client: 'openssh' });
+      expect(first.snapshot()).toMatchObject({ sshTerminalClient: 'openssh', puttyPath });
+      first.dispose();
+
+      restored = createService();
+      expect(restored.snapshot()).toMatchObject({ sshTerminalClient: 'openssh', puttyPath });
+      await restored.execute({ action: 'set-ssh-terminal-client', client: 'putty' });
+      await restored.execute({ action: 'set-putty-path', path: null });
+      expect(restored.snapshot()).toMatchObject({ sshTerminalClient: 'putty', puttyPath: null });
+    } finally {
+      first.dispose();
+      restored?.dispose();
+      database.close();
     }
   });
 

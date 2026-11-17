@@ -158,6 +158,8 @@ const statefulApi = (initial: Partial<WorkspaceSnapshot> = {}) => {
     if (request.action === 'set-appearance')
       snapshot = { ...snapshot, appearance: request.appearance };
     if (request.action === 'set-language') snapshot = { ...snapshot, language: request.language };
+    if (request.action === 'set-ssh-terminal-client')
+      snapshot = { ...snapshot, sshTerminalClient: request.client };
     if (request.action === 'set-putty-path') snapshot = { ...snapshot, puttyPath: request.path };
     if (request.action === 'set-editor-path') snapshot = { ...snapshot, editorPath: request.path };
     if (request.action === 'set-confirm-tab-close')
@@ -1370,7 +1372,7 @@ describe('App', () => {
     );
   });
 
-  it('opens the PuTTY setting after an unavailable terminal error', async () => {
+  it('opens SSH client settings after an unavailable terminal error', async () => {
     const successfulWorkspace = statefulApi({
       sessions: [
         {
@@ -1409,9 +1411,10 @@ describe('App', () => {
     render(<App />);
     await screen.findByRole('tab', { name: 'test - Development' });
     fireEvent.click(screen.getByRole('button', { name: 'Open SSH terminal' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Configure PuTTY' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Configure SSH terminal' }));
 
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('openssh');
     expect(screen.getByLabelText('PuTTY executable path (Windows)')).toBeTruthy();
   });
 
@@ -1545,22 +1548,92 @@ describe('App', () => {
     );
   });
 
-  it('stores an optional PuTTY executable path in advanced settings', async () => {
+  it('switches between OpenSSH and PuTTY and remembers the PuTTY executable path', async () => {
     await i18n.changeLanguage('en');
     const workspace = statefulApi();
     render(<App />);
     await pane('left').findByRole('row', { name: 'notes.txt' });
     fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
     fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
-    const input = screen.getByLabelText('PuTTY executable path (Windows)');
+    const client = screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)');
+    const input = screen.getByLabelText<HTMLInputElement>('PuTTY executable path (Windows)');
+    expect(client.value).toBe('openssh');
+    expect(input.disabled).toBe(true);
+    fireEvent.change(client, { target: { value: 'putty' } });
+    expect(input.disabled).toBe(false);
     fireEvent.change(input, { target: { value: 'C:\\Tools\\PuTTY\\putty.exe' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save terminal setting' }));
+    await waitFor(() =>
+      expect(workspace).toHaveBeenCalledWith({
+        action: 'set-ssh-terminal-client',
+        client: 'putty',
+      }),
+    );
     await waitFor(() =>
       expect(workspace).toHaveBeenCalledWith({
         action: 'set-putty-path',
         path: 'C:\\Tools\\PuTTY\\putty.exe',
       }),
     );
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('putty');
+    expect(screen.getByLabelText<HTMLInputElement>('PuTTY executable path (Windows)').value).toBe(
+      'C:\\Tools\\PuTTY\\putty.exe',
+    );
+    fireEvent.change(screen.getByLabelText('SSH client (Windows)'), {
+      target: { value: 'openssh' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(workspace).toHaveBeenCalledWith({
+      action: 'set-ssh-terminal-client',
+      client: 'openssh',
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('openssh');
+    const savedPath = screen.getByLabelText<HTMLInputElement>('PuTTY executable path (Windows)');
+    expect(savedPath.disabled).toBe(true);
+    expect(savedPath.value).toBe('C:\\Tools\\PuTTY\\putty.exe');
+  });
+
+  it('preserves a previously configured PuTTY client when a changed selection is cancelled', async () => {
+    const workspace = statefulApi({ puttyPath: 'C:\\Tools\\putty.exe' });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('putty');
+    fireEvent.change(screen.getByLabelText('SSH client (Windows)'), {
+      target: { value: 'openssh' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(workspace).not.toHaveBeenCalledWith(
+      expect.objectContaining({ action: 'set-ssh-terminal-client' }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('putty');
+  });
+
+  it('keeps PuTTY selected when its legacy executable path is cleared', async () => {
+    const workspace = statefulApi({ puttyPath: 'C:\\Tools\\putty.exe' });
+    render(<App />);
+    await pane('left').findByRole('row', { name: 'notes.txt' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    fireEvent.change(screen.getByLabelText('PuTTY executable path (Windows)'), {
+      target: { value: '' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save terminal setting' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(workspace).toHaveBeenCalledWith({ action: 'set-putty-path', path: null });
+    expect(workspace).toHaveBeenCalledWith({ action: 'set-ssh-terminal-client', client: 'putty' });
+    fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Advanced' }));
+    expect(screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)').value).toBe('putty');
   });
 
   it('configures GitHub update automation and starts a manual check', async () => {

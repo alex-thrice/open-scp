@@ -23,6 +23,7 @@ describe('transfer preferences', () => {
         editorPath={null}
         initialPage="transfers"
         keyboardShortcuts={defaultKeyboardShortcuts}
+        sshTerminalClient="openssh"
         puttyPath={null}
         rclonePath={null}
         rcloneAvailable={false}
@@ -66,5 +67,51 @@ describe('transfer preferences', () => {
     );
     await waitFor(() => expect(save.disabled).toBe(false));
     expect(run).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('SSH terminal preferences', () => {
+  it('keeps the selected client editable when saving fails', async () => {
+    await i18n.changeLanguage('en');
+    const run = vi.fn<WorkspaceRunner>(async () => undefined);
+    const onClose = vi.fn();
+    render(
+      <SettingsDialog
+        appearance={defaultAppearance}
+        confirmTabClose
+        editorPath={null}
+        initialPage="advanced"
+        keyboardShortcuts={defaultKeyboardShortcuts}
+        sshTerminalClient="openssh"
+        puttyPath={null}
+        rclonePath={null}
+        rcloneAvailable={false}
+        icloudRemoteCount={0}
+        rememberPaths
+        updateSettings={defaultUpdateSettings}
+        transferSettings={defaultTransferSettings}
+        updateState={undefined}
+        run={run}
+        errorKey="errors.external.failed"
+        onClose={onClose}
+      />,
+    );
+    const client = screen.getByLabelText<HTMLSelectElement>('SSH client (Windows)');
+    fireEvent.change(client, { target: { value: 'putty' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save terminal setting' }));
+    await waitFor(() =>
+      expect(run).toHaveBeenCalledWith({
+        action: 'set-ssh-terminal-client',
+        client: 'putty',
+      }),
+    );
+    await waitFor(() => expect(client.disabled).toBe(false));
+    expect(client.value).toBe('putty');
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Settings' })).toBeTruthy();
+    fireEvent.change(client, { target: { value: 'openssh' } });
+    expect(
+      screen.getByLabelText<HTMLInputElement>('PuTTY executable path (Windows)').disabled,
+    ).toBe(true);
   });
 });

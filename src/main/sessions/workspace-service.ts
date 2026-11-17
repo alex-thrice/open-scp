@@ -1,5 +1,9 @@
 import { open } from 'node:fs/promises';
 import { readTransferSettings } from '@shared/models/transfer-settings';
+import {
+  readSshTerminalClient,
+  type SshTerminalClient,
+} from '@shared/models/ssh-terminal-settings';
 import { tmpdir } from 'node:os';
 import { fileDragRequestSchema, type FileDragRequest } from '@shared/ipc/file-drag';
 import { ExternalDragService } from '../external/external-drag-service';
@@ -96,7 +100,7 @@ export interface WorkspaceExternalActions {
   readonly openSshTerminal?: (
     profile: SftpConnectionProfile,
     puttyPath: string | null,
-    options: { readonly directory: string },
+    options: { readonly directory: string; readonly windowsClient: SshTerminalClient },
   ) => Promise<void>;
   readonly pickEditor?: () => Promise<string | null>;
   readonly setUpdateSettings?: (settings: UpdateSettings) => Promise<void>;
@@ -345,6 +349,10 @@ export class WorkspaceService {
         : {}),
       editorPath: this.store.getSetting('editor-path') || null,
       puttyPath: this.store.getSetting('putty-path') || null,
+      sshTerminalClient: readSshTerminalClient(
+        this.store.getSetting('ssh-terminal-client'),
+        this.store.getSetting('putty-path'),
+      ),
       rclonePath: this.store.getSetting('rclone-path') || null,
       rememberPaths,
       workspaceLayout: readWorkspaceLayout(this.store.getSetting('workspace-layout-v1')),
@@ -977,6 +985,9 @@ export class WorkspaceService {
       case 'set-putty-path':
         this.store.setSetting('putty-path', request.path ?? '');
         break;
+      case 'set-ssh-terminal-client':
+        this.store.setSetting('ssh-terminal-client', request.client);
+        break;
       case 'set-rclone-path': {
         if (request.path && !isAbsolute(request.path))
           throw new ApplicationError(applicationErrorCodes.providerInvalidPath);
@@ -1099,6 +1110,10 @@ export class WorkspaceService {
           provider.connection.profile,
           this.store.getSetting('putty-path') || null,
           {
+            windowsClient: readSshTerminalClient(
+              this.store.getSetting('ssh-terminal-client'),
+              this.store.getSetting('putty-path'),
+            ),
             directory:
               (this.currentPathProfiles.get(request.workspaceId) === provider.connection.profile.id
                 ? this.currentPaths.get(request.workspaceId)

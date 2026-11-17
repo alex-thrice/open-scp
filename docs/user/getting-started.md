@@ -32,19 +32,31 @@ rclone is required for Google Drive and experimental iCloud access, independentl
 of whether Apple's own iCloud application is installed. Other OpenSCP connections
 do not require rclone.
 
-### SSH terminal on Windows: PuTTY
+### SSH terminal on Windows: OpenSSH or PuTTY
 
-1. Download PuTTY from its [official download page](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html).
-   Use the Windows installer or keep the standalone `putty.exe` in a permanent folder.
-2. Open **Settings → Advanced → SSH terminal**. If automatic detection does not
-   find PuTTY, set the full **PuTTY executable path (Windows)**, for example
-   `C:\Program Files\PuTTY\putty.exe`, and save the setting.
-3. Connect an SFTP panel, then choose **Open SSH terminal**. PuTTY opens a separate
-   window using the server, port and username from that profile.
+1. Open **Settings → Advanced → SSH terminal** and choose **OpenSSH** or **PuTTY**.
+   OpenSSH is the default. A previously saved PuTTY executable path keeps PuTTY
+   selected until you change the client.
+2. For OpenSSH, enable **OpenSSH Client** in Windows Optional Features if it is
+   missing. OpenSSH Server and a separate Windows Terminal installation are not
+   required; see [Microsoft's installation guide](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse).
+   For PuTTY, use the [official download](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html)
+   and install it or keep `putty.exe` in a permanent folder. If automatic detection
+   fails, set **PuTTY executable path (Windows)**, for example
+   `C:\Program Files\PuTTY\putty.exe`. This path applies only when PuTTY is selected.
+3. Save the setting, connect an SFTP panel, then choose **Open SSH terminal**.
+   The selected client opens a separate window using the profile's server, port,
+   username and compatible private key, starting in the panel's current folder.
 
-PuTTY is required for this external terminal action on Windows. SFTP browsing and
-file transfers in OpenSCP work without it. Passwords and key passphrases are not
-passed to the terminal through command-line arguments; the terminal may prompt again.
+SFTP browsing and file transfers work independently of the external SSH client.
+Passwords and key passphrases are not passed through command-line arguments;
+the terminal may prompt again. Each client verifies server keys in its own
+trusted-host store, so it may ask for fingerprint confirmation even after you have
+accepted the server in OpenSCP. Verify that fingerprint through a trusted channel.
+
+For OpenSSH, use a compatible private key or the Windows OpenSSH Authentication
+Agent with a loaded key. Export PuTTY `.ppk` keys to OpenSSH format with PuTTYgen
+before using them with OpenSSH; see [PuTTY's conversion guide](https://the.earth.li/~sgtatham/putty/0.85/htmldoc/Chapter8.html#puttygen-conversions).
 On macOS and Linux, the terminal action uses a system terminal and OpenSSH.
 
 ## Try two local folders

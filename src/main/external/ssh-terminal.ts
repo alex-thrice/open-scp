@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, win32 } from 'node:path';
 import { spawn } from 'node:child_process';
 import type { SftpConnectionProfile } from '@shared/models/connection-profile';
 import { applicationErrorCodes } from '@shared/errors/application-error';
@@ -19,6 +19,7 @@ export interface SshTerminalOptions {
   readonly platform?: NodeJS.Platform;
   readonly startProcess?: StartProcess;
   readonly temporaryDirectory?: string;
+  readonly windowsClient?: 'openssh' | 'putty';
 }
 
 const startDetachedProcess: StartProcess = (executable, arguments_, onExit) =>
@@ -33,6 +34,16 @@ const startDetachedProcess: StartProcess = (executable, arguments_, onExit) =>
     child.once('spawn', () => {
       child.unref();
       resolve();
+    });
+  });
+
+const startWindowsOpenSshProcess: StartProcess = (executable, arguments_) =>
+  new Promise<void>((resolve, reject) => {
+    const child = spawn(executable, arguments_, { stdio: 'ignore', windowsHide: true });
+    child.once('error', reject);
+    child.once('exit', (code) => {
+      if (code === 0) resolve();
+      else reject(Object.assign(new Error(), { code: code === 2 ? 'ENOENT' : 'EIO' }));
     });
   });
 
@@ -63,6 +74,60 @@ export const createOpenSshArguments = (
   profile.host,
   ...(directory ? [createRemoteShellCommand(directory)] : []),
 ];
+
+const quoteWindowsArgument = (value: string): string =>
+  `"${value
+    .replace(/(\\*)"/gu, (_match, backslashes: string) => `${backslashes}${backslashes}\\"`)
+    .replace(/\\+$/u, (backslashes) => `${backslashes}${backslashes}`)}"`;
+
+const createWindowsOpenSshCommand = (
+  profile: SftpConnectionProfile,
+  environment: NodeJS.ProcessEnv,
+  directory: string | undefined,
+): readonly string[] => {
+  const systemRoot = environment.SystemRoot ?? environment.WINDIR;
+  const request = Buffer.from(
+    JSON.stringify({
+      executables: [
+        ...(systemRoot ? [win32.join(systemRoot, 'System32', 'OpenSSH', 'ssh.exe')] : []),
+        'ssh.exe',
+      ],
+      arguments: createOpenSshArguments(profile, directory).map(quoteWindowsArgument).join(' '),
+    }),
+    'utf8',
+  ).toString('base64');
+  const script = `
+$ErrorActionPreference = 'Stop'
+$request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${request}')) | ConvertFrom-Json
+foreach ($executable in $request.executables) {
+  try {
+    $startInfo = New-Object System.Diagnostics.ProcessStartInfo
+    $startInfo.FileName = $executable
+    $startInfo.Arguments = $request.arguments
+    $startInfo.UseShellExecute = $true
+    $startInfo.WindowStyle = [Diagnostics.ProcessWindowStyle]::Normal
+    $process = [Diagnostics.Process]::Start($startInfo)
+    if ($null -eq $process) { exit 1 }
+    exit 0
+  } catch {
+    $exception = $_.Exception
+    while ($null -ne $exception.InnerException) { $exception = $exception.InnerException }
+    if (($exception -is [ComponentModel.Win32Exception]) -and ($exception.NativeErrorCode -in 2, 3)) {
+      continue
+    }
+    exit 1
+  }
+}
+exit 2
+`;
+  return [
+    '-NoLogo',
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    Buffer.from(script, 'utf16le').toString('base64'),
+  ];
+};
 
 export const createPuttyArguments = (
   profile: SftpConnectionProfile,
@@ -134,6 +199,22 @@ export const openSshTerminal = async (
   const platform = options.platform ?? process.platform;
   const environment = options.environment ?? process.env;
   const startProcess = options.startProcess ?? startDetachedProcess;
+
+  if (platform === 'win32' && (options.windowsClient ?? 'openssh') === 'openssh') {
+    const systemRoot = environment.SystemRoot ?? environment.WINDIR;
+    const executables = [
+      ...(systemRoot
+        ? [win32.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')]
+        : []),
+      'powershell.exe',
+    ];
+    const arguments_ = createWindowsOpenSshCommand(profile, environment, options.directory);
+    await startFirstAvailable(
+      executables.map((executable) => ({ executable, arguments_ })),
+      options.startProcess ?? startWindowsOpenSshProcess,
+    );
+    return;
+  }
 
   if (platform === 'win32') {
     const commandPath = options.directory

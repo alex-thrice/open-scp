@@ -45,13 +45,14 @@ The release page lists the packages actually available for that version.
 
 ### Additional tools for specific features
 
-| Feature                       | Install separately                                                                                                                                       |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Google Drive and iCloud Drive | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → Google Drive / iCloud Drive / rclone**                                  |
-| SSH terminal on Windows       | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); set the path to `putty.exe` in **Settings → Advanced → SSH terminal** if needed |
+| Feature                       | Install separately                                                                                                                                                                                                                                      |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Drive and iCloud Drive | [rclone](https://rclone.org/downloads/); set its path in **Settings → Advanced → Google Drive / iCloud Drive / rclone**                                                                                                                                 |
+| SSH terminal on Windows       | Windows [OpenSSH Client](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) or [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html); choose in **Settings → Advanced → SSH terminal** |
 
-These programs are not bundled with OpenSCP. SFTP browsing and file transfers work
-without PuTTY; it is needed only to open the separate SSH terminal on Windows.
+These programs are not bundled with OpenSCP. OpenSSH is the default Windows SSH
+terminal client; PuTTY remains available as an option. SFTP browsing and file
+transfers work independently of the external terminal client.
 See [installation steps](docs/user/getting-started.md#additional-tools).
 
 ## Your first transfer
