@@ -203,11 +203,12 @@ export const resources = {
         },
       },
       terminal: {
-        configure: 'Configure PuTTY',
+        configure: 'Configure SSH terminal',
         open: 'Open SSH terminal',
         settings: 'SSH terminal',
         settingsHint:
-          'Windows uses PuTTY. Leave the path empty to find putty.exe automatically. macOS and Linux use a system terminal and OpenSSH.',
+          'On Windows, choose OpenSSH or PuTTY. OpenSSH requires the Windows OpenSSH Client feature. Leave the PuTTY path empty for automatic detection. macOS and Linux use a system terminal and OpenSSH. Enter passwords and key passphrases in the terminal.',
+        client: 'SSH client (Windows)',
         puttyPath: 'PuTTY executable path (Windows)',
         puttyPathPlaceholder: 'Automatic detection',
         savePath: 'Save terminal setting',
@@ -679,11 +680,12 @@ export const resources = {
         },
       },
       terminal: {
-        configure: 'Настроить PuTTY',
+        configure: 'Настроить SSH-терминал',
         open: 'Открыть SSH-терминал',
         settings: 'SSH-терминал',
         settingsHint:
-          'В Windows используется PuTTY. Оставьте путь пустым для автоматического поиска putty.exe. В macOS и Linux используется системный терминал и OpenSSH.',
+          'В Windows выберите OpenSSH или PuTTY. Для OpenSSH нужен компонент Windows «Клиент OpenSSH». Пустой путь к PuTTY включает автоматический поиск. В macOS и Linux используется системный терминал и OpenSSH. Пароли и парольные фразы ключей вводятся в терминале.',
+        client: 'SSH-клиент (Windows)',
         puttyPath: 'Путь к PuTTY (Windows)',
         puttyPathPlaceholder: 'Автоматический поиск',
         savePath: 'Сохранить настройку терминала',

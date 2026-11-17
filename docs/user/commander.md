@@ -67,12 +67,15 @@ the next application launch.
 
 ## SSH terminal and external editing
 
-A connected SFTP panel offers **Open SSH terminal**. Windows uses separately
-installed PuTTY; macOS and Linux use a system terminal with OpenSSH. Host, port,
-username and a compatible private key come from the profile. Passwords and key
-passphrases are not passed as command-line arguments. Configure the PuTTY path in
-**Settings → Advanced → SSH terminal**. PuTTY is not needed for SFTP browsing or
-file transfers. See [additional tools](getting-started.md#additional-tools).
+A connected SFTP panel offers **Open SSH terminal**. On Windows, choose OpenSSH
+or PuTTY in **Settings → Advanced → SSH terminal**. OpenSSH is the default;
+a previously saved PuTTY path preserves that client until you change the selection.
+macOS and Linux use a system terminal with OpenSSH. Host, port, username and a
+compatible private key come from the profile; the session starts in the panel's
+current folder. Passwords and key passphrases are not passed as command-line
+arguments. The client may prompt for credentials and server fingerprint confirmation.
+The client choice does not affect SFTP browsing or file transfers.
+See [setup and key compatibility](getting-started.md#ssh-terminal-on-windows-openssh-or-putty).
 
 F4 opens a regular local file directly in an external editor. Defaults are Notepad
 on Windows, TextEdit on macOS and an available system editor on Linux. Choose an

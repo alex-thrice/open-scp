@@ -10,6 +10,7 @@ import {
   type ShortcutAction,
 } from '@shared/models/keyboard-shortcuts';
 import type { UpdateSettings, UpdateState } from '@shared/models/application-update';
+import type { SshTerminalClient } from '@shared/models/ssh-terminal-settings';
 import {
   defaultTransferSettings,
   transferSettingsSchema,
@@ -40,6 +41,7 @@ export const SettingsDialog = ({
   editorPath,
   initialPage,
   keyboardShortcuts,
+  sshTerminalClient,
   puttyPath,
   rclonePath,
   rcloneAvailable,
@@ -58,6 +60,7 @@ export const SettingsDialog = ({
   readonly editorPath: string | null;
   readonly initialPage: SettingsPage;
   readonly keyboardShortcuts: KeyboardShortcuts;
+  readonly sshTerminalClient: SshTerminalClient;
   readonly puttyPath: string | null;
   readonly rclonePath: string | null;
   readonly rcloneAvailable: boolean;
@@ -86,6 +89,7 @@ export const SettingsDialog = ({
   const [languageDraft, setLanguageDraft] = useState<'en' | 'ru'>(initialLanguage);
   const [editorPathDraft, setEditorPathDraft] = useState(editorPath ?? '');
   const [puttyPathDraft, setPuttyPathDraft] = useState(puttyPath ?? '');
+  const [sshTerminalClientDraft, setSshTerminalClientDraft] = useState(sshTerminalClient);
   const [rclonePathDraft, setRclonePathDraft] = useState(rclonePath ?? '');
   const isMac = /Mac/iu.test(navigator.platform);
   const [content, setContent] = useState('');
@@ -117,7 +121,10 @@ export const SettingsDialog = ({
       requests.push({ action: 'set-remember-paths', enabled: rememberDraft });
     if (confirmCloseDraft !== confirmTabClose)
       requests.push({ action: 'set-confirm-tab-close', enabled: confirmCloseDraft });
-    if ((puttyPathDraft.trim() || null) !== puttyPath)
+    const hasPuttyPathChanged = (puttyPathDraft.trim() || null) !== puttyPath;
+    if (sshTerminalClientDraft !== sshTerminalClient || hasPuttyPathChanged)
+      requests.push({ action: 'set-ssh-terminal-client', client: sshTerminalClientDraft });
+    if (hasPuttyPathChanged)
       requests.push({ action: 'set-putty-path', path: puttyPathDraft.trim() || null });
     if ((rclonePathDraft.trim() || null) !== rclonePath)
       requests.push({ action: 'set-rclone-path', path: rclonePathDraft.trim() || null });
@@ -498,10 +505,26 @@ export const SettingsDialog = ({
               <h4>{t('terminal.settings')}</h4>
               <p className="muted">{t('terminal.settingsHint')}</p>
               <label>
+                {t('terminal.client')}
+                <select
+                  aria-label={t('terminal.client')}
+                  disabled={busy}
+                  value={sshTerminalClientDraft}
+                  onChange={(event) =>
+                    setSshTerminalClientDraft(
+                      event.currentTarget.value === 'putty' ? 'putty' : 'openssh',
+                    )
+                  }
+                >
+                  <option value="openssh">OpenSSH</option>
+                  <option value="putty">PuTTY</option>
+                </select>
+              </label>
+              <label>
                 {t('terminal.puttyPath')}
                 <input
                   aria-label={t('terminal.puttyPath')}
-                  disabled={busy}
+                  disabled={busy || sshTerminalClientDraft !== 'putty'}
                   maxLength={32768}
                   placeholder={t('terminal.puttyPathPlaceholder')}
                   value={puttyPathDraft}
@@ -509,7 +532,11 @@ export const SettingsDialog = ({
                 />
               </label>
               <button
-                disabled={busy || puttyPathDraft === (puttyPath ?? '')}
+                disabled={
+                  busy ||
+                  (sshTerminalClientDraft === sshTerminalClient &&
+                    puttyPathDraft === (puttyPath ?? ''))
+                }
                 onClick={() => void confirm()}
               >
                 <Icon name="SquareTerminal" />

@@ -4,6 +4,31 @@ import { createDesktopApi } from '../../src/preload/desktop-api';
 import { ipcRequestChannels } from '../../src/shared/ipc/channels';
 
 describe('workspace IPC boundary', () => {
+  it('accepts only supported SSH clients in preferences and snapshots', () => {
+    for (const client of ['openssh', 'putty']) {
+      expect(
+        workspaceRequestSchema.safeParse({ action: 'set-ssh-terminal-client', client }).success,
+      ).toBe(true);
+      expect(
+        workspaceResultSchema.safeParse({
+          snapshot: {
+            profiles: [],
+            sessions: [],
+            transfers: [],
+            language: null,
+            sshTerminalClient: client,
+          },
+          listing: null,
+          privateKeyPath: null,
+        }).success,
+      ).toBe(true);
+    }
+    for (const client of ['plink', 'ssh.exe', '', null])
+      expect(
+        workspaceRequestSchema.safeParse({ action: 'set-ssh-terminal-client', client }).success,
+      ).toBe(false);
+  });
+
   it('validates themes and connection folder names at the boundary', () => {
     for (const name of ['', 'a/b', 'a\\b', 'bad\u0000name']) {
       expect(

@@ -8,6 +8,7 @@ import {
 } from '@shared/models/keyboard-shortcuts';
 import { defaultUpdateSettings } from '@shared/models/application-update';
 import { defaultTransferSettings } from '@shared/models/transfer-settings';
+import { readSshTerminalClient } from '@shared/models/ssh-terminal-settings';
 import { defaultAppearance, type WorkspaceSnapshot } from '@shared/ipc/workspace';
 import { useTranslation } from 'react-i18next';
 import { WorkspaceView } from './components/WorkspaceView';
@@ -476,6 +477,10 @@ export const App = () => {
           editorPath={service.snapshot.editorPath ?? null}
           initialPage={settingsPage}
           keyboardShortcuts={shortcuts}
+          sshTerminalClient={readSshTerminalClient(
+            service.snapshot.sshTerminalClient,
+            service.snapshot.puttyPath,
+          )}
           puttyPath={service.snapshot.puttyPath ?? null}
           rclonePath={service.snapshot.rclonePath ?? null}
           rcloneAvailable={service.snapshot.rcloneAvailable === true}

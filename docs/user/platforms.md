@@ -38,16 +38,18 @@ the operating system. Check name conflicts when copying between file systems.
 
 ## Additional tools
 
-| Feature                                        | Separate installation                                                                                |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Google Drive and iCloud Drive on all platforms | [rclone](https://rclone.org/downloads/)                                                              |
-| SSH terminal on Windows                        | [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html), or a standalone `putty.exe` |
+| Feature                                        | Separate installation                                                                                                                                                                                 |
+| ---------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Google Drive and iCloud Drive on all platforms | [rclone](https://rclone.org/downloads/)                                                                                                                                                               |
+| SSH terminal on Windows                        | Windows [OpenSSH Client](https://learn.microsoft.com/en-us/windows-server/administration/openssh/openssh_install_firstuse) or [PuTTY](https://www.chiark.greenend.org.uk/~sgtatham/putty/latest.html) |
 
 These programs are not bundled. Configure rclone in **Settings → Advanced →
-Google Drive / iCloud Drive / rclone** and PuTTY in **Settings → Advanced → SSH terminal**.
-An empty path enables automatic detection. PuTTY is only needed for a separate
-terminal window; SFTP file transfers work without it. On macOS and Linux, the
-external SSH terminal uses a system terminal and OpenSSH.
+Google Drive / iCloud Drive / rclone**. Choose OpenSSH or PuTTY in
+**Settings → Advanced → SSH terminal**. OpenSSH is the default on Windows;
+a previously saved PuTTY path preserves PuTTY until you change the client.
+The optional PuTTY path is used only for PuTTY; an empty path enables automatic
+detection. The external client choice does not affect SFTP file transfers.
+On macOS and Linux, the external SSH terminal uses a system terminal and OpenSSH.
 See the [installation steps](getting-started.md#additional-tools).
 
 ## Credentials

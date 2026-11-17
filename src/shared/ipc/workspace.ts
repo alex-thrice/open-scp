@@ -15,6 +15,7 @@ import { yandexProfileDraftSchema } from '@shared/models/yandex-profile';
 import { keyboardShortcutsSchema } from '@shared/models/keyboard-shortcuts';
 import { updateSettingsSchema, updateStateSchema } from '@shared/models/application-update';
 import { transferSettingsSchema } from '@shared/models/transfer-settings';
+import { sshTerminalClientSchema } from '@shared/models/ssh-terminal-settings';
 
 const id = z.string().min(1).max(200);
 const workspaceId = z.string().regex(/^workspace-[1-9]\d{0,3}$/u);
@@ -106,6 +107,7 @@ export const workspaceRequestSchema = z.discriminatedUnion('action', [
   z.strictObject({ action: z.literal('open-ssh-terminal'), workspaceId: id }),
   z.strictObject({ action: z.literal('set-editor-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('set-putty-path'), path: path.nullable() }),
+  z.strictObject({ action: z.literal('set-ssh-terminal-client'), client: sshTerminalClientSchema }),
   z.strictObject({ action: z.literal('set-rclone-path'), path: path.nullable() }),
   z.strictObject({ action: z.literal('refresh-rclone') }),
   z.strictObject({ action: z.literal('set-remember-paths'), enabled: z.boolean() }),
@@ -278,6 +280,7 @@ export const workspaceSnapshotSchema = z.strictObject({
   updateState: updateStateSchema.optional(),
   editorPath: path.nullable().optional(),
   puttyPath: path.nullable().optional(),
+  sshTerminalClient: sshTerminalClientSchema.optional(),
   rclonePath: path.nullable().optional(),
   rememberPaths: z.boolean().optional(),
   workspaceLayout: workspaceLayoutSchema.optional(),
